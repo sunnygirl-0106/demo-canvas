@@ -1,0 +1,12 @@
+:root{
+  --bg:#080808;            /* 画布底 */
+  --dot:#353535;           /* 稀疏灰色点阵 */
+  --surface:#1a1f22;       /* 节点、面板、菜单 */
+  --surface-2:#21272b;     /* 按钮 / chip */
+  --line:#262d31;  --line-2:#2b3236;  --line-dash:#3b454c;
+  --ink:#e7ebee;  --ink-2:#b5bec4;  --ink-3:#6b757c;
+  --teal:#2fd0d0;  --teal-bg:#17272a;  --teal-soft:rgba(47,208,208,.5);
+  --danger:#ff5f5f; --danger-ink:#ff7a7a;
+  --r-node:12px; --r-panel:16px; --r-pill:999px; --r-tile:8px; --r-slot:10px;
+  --font:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif;
+}

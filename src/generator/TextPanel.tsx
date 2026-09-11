@@ -1,0 +1,34 @@
+import { useGenerator } from '../store/generator'
+import { useCanvas } from '../store/canvas'
+import { FAKE_TEXT } from '../demo/assets'
+import { fakeGen } from '../demo/fake'
+import BottomBar from './BottomBar'
+import PromptBox from './PromptBox'
+import { IcChev } from '../ui/icons'
+
+/** 文本节点面板：无模式 Tab、无素材区 */
+export default function TextPanel({ nodeId }: { nodeId: string }) {
+  const gen = useGenerator((s) => s.map[nodeId])
+  const patch = useGenerator((s) => s.patch)
+  const busy = useCanvas((s) => s.nodes.find((n) => n.id === nodeId)?.data.busy)
+
+  return (
+    <>
+      <PromptBox
+        value={gen?.prompt ?? ''}
+        onChange={(v) => patch(nodeId, { prompt: v })}
+        placeholder={[{ t: '帮我把这段重逢对白润色得更克制一些，少用形容词，留白多一点' }]}
+        lit={-1}
+        mats={[]}
+      />
+      <BottomBar
+        cost={50}
+        busy={!!busy}
+        onSend={() => fakeGen(nodeId, 1200, { text: FAKE_TEXT })}
+        left={
+          <div className="gp-model">灵犀3.1 pro<IcChev size={10} color="#9aa4aa" sw={2.5} /></div>
+        }
+      />
+    </>
+  )
+}
