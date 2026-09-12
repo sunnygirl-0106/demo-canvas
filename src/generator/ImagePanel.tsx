@@ -27,7 +27,7 @@ export default function ImagePanel({ nodeId }: { nodeId: string }) {
         onSend={() => fakeGen(nodeId, 1500, { src: randomPhoto() })}
         left={
           <>
-            <div className="gp-model">phan nano l…<IcChev size={10} color="#9aa4aa" sw={2.5} /></div>
+            <div className="gp-model"><i className="model-dot" />phan nano l…<IcChev size={13} color="var(--ink-2)" sw={2} /></div>
             <div className="gp-sep" />
             <div className="gp-chip"><span style={{ fontSize: 11 }}>☐</span>参数</div>
             <div className="gp-chip"><IcImage size={12} />1张</div>

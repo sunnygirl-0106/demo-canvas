@@ -26,7 +26,7 @@ export default function TextPanel({ nodeId }: { nodeId: string }) {
         busy={!!busy}
         onSend={() => fakeGen(nodeId, 1200, { text: FAKE_TEXT })}
         left={
-          <div className="gp-model">灵犀3.1 pro<IcChev size={10} color="#9aa4aa" sw={2.5} /></div>
+          <div className="gp-model"><i className="model-dot" />灵犀3.1 pro<IcChev size={13} color="var(--ink-2)" sw={2} /></div>
         }
       />
     </>

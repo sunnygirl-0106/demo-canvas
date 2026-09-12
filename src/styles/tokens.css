@@ -1,12 +1,26 @@
+/* 中性色沿用原本的中性灰阶（不带绿味）；青色强调色与圆角节奏对齐「视频生成面板 2A」设计稿。 */
 :root{
-  --bg:#080808;            /* 画布底 */
-  --dot:#353535;           /* 稀疏灰色点阵 */
-  --surface:#1a1f22;       /* 节点、面板、菜单 */
-  --surface-2:#21272b;     /* 按钮 / chip */
-  --line:#262d31;  --line-2:#2b3236;  --line-dash:#3b454c;
-  --ink:#e7ebee;  --ink-2:#b5bec4;  --ink-3:#6b757c;
-  --teal:#2fd0d0;  --teal-bg:#17272a;  --teal-soft:rgba(47,208,208,.5);
-  --danger:#ff5f5f; --danger-ink:#ff7a7a;
-  --r-node:12px; --r-panel:16px; --r-pill:999px; --r-tile:8px; --r-slot:10px;
+  --bg:#080909;            /* 画布底 */
+  --dot:#2c3030;           /* 稀疏点阵 */
+  --surface:#151717;       /* 节点、面板 */
+  --surface-2:#1f2323;     /* 按钮 / chip */
+  --surface-3:#1a1d1d;     /* 浮层、菜单 */
+  --sunk:#101212;          /* 凹槽：时间轴、⊕ 把手 */
+  /* 控件填充三档：静止 / hover / 选中滑块 */
+  --fill:rgba(255,255,255,.04);  --fill-2:rgba(255,255,255,.07);  --fill-3:rgba(255,255,255,.10);
+  --line:rgba(255,255,255,.07);  --line-2:rgba(255,255,255,.12);  --line-dash:rgba(255,255,255,.2);
+  --ink:#e6ecea;  --ink-0:#f0f3f2;  --ink-1:#c9cfcd;  --ink-2:#8a918e;  --ink-3:#6b7370;
+  --ink-off:#7a8280;       /* 未选中的 tab 文字 */
+  --ink-sep:#4a5150;       /* 参数之间的分隔点 */
+  --teal:#5eead4;  --teal-on:#9df5e6;  --teal-deep:#2ed3b7;  --teal-bg:rgba(46,211,183,.10);
+  --teal-ring:rgba(94,234,212,.45);  --teal-soft:rgba(94,234,212,.5);  --teal-dash:rgba(94,234,212,.32);
+  --teal-wash:rgba(46,211,183,.06);
+  --teal-solid:#5eead4;  --teal-solid-hover:#7ff0dc;  --teal-ink:#04211c;
+  --chip-ink:#7ff0dc;  --chip-bg:rgba(46,211,183,.12);  --chip-line:rgba(94,234,212,.3);
+  --warn:#e6c08a;  --danger:#ff5f5f; --danger-ink:#ff7a7a;
+  --r-node:16px; --r-panel:22px; --r-pill:999px; --r-tile:13px; --r-slot:12px; --r-ctl:12px;
+  --ease:cubic-bezier(.22,1,.36,1);  --ease-soft:cubic-bezier(.2,.8,.2,1);
+  --pop:0 34px 70px -30px rgba(0,0,0,.9);
   --font:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif;
+  --mono:ui-monospace,Menlo,Consolas,monospace;
 }

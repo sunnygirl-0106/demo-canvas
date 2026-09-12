@@ -51,8 +51,16 @@ export const IcStar = ({ size = 14, color = '#e7ebee' }: P) => (
     <path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9zM5 14l.7 1.6 1.6.7-1.6.7L5 18.6l-.7-1.6-1.6-.7 1.6-.7z" />
   </svg>
 )
+/** 积分：单枚五角星 */
+export const IcCredit = ({ size = 14, color = 'currentColor' }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <path d="M12 2l2.1 6.3L20.5 10l-5.2 3.8L17 20l-5-3.6L7 20l1.7-6.2L3.5 10l6.4-1.7z" />
+  </svg>
+)
 /** 发送（生成）按钮里的纸飞机 */
-export const IcSend = (p: P) => <Svg {...p}><path d="M12 3l8 18-8-4-8 4z" /></Svg>
+export const IcSend = (p: P) => <Svg {...p}><path d="M4.5 12.5l15.5-7-7 15.5-1.8-6.3z" /><path d="M11.2 14.7l3.6-3.9" /></Svg>
+/** 延长方向：向后为默认朝向，向前翻转 */
+export const IcArrowR = (p: P) => <Svg {...p}><path d="M4 12h14" /><path d="M13 6l6 6-6 6" /></Svg>
 export const IcPlay = ({ size = 28 }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M8 5l11 7-11 7z" /></svg>
 )

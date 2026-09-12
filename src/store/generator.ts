@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { allocate, assign, remove, emptySlots, supportsMode, MODEL_CAPABILITIES, type MatGet, type Mode, type Model, type Slots, type Zone } from '../generator/materialLayout'
+import { allocate, assign, remove, emptySlots, fallbackMode, modeAvailable, MODEL_CAPABILITIES,
+  type MatGet, type Mode, type Model, type Slots, type Zone } from '../generator/materialLayout'
 import { sourceError, taskPayload, type TaskPayload, type TimeRange } from '../generator/videoTask'
 export interface Params { resolution: string; duration: number; ratio: string; sound: boolean }
 interface Draft extends Slots {
@@ -7,19 +8,21 @@ interface Draft extends Slots {
   direction: 'before' | 'after' | null; sourceSrc: string | null; sourceId: string | null; references: Record<string, string>; notice: string
 }
 export interface TaskRecord { id: string; status: 'running' | 'complete'; createdAt: number; payload: TaskPayload }
-export interface GenState extends Draft { mode: Mode; conn: string[]; drafts: Partial<Record<Mode, Draft>>; tasks: TaskRecord[] }
+/** pinned：用户手动选过 Tab。选过之后系统不再自动切走，除非当前 Tab 失效。 */
+export interface GenState extends Draft { mode: Mode; conn: string[]; pinned: boolean; drafts: Partial<Record<Mode, Draft>>; tasks: TaskRecord[] }
 const freshDraft = (): Draft => ({ ...emptySlots(), model: '2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, scope: 'whole', range: null, direction: null, sourceSrc: null, sourceId: null, references: {}, notice: '' })
-export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], drafts: {}, tasks: [] })
+export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], pinned: false, drafts: {}, tasks: [] })
 function draftOf(g: GenState): Draft {
-  const { mode: _mode, conn: _conn, drafts: _drafts, tasks: _tasks, ...draft } = g
+  const { mode: _mode, conn: _conn, pinned: _pinned, drafts: _drafts, tasks: _tasks, ...draft } = g
   return draft
 }
 function sourceSync(d: Draft, get: MatGet): Draft {
   const mat = d.slotEdit ? get(d.slotEdit) : null
   const src = mat?.src ?? null
   if (src !== d.sourceSrc || d.slotEdit !== d.sourceId) return { ...d, sourceSrc: src, sourceId: d.slotEdit, range: null,
-    notice: d.sourceSrc ? '源视频已更换，已清除时间范围，请重新检查修改要求的适用范围。' : d.notice }
-  if (d.range && (sourceError(mat?.dur, mat?.ready) || d.range.end > Math.floor(mat?.dur ?? 0))) return { ...d, range: null }
+    notice: d.sourceSrc ? '源视频已更换，已清除时间范围，请重新检查作用范围。' : d.notice }
+  // 用最宽松的区间判断，避免把仍然合法的选区误清掉
+  if (d.range && (sourceError(mat?.dur, mat?.ready, 'extend') || d.range.end > Math.floor(mat?.dur ?? 0))) return { ...d, range: null }
   return d
 }
 interface GenStore {
@@ -45,16 +48,26 @@ export const useGenerator = create<GenStore>((set, get) => {
     map: {}, get1: (id) => get().map[id] ?? freshGen(),
     syncConn: (id, conn, matGet) => edit(id, (g) => {
       const first = !get().map[id]
-      const auto = (first || (g.mode === 'text' && !g.conn.length && !g.prompt && !Object.keys(g.drafts).length)) && conn.length > 0
-      const mode = auto ? conn.some((mid) => matGet(mid)?.kind === 'video') ? 'edit' : 'ref' : g.mode
+      /**
+       * Tab 落位三条规则：
+       * 1. 当前 Tab 失效 → 必须切走（切到哪一眼看得见，失效原因挂在灰掉的 Tab 上悬浮说明，不再弹横幅）
+       * 2. 用户还没手动选过 → 连入素材时落到「参考素材」（编辑和延长是强意图，只从视频节点入口进）
+       * 3. 用户手动选过且仍有效 → 不动它
+       */
+      let mode = g.mode; const notice = g.notice; let pinned = g.pinned
+      if (!modeAvailable(mode, conn, matGet)) {
+        mode = fallbackMode(conn, matGet); pinned = false
+      } else if (!pinned && mode === 'text' && conn.length) mode = 'ref'
+      if (!conn.length) pinned = false
+      const jumped = mode !== g.mode
       const added = conn.filter((mid) => !g.conn.includes(mid))
-      const current = sourceSync({ ...draftOf(g), ...allocate(g, conn, mode, matGet, first || auto, added) }, matGet)
+      const current = sourceSync({ ...draftOf(g), ...allocate(g, conn, mode, matGet, first || jumped, added) }, matGet)
       const drafts = { ...g.drafts }
       for (const key of Object.keys(drafts) as Mode[]) {
         const d = drafts[key]!
         drafts[key] = sourceSync({ ...d, ...allocate(d, conn, key, matGet, false, added) }, matGet)
       }
-      return { ...g, ...current, mode, conn, drafts }
+      return { ...g, ...current, notice, mode, pinned, conn, drafts }
     }),
     syncSources: (id, matGet) => edit(id, (g) => {
       const current = sourceSync(g, matGet)
@@ -67,13 +80,17 @@ export const useGenerator = create<GenStore>((set, get) => {
     setMode: (id, mode, matGet) => edit(id, (g) => {
       if (mode === g.mode) return g
       const saved = g.drafts[mode]
-      const next = saved ?? { ...freshDraft(), model: supportsMode(mode, g.model) ? g.model : '2.5', ...allocate(emptySlots(), g.conn, mode, matGet) }
-      return { ...g, ...sourceSync(next, matGet), mode, drafts: { ...g.drafts, [g.mode]: draftOf(g) } }
+      const next = saved ?? { ...freshDraft(), model: g.model, ...allocate(emptySlots(), g.conn, mode, matGet) }
+      return { ...g, ...sourceSync(next, matGet), mode, pinned: true, drafts: { ...g.drafts, [g.mode]: draftOf(g) } }
     }),
+    /** 模型只决定参数取值域。切换永远允许，落在集合外的旧值静默收敛到最近的合法值。 */
     setModel: (id, model) => edit(id, (g) => {
-      if (!supportsMode(g.mode, model)) return g
       const cap = MODEL_CAPABILITIES[model]
-      return { ...g, model, params: { ...g.params, duration: cap.durations.includes(g.params.duration) ? g.params.duration : cap.durations[0], resolution: cap.resolutions.includes(g.params.resolution) ? g.params.resolution : cap.resolutions[0], ratio: cap.ratios.includes(g.params.ratio) ? g.params.ratio : cap.ratios[0] } }
+      const near = (list: number[], v: number) => list.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a, list[0])
+      return { ...g, model, params: { ...g.params,
+        duration: cap.durations.includes(g.params.duration) ? g.params.duration : near(cap.durations, g.params.duration),
+        resolution: cap.resolutions.includes(g.params.resolution) ? g.params.resolution : cap.resolutions[0],
+        ratio: cap.ratios.includes(g.params.ratio) ? g.params.ratio : cap.ratios[0] } }
     }),
     applyDrop: (id, matId, zone, _idx, matGet) => edit(id, (g) => {
       if (!g.conn.includes(matId)) return g
