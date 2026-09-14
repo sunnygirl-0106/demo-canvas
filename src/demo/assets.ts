@@ -29,12 +29,16 @@ export const MEDIA = {
 }
 
 /**
- * 走查用的 2 秒短片：从上面四段原片各裁 2 秒，不是新生成的素材。
- * 2 秒刚好卡在「延长」的下限之上、「编辑」的 4 秒下限之下，两条规则一次就能试到。
+ * 走查用的长短片段：全部从上面四段原片裁出来，不是新生成的素材。
+ * 时长有意铺开在几条规则的两边 —— 1.5s 谁都编辑不了、3s 只有 2.0 能编辑、
+ * 4.2s 起 2.5 也能编辑、8s 与 10s 用来撞 2.0 的 15 秒输入合计上限。
  */
-export const CLIPS_2S = Array.from({ length: 4 }, (_, i) => ({
-  src: mediaUrl(`clip2s-${i + 1}.mp4`), poster: mediaUrl(`poster-clip2s-${i + 1}.jpg`), dur: 2.1,
-}))
+const clip = (name: string, dur: number) => ({ src: mediaUrl(`clip-${name}.mp4`), poster: mediaUrl(`poster-clip-${name}.jpg`), dur })
+export const WALKTHROUGH_VIDEOS = [
+  clip('1', 1.5), clip('2a', 2), clip('2b', 2), clip('3', 3), clip('4', 4.2),
+  MEDIA.defaultVideo, MEDIA.video9, MEDIA.video10,
+  clip('6', 6), clip('8', 8), MEDIA.gh77,
+]
 
 export const SAMPLE_PHOTOS = Array.from({ length: 6 }, (_, i) => mediaUrl(`photos/reference-${i + 1}.jpg`))
 

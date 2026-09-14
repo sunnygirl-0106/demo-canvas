@@ -6,6 +6,7 @@ import VideoToolbar from './VideoToolbar'
 import GeneratorPanel from '../generator/GeneratorPanel'
 import VideoPanel from '../generator/VideoPanel'
 import { IcExpand, IcPlay, IcUpload, IcVideo } from '../ui/icons'
+import { fmt } from '../generator/materialLayout'
 import { useUploadInto } from './useUpload'
 
 export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
@@ -39,6 +40,8 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
             onError={() => { setPlaying(false); useCanvas.getState().updateNode(id, { mediaReady: false, mediaError: '视频无法读取，请重新上传' }) }} onEnded={() => setPlaying(false)}
           />
           {!playing && <div className="nd-play nodrag" onClick={toggle}><span><IcPlay size={26} /></span></div>}
+          {/* 时长直接摆在缩略图上：几秒的视频能做什么任务，规则全挂在这个数上 */}
+          {data.dur != null && Number.isFinite(data.dur) && <span className="nd-dur">{fmt(data.dur)}</span>}
           <button className="nd-corner nodrag" title="全屏" onClick={(e) => { e.stopPropagation(); void vid.current?.requestFullscreen?.().catch(() => {}) }}><IcExpand size={11} /></button>
         </>
       ) : (

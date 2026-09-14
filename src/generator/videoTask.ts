@@ -1,5 +1,5 @@
 import type { GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, locksRatio, connInfo, modelUnusableReason, sourceBounds, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
+import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, mediaSecondsBlocked, supportsRange, rangeBlockedReason, locksRatio, connInfo, modelUnusableReason, sourceBounds, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
 export { sourceBounds } from './materialLayout'
 export interface TimeRange { start: number; end: number }
 export const timecode = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -104,11 +104,12 @@ export function taskError(g: GenState, get: MatGet): string | null {
  */
 export function modelBlockedReason(g: GenState, model: Model, get: MatGet): string {
   return modeBlocksModel(g, model, get) || refsBlockModel(g, model, get)
+    || mediaSecondsBlocked(g, model, get)
     || rangeBlocksModel(g, model) || modelUnusableReason(g.conn, get, model)
 }
 /**
  * 换过去之后手上的参考视频会不合规：2.5 的编辑任务要求辅助参考视频也 4 秒起，
- * 2.0 只要 2 秒。区间只会变严才需要查，放宽的方向不拦。
+ * 2.0 只要 2 秒但最长只收 15 秒。区间只会变严才需要查，放宽的方向不拦。
  */
 function refsBlockModel(g: GenState, model: Model, get: MatGet): string {
   const [lo, hi] = sourceBounds(g.mode, model)
@@ -131,9 +132,16 @@ function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
   if (!MODEL_CAPABILITIES[model].genModes.includes(g.mode)) {
     return `不支持${TABS.find((t) => t.k === g.mode)!.label}，先切到别的模式再选`
   }
-  // 换个型号可能连源视频都接不住了：2.5 编辑要 4 秒起，2.0 只要 2 秒
-  if (g.mode === 'edit' || g.mode === 'extend') return TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, model))
-  return ''
+  if (g.mode !== 'edit' && g.mode !== 'extend') return ''
+  // 换个型号可能连手上这段源视频都接不住了：2.5 编辑要 4 秒起、最长 30 秒，2.0 是 2–15 秒。
+  // 先看已经选定的那一段，再退回「连着的视频有没有一段能当源」—— 画布上别的视频合规，
+  // 不代表用户正在编辑的这一段合规。
+  const m = g.slotEdit ? get(g.slotEdit) : null
+  if (m?.kind === 'video' && m.dur != null && Number.isFinite(m.dur)) {
+    const [lo, hi] = sourceBounds(g.mode, model)
+    if (m.dur < lo || m.dur > hi) return `源视频 ${m.name} 为 ${fmt(m.dur)}，这个型号要求 ${lo}–${hi} 秒`
+  }
+  return TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, model))
 }
 /**
  * 切到不响应秒数的模型会让用户拖出来的范围失效，所以拦住它，并给出解除办法。

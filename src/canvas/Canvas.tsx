@@ -33,13 +33,15 @@ export default function Canvas() {
   const file = useRef<HTMLInputElement>(null)
   const dropAt = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
-  // 单列从顶部以可读大小开始；连线场景全览。编辑时保持用户的视角。
+  // 竖着排的（一两列）从顶部以可读大小开始，往下滚着看；铺得开的场景全览。编辑时保持用户的视角。
   useEffect(() => {
     if (!pendingFit.current || !initialized || !canvasWidth) return
     pendingFit.current = false
     const first = st.nodes[0]
-    if (first && st.nodes.every((n) => n.position.x === first.position.x)) {
-      void setViewport({ x: canvasWidth / 2 - first.position.x - 160, y: 100 - first.position.y, zoom: 1 })
+    const columns = [...new Set(st.nodes.map((n) => n.position.x))].sort((a, b) => a - b)
+    if (first && columns.length <= 2) {
+      const span = columns[columns.length - 1] - columns[0] + 320
+      void setViewport({ x: canvasWidth / 2 - columns[0] - span / 2, y: 100 - first.position.y, zoom: 1 })
     } else {
       void fitView({ padding: 0.16, maxZoom: 0.85 })
     }

@@ -1,7 +1,7 @@
 import type { Edge } from '@xyflow/react'
 import { useCanvas, newId, type CNode } from '../store/canvas'
 import { useGenerator } from '../store/generator'
-import { CLIPS_2S, FAKE_TEXT, MEDIA, SAMPLE_PHOTOS } from './assets'
+import { WALKTHROUGH_VIDEOS, FAKE_TEXT, MEDIA, SAMPLE_PHOTOS } from './assets'
 
 const node = (
   id: string, type: 'text' | 'image' | 'video',
@@ -17,13 +17,14 @@ export function sceneEmpty() {
 }
 
 /**
- * 默认节点样例，也是走查用的画布：11 段 2 秒视频 + 8 张现成图片 + 文本，每类末尾留一个空态。
- * 11 段刚好越过 Seedance 2.5 的 10 段视频配额，2 秒 × 11 = 22 秒仍在 30 秒总时长内，
- * 「超出的本次不参与」和「源视频不足 4 秒」这两条一次就能试到。
+ * 默认节点样例，也是走查用的画布：11 段长短不一的视频 + 8 张现成图片 + 文本，每类末尾留一个空态。
+ * 11 段越过 Seedance 2.5 的 10 段视频配额；时长从 1.5 秒铺到 10 秒，
+ * 「超出的本次不参与」「源视频不足 4 秒」「没有型号接得住这段时长」都能一次试到。
+ * 竖着排两列：一屏看得清，往下滚就是下一批。
  */
-const COLS = 5
-const GRID_COL = 700
-const GRID_ROW = 430
+const COLS = 2
+const GRID_COL = 420
+const GRID_ROW = 250
 interface Spec { id: string; kind: 'text' | 'image' | 'video'; name: string; data?: Record<string, unknown> }
 const seq = (n: number, prefix: string, make: (i: number) => Omit<Spec, 'id'>): Spec[] =>
   Array.from({ length: n }, (_, i) => ({ id: `${prefix}${String(i + 1).padStart(2, '0')}`, ...make(i) }))
@@ -32,7 +33,8 @@ export function sceneShowcase() {
   useGenerator.getState().reset()
   /** 视频、图片、其他各占自己的行区，每区都从新的一行开始 */
   const lanes: Spec[][] = [
-    seq(11, 'VC', (i) => ({ kind: 'video', name: `视频 · 2 秒 ${i + 1}`, data: CLIPS_2S[i % CLIPS_2S.length] })),
+    WALKTHROUGH_VIDEOS.map((media, i) => ({
+      id: `VC${String(i + 1).padStart(2, '0')}`, kind: 'video' as const, name: `视频 · ${media.dur}s`, data: media })),
     seq(8, 'IP', (i) => ({ kind: 'image', name: `图片 · 参考图 ${i + 1}`, data: { src: SAMPLE_PHOTOS[i % SAMPLE_PHOTOS.length] } })),
     [
       { id: 'TX01', kind: 'text', name: '文本 · 场景描述', data: {

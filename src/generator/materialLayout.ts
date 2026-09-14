@@ -32,7 +32,12 @@ export interface ModelCap {
   audioAlone: boolean
   /** 是否有 adaptive 锁定机制（编辑 / 延长 / 首尾帧强制随原素材）。只有 2.5 有。 */
   locking: boolean
-  /** 编辑任务对待编辑视频的最短时长。Seedance 2.5 文档要求 4 秒，其余型号没有这条专属下限。 */
+  /**
+   * 每个输入视频的时长区间。文档给的是「单个视频」的硬要求：
+   * 2.5 收 2–30 秒，2.0 / Fast / Mini 收 2–15 秒。待编辑、待延长、辅助参考视频共用这一条。
+   */
+  videoSeconds: [number, number]
+  /** 编辑任务对每个输入视频的更严下限。Seedance 2.5 文档要求 4 秒，其余型号沿用 videoSeconds 的下限。 */
   editSourceMin: number
   /** 这个型号支持哪几种模式。编辑和延长是 Seedance 2.0 起才有的能力，别家模型没有。 */
   genModes: Mode[]
@@ -43,11 +48,14 @@ const ALL_MODES: Mode[] = ['text', 'frames', 'ref', 'edit', 'extend']
 /** 编辑与延长走 omni_reference_task_type，是 Seedance 2.0 才有的能力，其余型号只能生成。 */
 const GEN_MODES: Mode[] = ['text', 'frames', 'ref']
 const RATIOS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
-/** 2.0 系列共用一套取值域：4–15 秒、9 图 / 3 视频 / 3 音频、不锁定、不响应秒数。 */
+/**
+ * 2.0 系列共用一套取值域：产出 4–15 秒、9 图 / 3 视频 / 3 音频、不锁定、不响应秒数。
+ * 输入视频这一栏按文档是「单个 2–15 秒、最多 3 个、合计 ≤15 秒」，编辑 / 参考生成 / 延长三种任务一视同仁。
+ */
 const sd20 = (label: string, resolutions: string[]): ModelCap => ({
   label, resolutions, durations: [4, 5, 6, 8, 10, 15], ratios: RATIOS, formats: ['mp4'],
   durationRange: [4, 15], quota: { image: 9, video: 3, audio: 3, mediaSeconds: 15 },
-  timestamp: false, audioAlone: false, locking: false, editSourceMin: 2,
+  timestamp: false, audioAlone: false, locking: false, videoSeconds: [2, 15], editSourceMin: 2,
   genModes: ALL_MODES, hasAudioToggle: true,
 })
 /**
@@ -65,7 +73,7 @@ export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
     resolutions: ['480p', '720p', '1080p'], durations: [4, 5, 6, 8, 10, 15, 20, 30],
     ratios: RATIOS, formats: ['mp4', 'mov'],
     durationRange: [4, 30], quota: { image: 30, video: 10, audio: 10, mediaSeconds: 30 },
-    timestamp: true, audioAlone: true, locking: true, editSourceMin: 4,
+    timestamp: true, audioAlone: true, locking: true, videoSeconds: [2, 30], editSourceMin: 4,
     genModes: ALL_MODES, hasAudioToggle: true,
   },
   'sd2.0': sd20('Seedance 2.0', ['480p', '720p', '1080p', '4K']),
@@ -109,10 +117,12 @@ export const rangeBlockedReason = (model: Model) =>
 
 /**
  * 这个任务类型收多长的视频 —— 待编辑视频和辅助参考视频共用这一条。
- * 编辑任务的下限由模型给（2.5 是 4 秒，2.0 系列 2 秒），参考生成与延长一律 2 秒起。
+ * 上限由模型给（2.5 是 30 秒，2.0 系列 15 秒）；下限只有「2.5 的编辑任务」抬到 4 秒，其余一律 2 秒起。
  */
-export const sourceBounds = (mode: Mode, model: Model): [number, number] =>
-  [mode === 'edit' ? MODEL_CAPABILITIES[model].editSourceMin : 2, 30]
+export const sourceBounds = (mode: Mode, model: Model): [number, number] => {
+  const cap = MODEL_CAPABILITIES[model]
+  return [mode === 'edit' ? Math.max(cap.editSourceMin, cap.videoSeconds[0]) : cap.videoSeconds[0], cap.videoSeconds[1]]
+}
 /**
  * 视频节点上的「编辑视频 / 延长视频」入口能不能点：这段时长有没有任何型号接得住。
  * 一段都接不住就在入口处灰掉并说清楚区间，不要放人进去再用黄字告诉他不行。
@@ -122,7 +132,8 @@ export function sourceEntryReason(dur: number | undefined, mode: 'edit' | 'exten
   const able = MODELS.filter((m) => MODEL_CAPABILITIES[m].genModes.includes(mode))
   if (able.some((m) => { const [lo, hi] = sourceBounds(mode, m); return dur >= lo && dur <= hi })) return ''
   const lo = Math.min(...able.map((m) => sourceBounds(mode, m)[0]))
-  return `这段视频 ${fmt(dur)}，${mode === 'edit' ? '编辑' : '延长'}需要 ${lo}–30 秒的视频`
+  const hi = Math.max(...able.map((m) => sourceBounds(mode, m)[1]))
+  return `这段视频 ${fmt(dur)}，${mode === 'edit' ? '编辑' : '延长'}需要 ${lo}–${hi} 秒的视频`
 }
 /** 这段视频能不能当这个模式的源。时长还没读出来的先当可以，读到了自然会再判一次。 */
 export function fitsAsSource(m: Mat, mode: Mode, model: Model): boolean {
@@ -274,6 +285,17 @@ export function mediaSecondsWarning(g: InputSpec, get: MatGet): string {
   return total > cap.quota.mediaSeconds
     ? `本次输入视频合计 ${fmt(total)}，超出 ${cap.label} 的 ${cap.quota.mediaSeconds} 秒上限，请移除其中一段`
     : ''
+}
+/**
+ * 换成这个型号之后，手上这些视频的合计时长会超出它的上限（2.5 是 30 秒，2.0 系列 15 秒）。
+ * 当前型号本来就超了的话不算在这个型号头上 —— 那是素材的问题，生成按钮已经在说了。
+ * 理由里不带型号名：它就写在模型列表的同一行上。
+ */
+export function mediaSecondsBlocked(g: InputSpec, model: Model, get: MatGet): string {
+  const limit = MODEL_CAPABILITIES[model].quota.mediaSeconds
+  const total = inputSeconds({ ...g, model }, get)
+  if (total <= limit || mediaSecondsWarning(g, get)) return ''
+  return `本次输入视频合计 ${fmt(total)}，这个型号最多收 ${limit} 秒`
 }
 
 export function accepts(z: Zone, id: string, get: MatGet) {
