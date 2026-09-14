@@ -107,7 +107,10 @@ export const supportsRange = (model: Model) => MODEL_CAPABILITIES[model].timesta
 export const rangeBlockedReason = (model: Model) =>
   supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不响应秒数，时间范围会被忽略`
 
-/** 源视频时长区间：编辑的下限由模型决定，其余任务一律 2 秒。 */
+/**
+ * 这个任务类型收多长的视频 —— 待编辑视频和辅助参考视频共用这一条。
+ * 编辑任务的下限由模型给（2.5 是 4 秒，2.0 系列 2 秒），参考生成与延长一律 2 秒起。
+ */
 export const sourceBounds = (mode: Mode, model: Model): [number, number] =>
   [mode === 'edit' ? MODEL_CAPABILITIES[model].editSourceMin : 2, 30]
 /**

@@ -77,6 +77,22 @@ describe('任务参数', () => {
     expect(sourceError(3, true, 'edit', 'sd2.0')).toBeNull()
     expect(sourceError(3, true, 'edit', 'sd2.5')).not.toBeNull()
   })
+  it('辅助参考视频的下限跟着任务类型走，不是固定 2 秒', () => {
+    // 2.5 编辑：待编辑视频 4 秒起，辅助参考视频按文档同样是 4 秒起
+    const mixed = (refDur: number): MatGet => (id) => ({ ...get(id)!, dur: id === 'v' ? 10 : refDur })
+    const g = { ...edit(), conn: ['v', 'r'], tray: ['r'] }
+    expect(taskError({ ...g }, mixed(3))).toBe('参考视频 ABCD 为 3s，须为 4–30 秒')
+    expect(taskError({ ...g }, mixed(4))).toBeNull()
+    // 2.0 编辑的下限是 2 秒，参考视频跟着放宽
+    expect(taskError({ ...g, model: 'sd2.0' as const }, mixed(3))).toBeNull()
+    // 参考生成新视频：不涉及待编辑视频，参考视频 2 秒起
+    const ref = { ...freshGen(), mode: 'ref' as const, conn: ['r'], tray: ['r'], prompt: '海边日落' }
+    expect(taskError(ref, mixed(2))).toBeNull()
+    expect(taskError(ref, mixed(1.5))).toContain('须为 2–30 秒')
+    // 延长同样按 2 秒起
+    const ext = { ...g, mode: 'extend' as const, prompt: '续写一段海浪' }
+    expect(taskError(ext, mixed(3))).toBeNull()
+  })
   it('配额为 0 的素材，连着也不算有效输入', () => {
     // Wan 2.2 图生视频只收 1 张图、不收视频。连了视频但一个都用不上时不能提交，
     // 错了的表现是生成按钮亮着、payload 里 inputIds 是空的，界面看不出来。

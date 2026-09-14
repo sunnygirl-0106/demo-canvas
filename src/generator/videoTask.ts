@@ -52,7 +52,10 @@ function referenceError(g: GenState, active: string[], get: MatGet): string | nu
     if (m.error) return `${m.name}：${m.error}`
     if (m.kind !== 'video') continue
     if (m.ready === false || m.dur == null || !Number.isFinite(m.dur)) return `正在读取参考视频 ${m.name} 的时长，准备好后即可继续`
-    const [lo, hi] = sourceBounds('ref', g.model)
+    // 参考视频的下限跟着任务类型走，不是固定 2 秒：
+    // 2.5 编辑任务按文档要求，辅助参考视频和待编辑视频一样是 4 秒起；
+    // 参考生成新视频、延长这类任务里，参考视频 2 秒起就够。
+    const [lo, hi] = sourceBounds(g.mode, g.model)
     if (m.dur < lo || m.dur > hi) return `参考视频 ${m.name} 为 ${fmt(m.dur)}，须为 ${lo}–${hi} 秒`
   }
   return null
@@ -100,7 +103,25 @@ export function taskError(g: GenState, get: MatGet): string | null {
  * 理由里不带型号名：它就写在模型列表的同一行上。
  */
 export function modelBlockedReason(g: GenState, model: Model, get: MatGet): string {
-  return modeBlocksModel(g, model, get) || rangeBlocksModel(g, model) || modelUnusableReason(g.conn, get, model)
+  return modeBlocksModel(g, model, get) || refsBlockModel(g, model, get)
+    || rangeBlocksModel(g, model) || modelUnusableReason(g.conn, get, model)
+}
+/**
+ * 换过去之后手上的参考视频会不合规：2.5 的编辑任务要求辅助参考视频也 4 秒起，
+ * 2.0 只要 2 秒。区间只会变严才需要查，放宽的方向不拦。
+ */
+function refsBlockModel(g: GenState, model: Model, get: MatGet): string {
+  const [lo, hi] = sourceBounds(g.mode, model)
+  const [curLo, curHi] = sourceBounds(g.mode, g.model)
+  if (lo <= curLo && hi >= curHi) return ''
+  const source = g.mode === 'edit' || g.mode === 'extend' ? g.slotEdit : null
+  for (const id of partition(g, g.mode, model, get).active) {
+    if (id === source) continue // 主视频有自己那一条，已经在 modeBlocksModel 里查过
+    const m = get(id)
+    if (m?.kind !== 'video' || m.dur == null || !Number.isFinite(m.dur)) continue
+    if (m.dur < lo || m.dur > hi) return `参考视频 ${m.name} 为 ${fmt(m.dur)}，这个型号要求 ${lo}–${hi} 秒`
+  }
+  return ''
 }
 /**
  * 正在做的事它做不了。和 Tab 置灰、生成校验共用同一句判断：

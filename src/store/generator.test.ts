@@ -30,6 +30,18 @@ describe('模型置灰', () => {
     // 全能的型号在哪种模式下都选得了，不会出现所有型号全灰的死角
     expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('')
   })
+  it('换过去会让参考视频不合规的型号也灰掉，不等提交才报', () => {
+    // 源视频 15.1 秒两个型号都收，但 3 秒的参考视频只有 2.0 收得下
+    mats.push({ id: 'r', name: 'QRST', kind: 'video', dur: 3, src: 'r.mp4', ready: true, grad: '' })
+    gs().syncConn('target', ['v', 'r'], get)
+    gs().setMode('target', 'edit', get)
+    gs().setModel('target', 'sd2.0', get)
+    expect(state().tray).toContain('r')
+    expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('参考视频 QRST 为 3s，这个型号要求 4–30 秒')
+    // 反过来从 2.5 看 2.0 是放宽，不拦
+    gs().setModel('target', 'sd2.0', get)
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('')
+  })
 })
 describe('模式草稿与源视频', () => {
   it('切换保留各自文字、参数、角色、范围与方向', () => {
