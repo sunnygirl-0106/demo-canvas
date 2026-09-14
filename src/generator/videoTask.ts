@@ -4,8 +4,8 @@ export { sourceBounds } from './materialLayout'
 export interface TimeRange { start: number; end: number }
 export const timecode = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
-/** 延长的选区会作为输入送进模型，受输入视频 2 秒下限约束；编辑的选区只是写进提示词的时间戳，单位 1 秒。 */
-export const rangeMin = (mode: Mode) => mode === 'extend' ? 2 : 1
+/** 选区只有编辑用得上，是写进提示词的时间戳，按整数秒取，最短 1 秒。 */
+export const RANGE_MIN = 1
 export function sourceError(d?: number, ready = true, mode: Mode = 'edit', model: Model = 'sd2.5'): string | null {
   const [lo, hi] = sourceBounds(mode, model)
   if (!ready || d == null || !Number.isFinite(d)) return '正在读取源视频时长，准备好后即可继续'
@@ -13,28 +13,24 @@ export function sourceError(d?: number, ready = true, mode: Mode = 'edit', model
   if (d > hi) return `源视频超过 ${hi} 秒，${mode === 'edit' ? '编辑' : '延长'}任务需要 ${lo}–${hi} 秒的视频`
   return null
 }
-export function selectRange(t: number, duration: number, mode: Mode = 'edit'): TimeRange | null {
-  if (sourceError(duration, true, mode)) return null
-  const min = rangeMin(mode)
-  const start = clamp(Math.floor(t), 0, Math.floor(duration) - min)
-  return { start, end: start + min }
+export function selectRange(t: number, duration: number): TimeRange | null {
+  if (sourceError(duration, true, 'edit')) return null
+  const start = clamp(Math.floor(t), 0, Math.floor(duration) - RANGE_MIN)
+  return { start, end: start + RANGE_MIN }
 }
-export function adjustRange(range: TimeRange, action: 'start' | 'end' | 'move', value: number, duration: number, mode: Mode = 'edit'): TimeRange {
-  const end = Math.floor(duration); const min = rangeMin(mode)
-  if (action === 'start') return { ...range, start: clamp(Math.round(value), 0, range.end - min) }
-  if (action === 'end') return { ...range, end: clamp(Math.round(value), range.start + min, end) }
+export function adjustRange(range: TimeRange, action: 'start' | 'end' | 'move', value: number, duration: number): TimeRange {
+  const end = Math.floor(duration)
+  if (action === 'start') return { ...range, start: clamp(Math.round(value), 0, range.end - RANGE_MIN) }
+  if (action === 'end') return { ...range, end: clamp(Math.round(value), range.start + RANGE_MIN, end) }
   const start = clamp(range.start + Math.round(value), 0, end - (range.end - range.start))
   return { start, end: start + range.end - range.start }
 }
-/** 进入编辑 / 延长时给一个合理的默认选区，用户再拖。方向决定延长从哪头接。 */
-export function defaultRange(duration: number, mode: Mode, direction: 'before' | 'after' | null): TimeRange | null {
+/** 进入「改这一段」时给一个合理的默认选区，用户再拖。 */
+export function defaultRange(duration: number): TimeRange | null {
   const d = Math.floor(duration)
-  if (!Number.isFinite(d) || d < rangeMin(mode)) return null
-  if (mode === 'extend') return direction === 'before'
-    ? { start: 0, end: Math.min(5, d) }
-    : { start: Math.max(0, d - 5), end: d }
+  if (!Number.isFinite(d) || d < RANGE_MIN) return null
   const start = Math.floor(d * 0.25)
-  return { start, end: Math.max(start + rangeMin(mode), Math.round(d * 0.5)) }
+  return { start, end: Math.max(start + RANGE_MIN, Math.round(d * 0.5)) }
 }
 /** 「还没填」类提示：空槽位与占位符在界面上一眼可见，面板里不再重复，只用于禁用按钮与按钮悬停说明。 */
 const TODO = {
@@ -78,10 +74,11 @@ export function taskError(g: GenState, get: MatGet): string | null {
     if (m.error) return m.error
     const error = sourceError(m.dur, m.ready, g.mode, g.model)
     if (error) return error
-    if (g.scope === 'segment') {
+    // 延长一律整条进：原片从哪一头接由方向决定，没有「接哪一段」这回事
+    if (g.mode === 'edit' && g.scope === 'segment') {
       if (!supportsRange(g.model)) return rangeBlockedReason(g.model)
       if (!g.range) return TODO.range
-      if (g.range.start < 0 || g.range.end > Math.floor(m.dur!) || g.range.end - g.range.start < rangeMin(g.mode)
+      if (g.range.start < 0 || g.range.end > Math.floor(m.dur!) || g.range.end - g.range.start < RANGE_MIN
         || !Number.isInteger(g.range.start) || !Number.isInteger(g.range.end)) return TODO.badRange
     }
     if (g.mode === 'extend' && !g.direction) return TODO.direction
@@ -123,16 +120,10 @@ function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
  * 那会让任务在用户没察觉的情况下从「改这一段」扩大成「改整条」。
  */
 export function rangeBlocksModel(g: GenState, model: Model): string {
-  if (!(g.mode === 'edit' || g.mode === 'extend')) return ''
-  if (g.scope !== 'segment' || supportsRange(model)) return ''
+  if (g.mode !== 'edit' || g.scope !== 'segment' || supportsRange(model)) return ''
   return g.range
     ? `不响应秒数，当前指定了 ${timecode(g.range.start)}–${timecode(g.range.end)} 的范围`
-    : `不响应秒数，当前是${g.mode === 'edit' ? '「改这一段」' : '「从这一段接」'}、等待重新选取范围`
-}
-/** 改延长方向只改衔接的那一头；已经选好的参考段保持不变，没选过才给一个默认段。 */
-export function rangeOnDirection(g: { scope: 'whole' | 'segment'; range: TimeRange | null }, duration: number, direction: 'before' | 'after'): TimeRange | null {
-  if (g.scope !== 'segment') return g.range
-  return g.range ?? defaultRange(duration, 'extend', direction)
+    : '不响应秒数，当前是「改这一段」、等待重新选取范围'
 }
 export function taskPayload(g: GenState, get: MatGet) {
   const error = taskError(g, get)
@@ -140,18 +131,18 @@ export function taskPayload(g: GenState, get: MatGet) {
   const cap = MODEL_CAPABILITIES[g.model]
   const { active: ids, skipped } = partition(g, g.mode, g.model, get)
   const source = (g.mode === 'edit' || g.mode === 'extend') && g.slotEdit ? get(g.slotEdit) : null
-  const ranged = (g.mode === 'edit' || g.mode === 'extend') && g.scope === 'segment' && !!g.range
+  const ranged = g.mode === 'edit' && g.scope === 'segment' && !!g.range
   return {
     mode: g.mode, model: g.model, prompt: g.prompt.trim(), inputIds: ids,
     inputs: ids.map((id) => { const m = get(id)!; return { id, name: m.name, kind: m.kind, src: m.src, duration: m.dur } }),
     skipped,
-    scope: g.mode === 'edit' || g.mode === 'extend' ? g.scope : null,
+    scope: g.mode === 'edit' ? g.scope : g.mode === 'extend' ? 'whole' : null,
     roles: { source: source?.id ?? null, firstFrame: g.mode === 'frames' ? g.slotFirst : null, lastFrame: g.mode === 'frames' ? g.slotLast : null, references: g.mode === 'text' || g.mode === 'frames' ? [] : [...g.tray] },
     references: Object.fromEntries(Object.entries(g.references).filter(([name, id]) => ids.includes(id) && g.prompt.includes(`@${name}`))),
     sourceId: source?.id ?? null, sourceSrc: source?.src ?? null, sourceDuration: source?.dur ?? null,
     range: ranged ? { ...g.range! } : null,
-    /** 编辑的选区是作用域（产出里有它），延长的选区是锚点（产出里一帧都没有） */
-    rangeMeaning: ranged ? (g.mode === 'edit' ? '作用域' : '锚点') : null,
+    /** 编辑的选区是作用域：产出里有它，但不改变产出长度 */
+    rangeMeaning: ranged ? '作用域' : null,
     direction: g.mode === 'extend' ? g.direction : null,
     // 提交记录必须和界面显示的参数一致：界面能手选比例的模型（2.0 不锁定）就照手选值提交，
     // 参数里没有配音开关的模型不能夹带 sound。

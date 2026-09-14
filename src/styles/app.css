@@ -330,9 +330,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .timeline-actions button:hover{color:var(--teal-on)}
 .timeline-actions>span{margin-left:auto;color:var(--ink-3);font-size:11px}
 
-/* ── 延长方向与时长步进 ── */
-.extend-controls{margin-top:15px}
-.extend-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+/* ── 延长方向 ── */
+.extend-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:15px}
 .direction-options{position:relative;display:flex;gap:2px;padding:3px;background:var(--fill);
   border:1px solid var(--line);border-radius:11px}
 .seg-thumb{position:absolute;top:3px;bottom:3px;left:3px;border-radius:9px;background:var(--fill-3);
@@ -342,12 +341,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
   border-radius:9px;font-size:13.5px;font-weight:500;color:var(--ink-2);transition:color .3s}
 .direction-options button:hover{color:var(--ink)}
 .direction-options .selected,.direction-options .selected:hover{color:var(--ink-0);font-weight:600}
-.stepper{display:flex;align-items:center;gap:2px;padding:3px;background:var(--fill);border:1px solid var(--line);
-  border-radius:11px}
-.stepper button{width:28px;height:28px;border-radius:8px;color:var(--ink-2);font-size:16px;line-height:1;
-  display:grid;place-items:center;transition:background .18s,color .18s}
-.stepper button:hover:enabled{background:var(--fill-2);color:var(--ink-0)}
-.stepper span{min-width:52px;text-align:center;font:600 13px/1 var(--mono);color:var(--ink-1)}
 
 /* ── 提示词（无边框） ── */
 .prompt-editor{margin-top:15px;--pline:28px}

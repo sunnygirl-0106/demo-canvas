@@ -250,26 +250,20 @@ function unusedReason(mode: Mode): string {
   return '已从本次输入中移除，连接仍然保留'
 }
 /**
- * 「本次有效输入」的完整描述：素材槽位 + 模式 + 模型 + 作用范围。
+ * 「本次有效输入」的完整描述：素材槽位 + 模式 + 模型。
  * 素材展示、配额校验、时长合计都读这一份，不再各算各的。
  */
-export interface InputSpec extends Slots {
-  mode: Mode; model: Model; scope?: 'whole' | 'segment'; range?: { start: number; end: number } | null
-}
+export interface InputSpec extends Slots { mode: Mode; model: Model }
 /**
- * 单个素材本次真正送进模型的秒数。
- * 延长选了「从这一段接」时，主视频只有选中的那一段是输入，其余部分不进模型，
- * 所以按整段原片计会把用户挡在一个并不存在的超限上。编辑是整条进整条出，照原片计。
+ * 本次有效输入的视频秒数合计。
+ * 视频一律整条进模型：编辑是整条进整条出，延长也是拿整条去续写，
+ * 选区只是写进提示词的时间戳，不改变送进去的素材。
  */
-export function inputSecondsOf(g: InputSpec, id: string, get: MatGet): number {
-  const m = get(id)
-  if (m?.kind !== 'video') return 0
-  const ranged = g.mode === 'extend' && g.scope === 'segment' && g.range
-  return id === g.slotEdit && ranged ? g.range!.end - g.range!.start : m.dur ?? 0
-}
-/** 本次有效输入的视频秒数合计。 */
 export const inputSeconds = (g: InputSpec, get: MatGet): number =>
-  partition(g, g.mode, g.model, get).active.reduce((sum, id) => sum + inputSecondsOf(g, id, get), 0)
+  partition(g, g.mode, g.model, get).active.reduce((sum, id) => {
+    const m = get(id)
+    return sum + (m?.kind === 'video' ? m.dur ?? 0 : 0)
+  }, 0)
 /** 视频总时长超限时指不到具体是哪一段，只报警不置灰，让用户自己决定删哪个。 */
 export function mediaSecondsWarning(g: InputSpec, get: MatGet): string {
   const cap = MODEL_CAPABILITIES[g.model]

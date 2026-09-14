@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rangeMin, selectRange, adjustRange, sourceError, taskPayload, taskError, rangeOnDirection } from './videoTask'
+import { RANGE_MIN, selectRange, adjustRange, sourceError, taskPayload, taskError } from './videoTask'
 import { freshGen } from '../store/generator'
 import type { MatGet } from './materialLayout'
 /** a / b 是图片，其余 id 是 15.1 秒的视频。 */
@@ -12,8 +12,7 @@ describe('整数秒片段选择（最短 1 秒；4 秒是对源视频的要求�
   })
   it('源视频区间按模式分：编辑 4–30 秒，延长放宽到 2–30 秒', () => {
     expect(selectRange(3, 4)).toEqual({ start: 3, end: 4 })
-    for (const d of [3.99, 30.01, NaN, Infinity]) expect(selectRange(0, d, 'edit')).toBeNull()
-    expect(selectRange(0, 3, 'extend')).toEqual({ start: 0, end: 2 })
+    for (const d of [3.99, 30.01, NaN, Infinity]) expect(selectRange(0, d)).toBeNull()
     expect(sourceError(3, true, 'edit', 'sd2.5')).toContain('4')
     expect(sourceError(3, true, 'extend', 'sd2.5')).toBeNull()
     expect(sourceError(undefined)).toContain('读取'); expect(sourceError(15, false)).toContain('读取')
@@ -32,7 +31,7 @@ describe('整数秒片段选择（最短 1 秒；4 秒是对源视频的要求�
       for (const action of ['start', 'end', 'move'] as const) for (const v of [-50, -0.7, 0, 3.4, 40]) {
         const next = adjustRange(r, action, v, d)
         expect(next.start).toBeGreaterThanOrEqual(0); expect(next.end).toBeLessThanOrEqual(Math.floor(d))
-        expect(next.end - next.start).toBeGreaterThanOrEqual(rangeMin('edit')); expect(Number.isInteger(next.start) && Number.isInteger(next.end)).toBe(true)
+        expect(next.end - next.start).toBeGreaterThanOrEqual(RANGE_MIN); expect(Number.isInteger(next.start) && Number.isInteger(next.end)).toBe(true)
       }
     }
   })
@@ -54,19 +53,19 @@ describe('任务参数', () => {
     // 任务类型由 Tab 决定，提示词不再需要触发关键词
     expect(taskError({ ...g, prompt: '让它好看一点' }, get)).toBe(null)
   })
-  it('延长默认向后，延长时不携带编辑范围、不按原片截短生成时长', () => {
+  it('延长默认向后、永远整条进，不携带任何时间范围', () => {
     const g = { ...edit(), mode: 'extend' as const, prompt: '续写一段海浪', params: { ...edit().params, duration: 30 } }
     // 方向有默认值，不拦一次多余的点击；真被清空了才拦
     expect(g.direction).toBe('after')
     expect(taskError(g, get)).toBe(null)
     expect(taskError({ ...g, direction: null }, get)).toContain('向前或向后')
     const done = taskPayload({ ...g, direction: 'before' }, get)
-    expect(done).toMatchObject({ range: null, direction: 'before', params: { duration: 30, ratio: 'adaptive' } })
+    expect(done).toMatchObject({ range: null, scope: 'whole', direction: 'before', params: { duration: 30, ratio: 'adaptive' } })
     // 延长的产出只有新增那一段，不含原片
     expect(done.output).toContain('不含原片')
-    // 延长的选区是锚点，不是作用域
-    const anchored = taskPayload({ ...g, direction: 'after', scope: 'segment', range: { start: 10, end: 15 } }, get)
-    expect(anchored).toMatchObject({ range: { start: 10, end: 15 }, rangeMeaning: '锚点', params: { duration: 30 } })
+    // 延长没有「接哪一段」这回事：草稿里残留的选区也不会被带进任务
+    const stale = taskPayload({ ...g, direction: 'after', scope: 'segment' as const, range: { start: 10, end: 15 } }, get)
+    expect(stale).toMatchObject({ range: null, rangeMeaning: null, scope: 'whole' })
   })
   it('2.0 下编辑任务的时长仍然跟随原片，不受时长选择影响', () => {
     // 2.0 的参考视频合计上限是 15 秒，主视频取 10 秒才不会先被总时长拦下
@@ -78,29 +77,19 @@ describe('任务参数', () => {
     expect(sourceError(3, true, 'edit', 'sd2.0')).toBeNull()
     expect(sourceError(3, true, 'edit', 'sd2.5')).not.toBeNull()
   })
-  it('延长的选区最短 2 秒，编辑的选区最短 1 秒', () => {
-    const ext = selectRange(0, 10, 'extend')!; const ed = selectRange(0, 10, 'edit')!
-    expect(ext.end - ext.start).toBe(2)
-    expect(ed.end - ed.start).toBe(1)
-  })
   it('配额为 0 的素材，连着也不算有效输入', () => {
     // Wan 2.2 图生视频只收 1 张图、不收视频。连了视频但一个都用不上时不能提交，
     // 错了的表现是生成按钮亮着、payload 里 inputIds 是空的，界面看不出来。
     const g = { ...freshGen(), mode: 'ref' as const, model: 'wan2.2-i2v-a14b' as const, conn: ['v'], tray: ['v'], prompt: '海边日落' }
     expect(taskError(g, get)).toBe('请添加参考素材')
   })
-  it('延长只把选中的参考段算进输入时长，不按整条原片计', () => {
+  it('延长按整条原片计入时长，合计超限只能靠移除素材', () => {
     const long: MatGet = (id) => ({ ...get(id)!, dur: id === 'v' ? 28 : 10 })
     const g = { ...edit(), mode: 'extend' as const, conn: ['v', 'r'], tray: ['r'], direction: 'after' as const, prompt: '向后延长一段海浪' }
-    // 「从整条接」：28 秒原片整条进，加 10 秒参考视频超过 2.5 的 30 秒上限
+    // 28 秒原片整条进，加 10 秒参考视频超过 2.5 的 30 秒上限
     expect(taskError(g, long)).toContain('超出')
-    // 「从这一段接」：只有 3–7 秒这 4 秒进模型，合计 14 秒，在上限内
-    expect(taskError({ ...g, scope: 'segment', range: { start: 3, end: 7 } }, long)).toBeNull()
-  })
-  it('改延长方向不覆盖已经选好的参考段', () => {
-    expect(rangeOnDirection({ scope: 'segment', range: { start: 3, end: 7 } }, 10, 'before')).toEqual({ start: 3, end: 7 })
-    expect(rangeOnDirection({ scope: 'segment', range: null }, 10, 'before')).toEqual({ start: 0, end: 5 })
-    expect(rangeOnDirection({ scope: 'whole', range: null }, 10, 'after')).toBeNull()
+    // 去掉那段参考视频就在上限内
+    expect(taskError({ ...g, conn: ['v'], tray: [] }, long)).toBeNull()
   })
   it('提交记录与界面参数一致：2.0 不锁比例，没有声音开关的模型不夹带 sound', () => {
     const short: MatGet = (id) => ({ ...get(id)!, dur: 10 })
