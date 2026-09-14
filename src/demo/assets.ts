@@ -28,6 +28,14 @@ export const MEDIA = {
   gh77: { src: mediaUrl('GH77.mp4'), poster: mediaUrl('poster-GH77.jpg'), dur: 10.1 },
 }
 
+/**
+ * 走查用的 2 秒短片：从上面四段原片各裁 2 秒，不是新生成的素材。
+ * 2 秒刚好卡在「延长」的下限之上、「编辑」的 4 秒下限之下，两条规则一次就能试到。
+ */
+export const CLIPS_2S = Array.from({ length: 4 }, (_, i) => ({
+  src: mediaUrl(`clip2s-${i + 1}.mp4`), poster: mediaUrl(`poster-clip2s-${i + 1}.jpg`), dur: 2.1,
+}))
+
 export const SAMPLE_PHOTOS = Array.from({ length: 6 }, (_, i) => mediaUrl(`photos/reference-${i + 1}.jpg`))
 
 /** 图片节点假生成时随机填的一张 */

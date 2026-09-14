@@ -1,7 +1,7 @@
 import type { Edge } from '@xyflow/react'
 import { useCanvas, newId, type CNode } from '../store/canvas'
 import { useGenerator } from '../store/generator'
-import { FAKE_TEXT, MEDIA, SAMPLE_PHOTOS } from './assets'
+import { CLIPS_2S, FAKE_TEXT, MEDIA, SAMPLE_PHOTOS } from './assets'
 
 const node = (
   id: string, type: 'text' | 'image' | 'video',
@@ -16,35 +16,42 @@ export function sceneEmpty() {
   useCanvas.getState().setAll({ nodes: [], edges: [] })
 }
 
-/** 默认节点样例：按视频、图片、文本依次纵向排列，为提示词面板留出空间。 */
+/**
+ * 默认节点样例，也是走查用的画布：11 段 2 秒视频 + 8 张现成图片 + 文本，每类末尾留一个空态。
+ * 11 段刚好越过 Seedance 2.5 的 10 段视频配额，2 秒 × 11 = 22 秒仍在 30 秒总时长内，
+ * 「超出的本次不参与」和「源视频不足 4 秒」这两条一次就能试到。
+ */
+const COLS = 5
+const GRID_COL = 700
+const GRID_ROW = 430
+interface Spec { id: string; kind: 'text' | 'image' | 'video'; name: string; data?: Record<string, unknown> }
+const seq = (n: number, prefix: string, make: (i: number) => Omit<Spec, 'id'>): Spec[] =>
+  Array.from({ length: n }, (_, i) => ({ id: `${prefix}${String(i + 1).padStart(2, '0')}`, ...make(i) }))
+
 export function sceneShowcase() {
   useGenerator.getState().reset()
-  const nodes: CNode[] = [
-    node('VE01', 'video', 0, 0, '视频 · 空态 01'),
-    node('VE02', 'video', 0, 0, '视频 · 空态 02'),
-    node('VS2J', 'video', 0, 0, '视频 · S2JS_wm', MEDIA.defaultVideo),
-    node('V010', 'video', 0, 0, '视频 · video (10)', MEDIA.video10),
-    node('V009', 'video', 0, 0, '视频 · video (9)', MEDIA.video9),
-    node('GH77', 'video', 0, 0, '视频 · GH77', MEDIA.gh77),
-
-    node('IE01', 'image', 0, 0, '图片 · 空态 01'),
-    node('IE02', 'image', 0, 0, '图片 · 空态 02'),
-    ...SAMPLE_PHOTOS.map((src, i) => node(
-      `IP0${i + 1}`, 'image', 0, 0,
-      `图片 · 参考图 0${i + 1}`, { src },
-    )),
-
-    node('TE01', 'text', 0, 0, '文本 · 空态 01'),
-    node('TE02', 'text', 0, 0, '文本 · 空态 02'),
-    node('TX01', 'text', 0, 0, '文本 · 场景描述', {
-      text: '午后的阳光透过窗帘洒进客厅。\n镜头缓缓向前推进，掠过桌面与沙发。\n保持家具布局，换成温暖的电影色调。',
-    }),
-    node('TX02', 'text', 0, 0, '文本 · 对白片段', { text: FAKE_TEXT }),
+  /** 视频、图片、其他各占自己的行区，每区都从新的一行开始 */
+  const lanes: Spec[][] = [
+    seq(11, 'VC', (i) => ({ kind: 'video', name: `视频 · 2 秒 ${i + 1}`, data: CLIPS_2S[i % CLIPS_2S.length] })),
+    seq(8, 'IP', (i) => ({ kind: 'image', name: `图片 · 参考图 ${i + 1}`, data: { src: SAMPLE_PHOTOS[i % SAMPLE_PHOTOS.length] } })),
+    [
+      { id: 'TX01', kind: 'text', name: '文本 · 场景描述', data: {
+        text: '午后的阳光透过窗帘洒进客厅。\n镜头缓缓向前推进，掠过桌面与沙发。\n保持家具布局，换成温暖的电影色调。' } },
+      { id: 'TX02', kind: 'text', name: '文本 · 对白片段', data: { text: FAKE_TEXT } },
+      // 空态各留一个：新建节点长什么样，不用再手动加
+      { id: 'VE01', kind: 'video', name: '视频 · 空态' },
+      { id: 'IE01', kind: 'image', name: '图片 · 空态' },
+      { id: 'TE01', kind: 'text', name: '文本 · 空态' },
+    ],
   ]
-  useCanvas.getState().setAll({
-    nodes: nodes.map((n, i) => ({ ...n, position: { x: 0, y: i * 560 } })),
-    edges: [],
-  })
+  const nodes: CNode[] = []
+  let row = 0
+  for (const lane of lanes) {
+    lane.forEach((s, i) => nodes.push(
+      node(s.id, s.kind, (i % COLS) * GRID_COL, (row + Math.floor(i / COLS)) * GRID_ROW, s.name, s.data)))
+    row += Math.ceil(lane.length / COLS)
+  }
+  useCanvas.getState().setAll({ nodes, edges: [] })
 }
 
 export function sceneInitial(search: string) {
