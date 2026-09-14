@@ -485,17 +485,5 @@ button:disabled{opacity:.4;cursor:not-allowed}
 }
 .scope-fix:hover { background: rgba(79, 201, 190, .12); }
 
-.material-skipped { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding-left: 12px; border-left: 1px solid var(--line, #3a4442); }
-.material-skipped-label { font-size: 11px; color: var(--ink-3, #7a8884); letter-spacing: .04em; white-space: nowrap; }
-.material-skip {
-  position: relative; width: 40px; height: 34px; border-radius: 5px; overflow: hidden;
-  border: 1px dashed var(--line-2, #4a5552); cursor: help; flex: 0 0 auto;
-}
-.material-skip img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1); opacity: .45; }
-.material-skip-veil {
-  position: absolute; inset: 0;
-  background: repeating-linear-gradient(135deg, transparent 0 5px, rgba(140, 155, 152, .35) 5px 6px);
-}
-.material-skip:focus-visible { outline: 2px solid var(--teal, #4fc9be); outline-offset: 1px; }
 
 .reference-chip.static { cursor: default; }

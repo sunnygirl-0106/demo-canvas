@@ -128,7 +128,23 @@ export const TAB_REQUIREMENT: Record<Mode, (c: Counts) => string> = {
   edit: (c) => c.video ? '' : '需要 1 段视频作为源',
   extend: (c) => c.video ? '' : '需要 1 段视频作为源',
 }
-export interface TabState { k: Mode; label: string; enabled: boolean; reason: string }
+/**
+ * 进得去、但有连着的素材用不上：不在面板里摆一排「不参与」的缩略图，
+ * 只在这个 Tab 上挂一句悬浮说明 —— 进来之前就知道会忽略什么。
+ */
+export function tabNote(mode: Mode, c: Counts, model: Model): string {
+  if (mode === 'text') return ''
+  if (mode === 'frames') return c.video ? '此模式会忽略已连接的视频节点' : ''
+  const cap = MODEL_CAPABILITIES[model]
+  // 一个都收不了的那一类：说「忽略」，别说「最多使用 0 段」
+  const ignored = [!cap.quota.video && c.video ? '视频' : '', !cap.quota.image && c.image ? '图片' : ''].filter(Boolean)
+  if (ignored.length) return `此模式会忽略已连接的${ignored.join('与')}节点`
+  const over: string[] = []
+  if (c.image > cap.quota.image) over.push(`${cap.quota.image} 张图片`)
+  if (c.video > cap.quota.video) over.push(`${cap.quota.video} 段视频`)
+  return over.length ? `${cap.label} 最多使用 ${over.join('、')}，超出的本次不参与` : ''
+}
+export interface TabState { k: Mode; label: string; enabled: boolean; reason: string; note: string }
 /** Tab 能不能进 = 素材够不够 ∧ 模型有没有这个能力。模型这一半先判，理由更具体。 */
 export function tabStates(conn: string[], get: MatGet, model: Model): TabState[] {
   const c = countConn(conn, get)
@@ -137,7 +153,7 @@ export function tabStates(conn: string[], get: MatGet, model: Model): TabState[]
     const reason = !cap.genModes.includes(t.k)
       ? `${cap.label} 不支持${t.label}`
       : TAB_REQUIREMENT[t.k](c)
-    return { ...t, enabled: !reason, reason }
+    return { ...t, enabled: !reason, reason, note: reason ? '' : tabNote(t.k, c, model) }
   })
 }
 export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Model) =>

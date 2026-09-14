@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { fmt, partition, type Mat, type MatGet } from './materialLayout'
+import { fmt, type Mat, type MatGet } from './materialLayout'
 import { useCanvas } from '../store/canvas'
 import { useGenerator, type GenState } from '../store/generator'
 import { IcExpand, IcPlay, IcSwap } from '../ui/icons'
@@ -46,16 +46,8 @@ function EmptySlot({ role, size, kind, required }: { role: string; size: Size; k
     </div>
   </div>
 }
-/** 本次用不上的素材：连接不断、缩略图不消失，打上斜纹并说明原因。 */
-function SkippedTile({ mat, reason }: { mat: Mat; reason: string }) {
-  return <div className="material-skip" title={reason} aria-label={`${mat.name}：${reason}`} tabIndex={0}>
-    {mat.thumb && <img src={mat.thumb} alt="" />}
-    <span className="material-skip-veil" aria-hidden />
-  </div>
-}
 export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen: GenState; get: MatGet }) {
   if (gen.mode === 'text') return null
-  const { skipped } = partition(gen, gen.mode, gen.model, get)
   const tile = (id: string, role: string, size: Size, mark?: string) => {
     const mat = get(id)
     return mat ? <MaterialTile key={mat.id} mat={mat} role={role} size={size} mark={mark} /> : null
@@ -86,9 +78,5 @@ export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen:
         {!gen.tray.length && <EmptySlot role="参考素材" size="reference" kind="素材" required={gen.mode === 'ref'} />}
       </div>
     </>}
-    {!!skipped.length && <div className="material-skipped" role="group" aria-label={`${skipped.length} 个素材本次不参与`}>
-      <span className="material-skipped-label">不参与</span>
-      {skipped.map(({ id, reason }) => { const m = get(id); return m ? <SkippedTile key={id} mat={m} reason={reason} /> : null })}
-    </div>}
   </div>
 }

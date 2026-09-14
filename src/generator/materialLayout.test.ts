@@ -46,6 +46,15 @@ describe('模式能力与有效素材', () => {
     const many = { ...emptySlots(), tray: ['v', 'w'] }
     expect(partition(many, 'ref', 'sd2.5', get).skipped).toEqual([])
   })
+  it('用不上的素材不在面板上占位，改由 Tab 悬浮说明', () => {
+    // 首尾帧只吃图片：连着的视频不摆「不参与」缩略图，进模式之前在 Tab 上就说清楚
+    expect(tabStates(conn, get, 'sd2.5').find((t) => t.k === 'frames')!.note).toBe('此模式会忽略已连接的视频节点')
+    expect(tabStates(['a', 'b'], get, 'sd2.5').find((t) => t.k === 'frames')!.note).toBe('')
+    // 超过配额同样只在 Tab 上说：Wan 图生视频只收 1 张图
+    expect(tabStates(['a', 'b'], get, 'wan2.2-i2v-a14b').find((t) => t.k === 'ref')!.note).toContain('最多使用 1 张图片')
+    // 进不去的 Tab 说的是进不去的原因，不叠加忽略说明
+    expect(tabStates(conn, get, 'sd2.5').find((t) => t.k === 'text')!.note).toBe('')
+  })
   it('文生视频不展示或提交任何连接素材', () => {
     const s = allocate(emptySlots(), conn, 'text', get)
     expect(activeIds(s, 'text')).toEqual([])

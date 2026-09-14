@@ -14,7 +14,7 @@ interface Props {
 export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
   const wrap = useRef<HTMLDivElement>(null)
   const [ind, setInd] = useState({ x: 0, w: 0 })
-  /** 灰掉的原因不弹横幅，鼠标悬浮（或键盘聚焦）到那个 Tab 上才说。 */
+  /** 灰掉的原因、以及「这个模式会忽略什么」都不弹横幅，悬浮（或键盘聚焦）到那个 Tab 上才说。 */
   const [tip, setTip] = useState<TabState | null>(null)
   const tipAt = useRef<HTMLElement | null>(null)
 
@@ -29,7 +29,8 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
     return () => cancelAnimationFrame(frame)
   }, [mode, tabs])
 
-  const openTip = (t: TabState, el: HTMLElement) => { if (!t.reason) return; tipAt.current = el; setTip(t) }
+  const tipOf = (t: TabState) => t.reason || t.note
+  const openTip = (t: TabState, el: HTMLElement) => { if (!tipOf(t)) return; tipAt.current = el; setTip(t) }
   const closeTip = (t: TabState) => setTip((cur) => cur?.k === t.k ? null : cur)
 
   return (
@@ -37,7 +38,7 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
       <div className="gp-tabs" ref={wrap} role="tablist">
         {tabs.map((t) => (
           <button key={t.k} role="tab" aria-selected={mode === t.k} aria-disabled={!t.enabled}
-                  aria-label={t.reason ? `${t.label}：${t.reason}` : t.label}
+                  aria-label={tipOf(t) ? `${t.label}：${tipOf(t)}` : t.label}
                   className={'gp-tab' + (mode === t.k ? ' on' : '') + (t.enabled ? '' : ' off')}
                   onMouseEnter={(e) => openTip(t, e.currentTarget)} onMouseLeave={() => closeTip(t)}
                   onFocus={(e) => openTip(t, e.currentTarget)} onBlur={() => closeTip(t)}
@@ -46,8 +47,8 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
         <span className="gp-ind" aria-hidden style={{ transform: `translateX(${ind.x}px)`, width: ind.w }}><i /></span>
       </div>
       {right}
-      {tip && <Overlay passive tail label={tip.reason} anchor={tipAt} className="tab-tip" onClose={() => setTip(null)}>
-        {tip.reason}
+      {tip && <Overlay passive tail label={tipOf(tip)} anchor={tipAt} className="tab-tip" onClose={() => setTip(null)}>
+        {tipOf(tip)}
       </Overlay>}
     </div>
   )
