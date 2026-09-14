@@ -1,5 +1,5 @@
 import type { GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, locksRatio, countConn, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
+import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, locksRatio, countConn, modelUnusableReason, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
 export interface TimeRange { start: number; end: number }
 export const timecode = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
@@ -99,17 +99,33 @@ export function taskError(g: GenState, get: MatGet): string | null {
   return null
 }
 /**
+ * 换这个型号会让当前这件事做不成的所有原因，模型列表按它置灰 —— 三条规则一个入口。
+ * 顺序按「说得多具体」排：先说它做不了你正在做的事，再说它接不住你已经选好的范围，
+ * 最后才是「它在当前连接下一个模式都进不去」这种最泛的情况。
+ * 理由里不带型号名：它就写在模型列表的同一行上。
+ */
+export function modelBlockedReason(g: GenState, model: Model, get: MatGet): string {
+  return modeBlocksModel(g, model) || rangeBlocksModel(g, model) || modelUnusableReason(g.conn, get, model)
+}
+/**
+ * 正在做的事它做不了。和 Tab 置灰、生成校验共用同一句判断：
+ * Tab 会因为型号灰掉，型号也该因为 Tab 灰掉，两边不能只拦一头。
+ */
+function modeBlocksModel(g: GenState, model: Model): string {
+  if (MODEL_CAPABILITIES[model].genModes.includes(g.mode)) return ''
+  return `不支持${TABS.find((t) => t.k === g.mode)!.label}，先切到别的模式再选`
+}
+/**
  * 切到不响应秒数的模型会让用户拖出来的范围失效，所以拦住它，并给出解除办法。
  * 换源后范围被清空、等待重选时同样算局部意图 —— 不能因为范围暂时为空就放行，
  * 那会让任务在用户没察觉的情况下从「改这一段」扩大成「改整条」。
  */
-export function modelBlockedReason(g: GenState, model: Model): string {
+export function rangeBlocksModel(g: GenState, model: Model): string {
   if (!(g.mode === 'edit' || g.mode === 'extend')) return ''
   if (g.scope !== 'segment' || supportsRange(model)) return ''
-  const label = MODEL_CAPABILITIES[model].label
   return g.range
-    ? `当前指定了 ${timecode(g.range.start)}–${timecode(g.range.end)} 的范围，${label} 不响应秒数`
-    : `当前是${g.mode === 'edit' ? '「改这一段」' : '「从这一段接」'}，等待重新选取范围，${label} 不响应秒数`
+    ? `不响应秒数，当前指定了 ${timecode(g.range.start)}–${timecode(g.range.end)} 的范围`
+    : `不响应秒数，当前是${g.mode === 'edit' ? '「改这一段」' : '「从这一段接」'}、等待重新选取范围`
 }
 /** 改延长方向只改衔接的那一头；已经选好的参考段保持不变，没选过才给一个默认段。 */
 export function rangeOnDirection(g: { scope: 'whole' | 'segment'; range: TimeRange | null }, duration: number, direction: 'before' | 'after'): TimeRange | null {

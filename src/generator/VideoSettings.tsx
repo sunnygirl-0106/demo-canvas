@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useGenerator, type GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, modelUnusableReason, type Mat, type MatGet, type Model } from './materialLayout'
-import { modelBlockedReason } from './videoTask'
+import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type MatGet, type Model } from './materialLayout'
+import { modelBlockedReason, rangeBlocksModel } from './videoTask'
 import Overlay from './Overlay'
 import { IcChev, IcSeedance, IcWan, IcKling } from '../ui/icons'
 
@@ -29,10 +29,10 @@ export default function VideoSettings({ nodeId, gen, source, get }: { nodeId: st
       {cap.hasAudioToggle && <><i className="sep">·</i><em>{gen.params.sound ? '有声' : '无声'}</em></>}<IcChev size={13} color="var(--ink-2)" sw={2} /></button>
     {open === 'model' && <Overlay anchor={modelButton} label="选择模型" className="model-popover" onClose={() => setOpen(null)}>
       <div className="popover-heading">选择模型 <button aria-label="关闭模型选择" onClick={() => setOpen(null)}>✕</button></div>
-      {MODELS.map((model) => { const c = MODEL_CAPABILITIES[model]; const blocked = modelBlockedReason(gen, model) || modelUnusableReason(gen.conn, get, model); const icon = getModelIcon(model); return <button key={model} className={`model-option${gen.model === model ? ' selected' : ''}`} disabled={!!blocked} aria-disabled={!!blocked} onClick={() => { useGenerator.getState().setModel(nodeId, model, get); setOpen(null) }}>
+      {MODELS.map((model) => { const c = MODEL_CAPABILITIES[model]; const blocked = modelBlockedReason(gen, model, get); const icon = getModelIcon(model); return <button key={model} className={`model-option${gen.model === model ? ' selected' : ''}`} disabled={!!blocked} aria-disabled={!!blocked} onClick={() => { useGenerator.getState().setModel(nodeId, model, get); setOpen(null) }}>
         <span>{icon && <i className="model-icon">{icon}</i>}{c.label}{gen.model === model ? ' \u2713' : ''}</span><small>{blocked || `${c.durationRange[0]}\u2013${c.durationRange[1]}s \u00b7 ${c.resolutions.join(' / ')} \u00b7 \u6700\u591a ${c.quota.video} \u6bb5\u89c6\u9891${c.genModes.includes('edit') ? '' : ' \u00b7 \u4e0d\u652f\u6301\u7f16\u8f91\u4e0e\u5ef6\u957f'}${c.timestamp ? '' : ' \u00b7 \u4e0d\u54cd\u5e94\u79d2\u6570'}`}</small>
       </button> })}
-      {MODELS.some((model) => !!modelBlockedReason(gen, model)) && <button className="scope-fix" onClick={() => useGenerator.getState().patch(nodeId, { scope: 'whole', range: null })}>改为整条，解除模型限制</button>}
+      {MODELS.some((model) => !!rangeBlocksModel(gen, model)) && <button className="scope-fix" onClick={() => useGenerator.getState().patch(nodeId, { scope: 'whole', range: null })}>改为整条，解除模型限制</button>}
     </Overlay>}
     {open === 'params' && <Overlay anchor={paramButton} label="视频参数设置" className="params-popover" onClose={() => setOpen(null)}>
       <div className="popover-heading">视频参数 <button aria-label="关闭参数设置" onClick={() => setOpen(null)}>✕</button></div>

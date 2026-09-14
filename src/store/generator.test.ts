@@ -15,6 +15,22 @@ beforeEach(() => {
   // 连入素材只落到参考素材；编辑是强意图，从视频节点入口显式进入
   gs().setMode('target', 'edit', get)
 })
+describe('模型置灰', () => {
+  it('做不了当前这件事的型号一律灰掉：不支持这个模式、接不住已选范围、连接下没模式可进', () => {
+    // 编辑模式下，别家模型压根没有编辑能力，列表里就不该还能选
+    expect(modelBlockedReason(state(), 'kling-video-o1', get)).toContain('不支持编辑视频')
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('')
+    // 选了「改这一段」之后，不响应秒数的 2.0 也跟着灰
+    gs().patch('target', { scope: 'segment', range: { start: 3, end: 7 } })
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不响应秒数')
+    // 只做文生视频的型号，在这两个模式下都是「不支持这个模式」这条先拦住它
+    expect(modelBlockedReason(state(), 'wan2.2-ti2v-5b', get)).toContain('不支持编辑视频')
+    gs().setMode('target', 'ref', get)
+    expect(modelBlockedReason(state(), 'wan2.2-ti2v-5b', get)).toContain('不支持参考素材')
+    // 全能的型号在哪种模式下都选得了，不会出现所有型号全灰的死角
+    expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('')
+  })
+})
 describe('模式草稿与源视频', () => {
   it('切换保留各自文字、参数、角色、范围与方向', () => {
     gs().patch('target', { prompt: '编辑草稿', scope: 'segment', range: { start: 3, end: 7 } })
@@ -137,7 +153,7 @@ describe('连续操作', () => {
     gs().applyDrop('target', 'w', 'edit', null, get)
     expect(state()).toMatchObject({ scope: 'segment', range: null })
     // 不响应秒数的模型在选择列表里仍然是灰的
-    expect(modelBlockedReason(state(), 'sd2.0')).not.toBe('')
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不响应秒数')
     gs().setModel('target', 'sd2.0', get)
     expect(state().scope).toBe('segment')
   })
