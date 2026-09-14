@@ -1,14 +1,15 @@
 import type { GenState } from '../store/generator'
-import { MODE_RULES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, type MatGet, type Mode } from './materialLayout'
+import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, locksRatio, countConn, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
 export interface TimeRange { start: number; end: number }
 export const timecode = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
-/** 选区按整数秒，最短 1 秒 —— 文档里时间戳的单位就是 1 秒。4 秒是对源视频的要求，不是对选区的。 */
-export const RANGE_MIN = 1
-/** 源视频时长区间由模式决定：编辑 [4,30]，延长等非编辑任务 [2,30]。 */
-export const sourceBounds = (mode: Mode): [number, number] => MODE_RULES[mode].sourceDuration ?? [2, 30]
-export function sourceError(d?: number, ready = true, mode: Mode = 'edit'): string | null {
-  const [lo, hi] = sourceBounds(mode)
+/** 延长的选区会作为输入送进模型，受输入视频 2 秒下限约束；编辑的选区只是写进提示词的时间戳，单位 1 秒。 */
+export const rangeMin = (mode: Mode) => mode === 'extend' ? 2 : 1
+/** 源视频时长区间：编辑的下限由模型决定，其余任务一律 2 秒。 */
+export const sourceBounds = (mode: Mode, model: Model): [number, number] =>
+  [mode === 'edit' ? MODEL_CAPABILITIES[model].editSourceMin : 2, 30]
+export function sourceError(d?: number, ready = true, mode: Mode = 'edit', model: Model = 'sd2.5'): string | null {
+  const [lo, hi] = sourceBounds(mode, model)
   if (!ready || d == null || !Number.isFinite(d)) return '正在读取源视频时长，准备好后即可继续'
   if (d < lo) return `源视频不足 ${lo} 秒，${mode === 'edit' ? '编辑' : '延长'}任务需要 ${lo}–${hi} 秒的视频`
   if (d > hi) return `源视频超过 ${hi} 秒，${mode === 'edit' ? '编辑' : '延长'}任务需要 ${lo}–${hi} 秒的视频`
@@ -16,25 +17,26 @@ export function sourceError(d?: number, ready = true, mode: Mode = 'edit'): stri
 }
 export function selectRange(t: number, duration: number, mode: Mode = 'edit'): TimeRange | null {
   if (sourceError(duration, true, mode)) return null
-  const start = clamp(Math.floor(t), 0, Math.floor(duration) - RANGE_MIN)
-  return { start, end: start + RANGE_MIN }
+  const min = rangeMin(mode)
+  const start = clamp(Math.floor(t), 0, Math.floor(duration) - min)
+  return { start, end: start + min }
 }
-export function adjustRange(range: TimeRange, action: 'start' | 'end' | 'move', value: number, duration: number): TimeRange {
-  const end = Math.floor(duration)
-  if (action === 'start') return { ...range, start: clamp(Math.round(value), 0, range.end - RANGE_MIN) }
-  if (action === 'end') return { ...range, end: clamp(Math.round(value), range.start + RANGE_MIN, end) }
+export function adjustRange(range: TimeRange, action: 'start' | 'end' | 'move', value: number, duration: number, mode: Mode = 'edit'): TimeRange {
+  const end = Math.floor(duration); const min = rangeMin(mode)
+  if (action === 'start') return { ...range, start: clamp(Math.round(value), 0, range.end - min) }
+  if (action === 'end') return { ...range, end: clamp(Math.round(value), range.start + min, end) }
   const start = clamp(range.start + Math.round(value), 0, end - (range.end - range.start))
   return { start, end: start + range.end - range.start }
 }
 /** 进入编辑 / 延长时给一个合理的默认选区，用户再拖。方向决定延长从哪头接。 */
 export function defaultRange(duration: number, mode: Mode, direction: 'before' | 'after' | null): TimeRange | null {
   const d = Math.floor(duration)
-  if (!Number.isFinite(d) || d < RANGE_MIN) return null
+  if (!Number.isFinite(d) || d < rangeMin(mode)) return null
   if (mode === 'extend') return direction === 'before'
     ? { start: 0, end: Math.min(5, d) }
     : { start: Math.max(0, d - 5), end: d }
   const start = Math.floor(d * 0.25)
-  return { start, end: Math.max(start + RANGE_MIN, Math.round(d * 0.5)) }
+  return { start, end: Math.max(start + rangeMin(mode), Math.round(d * 0.5)) }
 }
 /** 「还没填」类提示：空槽位与占位符在界面上一眼可见，面板里不再重复，只用于禁用按钮与按钮悬停说明。 */
 const TODO = {
@@ -44,43 +46,80 @@ const TODO = {
 }
 const TODO_SET = new Set<string>(Object.values(TODO))
 export const isTodoError = (error: string | null) => !!error && TODO_SET.has(error)
-/** 编辑 / 延长的提示词必须带触发词，否则模型会把任务判成别的类型。 */
-export function keywordError(mode: Mode, prompt: string): string | null {
-  const words = MODE_RULES[mode].keywords
-  if (!words || words.some((w) => prompt.includes(w))) return null
-  return mode === 'edit'
-    ? '修改要求里需要出现「修改 / 替换 / 删除 / 增加」之类的词，模型靠它判断这是一个编辑任务'
-    : '要求里需要出现「延长 / 续写 / 延续」之类的词，模型靠它判断这是一个延长任务'
+/**
+ * 参考素材也要能读、时长合规。这条以前只在编辑 / 延长里查，
+ * 参考模式漏过了 1 秒的视频和标了「无法读取」的文件，要到上游才报错。
+ */
+function referenceError(g: GenState, active: string[], get: MatGet): string | null {
+  const source = g.mode === 'edit' || g.mode === 'extend' ? g.slotEdit : null
+  for (const id of active) {
+    if (id === source) continue // 主视频有自己的区间要求，已经单独查过
+    const m = get(id); if (!m) continue
+    if (m.error) return `${m.name}：${m.error}`
+    if (m.kind !== 'video') continue
+    if (m.ready === false || m.dur == null || !Number.isFinite(m.dur)) return `正在读取参考视频 ${m.name} 的时长，准备好后即可继续`
+    const [lo, hi] = sourceBounds('ref', g.model)
+    if (m.dur < lo || m.dur > hi) return `参考视频 ${m.name} 为 ${fmt(m.dur)}，须为 ${lo}–${hi} 秒`
+  }
+  return null
 }
 export function taskError(g: GenState, get: MatGet): string | null {
+  // 模型没有这个能力时，生成和 Tab 给同一句话
+  const cap = MODEL_CAPABILITIES[g.model]
+  if (!cap.genModes.includes(g.mode)) return `${cap.label} 不支持${TABS.find((t) => t.k === g.mode)!.label}`
+  // 素材规则也和 Tab 置灰共用同一份判断：否则会出现「五个模式全部置灰、生成却还能提交」
+  const unusable = TAB_REQUIREMENT[g.mode](countConn(g.conn, get))
+  if (unusable) return unusable
+  const { active } = partition(g, g.mode, g.model, get)
   if (g.mode === 'frames' && !g.slotFirst) return TODO.first
-  if (g.mode === 'ref' && !g.tray.length) return TODO.ref
+  // 用有效输入判断，不用连线数：配额为 0 的素材连着也不算数
+  if (g.mode === 'ref' && !active.length) return TODO.ref
   if (g.mode === 'edit' || g.mode === 'extend') {
     const m = g.slotEdit ? get(g.slotEdit) : null
     if (!m) return TODO.source
     if (m.error) return m.error
-    const error = sourceError(m.dur, m.ready, g.mode)
+    const error = sourceError(m.dur, m.ready, g.mode, g.model)
     if (error) return error
     if (g.scope === 'segment') {
       if (!supportsRange(g.model)) return rangeBlockedReason(g.model)
       if (!g.range) return TODO.range
-      if (g.range.start < 0 || g.range.end > Math.floor(m.dur!) || g.range.end - g.range.start < RANGE_MIN
+      if (g.range.start < 0 || g.range.end > Math.floor(m.dur!) || g.range.end - g.range.start < rangeMin(g.mode)
         || !Number.isInteger(g.range.start) || !Number.isInteger(g.range.end)) return TODO.badRange
     }
     if (g.mode === 'extend' && !g.direction) return TODO.direction
   }
-  const warn = mediaSecondsWarning(g, g.mode, g.model, get)
+  const badRef = referenceError(g, active, get)
+  if (badRef) return badRef
+  const warn = mediaSecondsWarning(g, get)
   if (warn) return warn
-  const { active } = partition(g, g.mode, g.model, get)
   const invalid = Object.entries(g.references).find(([name, id]) => g.prompt.includes(`@${name}`) && !active.includes(id))
   if (invalid) return `引用 @${invalid[0]} 已不在本次素材中，请删除引用或重新添加素材`
   const text = g.prompt.replace(/@[A-Z]{4}\b/g, '').trim()
   if (!text) return g.mode === 'edit' ? TODO.promptEdit : TODO.prompt
-  return keywordError(g.mode, text)
+  return null
+}
+/**
+ * 切到不响应秒数的模型会让用户拖出来的范围失效，所以拦住它，并给出解除办法。
+ * 换源后范围被清空、等待重选时同样算局部意图 —— 不能因为范围暂时为空就放行，
+ * 那会让任务在用户没察觉的情况下从「改这一段」扩大成「改整条」。
+ */
+export function modelBlockedReason(g: GenState, model: Model): string {
+  if (!(g.mode === 'edit' || g.mode === 'extend')) return ''
+  if (g.scope !== 'segment' || supportsRange(model)) return ''
+  const label = MODEL_CAPABILITIES[model].label
+  return g.range
+    ? `当前指定了 ${timecode(g.range.start)}–${timecode(g.range.end)} 的范围，${label} 不响应秒数`
+    : `当前是${g.mode === 'edit' ? '「改这一段」' : '「从这一段接」'}，等待重新选取范围，${label} 不响应秒数`
+}
+/** 改延长方向只改衔接的那一头；已经选好的参考段保持不变，没选过才给一个默认段。 */
+export function rangeOnDirection(g: { scope: 'whole' | 'segment'; range: TimeRange | null }, duration: number, direction: 'before' | 'after'): TimeRange | null {
+  if (g.scope !== 'segment') return g.range
+  return g.range ?? defaultRange(duration, 'extend', direction)
 }
 export function taskPayload(g: GenState, get: MatGet) {
   const error = taskError(g, get)
   if (error) throw new Error(error)
+  const cap = MODEL_CAPABILITIES[g.model]
   const { active: ids, skipped } = partition(g, g.mode, g.model, get)
   const source = (g.mode === 'edit' || g.mode === 'extend') && g.slotEdit ? get(g.slotEdit) : null
   const ranged = (g.mode === 'edit' || g.mode === 'extend') && g.scope === 'segment' && !!g.range
@@ -96,9 +135,12 @@ export function taskPayload(g: GenState, get: MatGet) {
     /** 编辑的选区是作用域（产出里有它），延长的选区是锚点（产出里一帧都没有） */
     rangeMeaning: ranged ? (g.mode === 'edit' ? '作用域' : '锚点') : null,
     direction: g.mode === 'extend' ? g.direction : null,
+    // 提交记录必须和界面显示的参数一致：界面能手选比例的模型（2.0 不锁定）就照手选值提交，
+    // 参数里没有配音开关的模型不能夹带 sound。
     params: { ...g.params,
-      ratio: g.mode === 'edit' || g.mode === 'extend' || g.mode === 'frames' ? 'adaptive' : g.params.ratio,
-      duration: g.mode === 'edit' ? source!.dur! : g.params.duration },
+      ratio: locksRatio(g.mode, g.model) ? 'adaptive' : g.params.ratio,
+      duration: g.mode === 'edit' ? source!.dur! : g.params.duration,
+      sound: cap.hasAudioToggle ? g.params.sound : false },
     output: g.mode === 'edit' ? `整条视频（时长与原片一致 ${fmt(source!.dur!)}）`
       : g.mode === 'extend' ? `新增片段 ${g.params.duration}s（不含原片，不自动拼接）` : '新视频',
     demo: true as const,

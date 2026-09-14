@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useGenerator } from './generator'
-import type { Mat, MatGet } from '../generator/materialLayout'
+import { taskError, modelBlockedReason } from '../generator/videoTask'
+import { tabStates, type Mat, type MatGet } from '../generator/materialLayout'
 let mats: Mat[]
 const get: MatGet = (id) => mats.find((m) => m.id === id) ?? null
 const gs = () => useGenerator.getState()
@@ -18,7 +19,7 @@ describe('模式草稿与源视频', () => {
   it('切换保留各自文字、参数、角色、范围与方向', () => {
     gs().patch('target', { prompt: '编辑草稿', scope: 'segment', range: { start: 3, end: 7 } })
     gs().setMode('target', 'extend', get)
-    expect(state().range).toBeNull(); expect(state().direction).toBeNull()
+    expect(state().range).toBeNull(); expect(state().direction).toBe('after')
     gs().patch('target', { prompt: '续写草稿', direction: 'before', params: { ...state().params, duration: 30 } })
     gs().setMode('target', 'edit', get)
     expect(state()).toMatchObject({ prompt: '编辑草稿', range: { start: 3, end: 7 }, params: { duration: 5 } })
@@ -47,9 +48,18 @@ describe('模式草稿与源视频', () => {
   it('切换模型永远允许，不改变模式与草稿，只收敛参数', () => {
     gs().setMode('target', 'edit', get)
     gs().patch('target', { range: { start: 3, end: 7 }, prompt: '保留草稿' })
-    gs().setModel('target', '2.0', get)
-    expect(state()).toMatchObject({ model: '2.0', mode: 'edit', prompt: '保留草稿', range: { start: 3, end: 7 } })
-    gs().setModel('target', '2.5', get); expect(state().model).toBe('2.5')
+    gs().setModel('target', 'sd2.0', get)
+    expect(state()).toMatchObject({ model: 'sd2.0', mode: 'edit', prompt: '保留草稿', range: { start: 3, end: 7 } })
+    gs().setModel('target', 'sd2.5', get); expect(state().model).toBe('sd2.5')
+  })
+  it('切到没有编辑能力的模型时落回参考素材，编辑草稿仍然留着', () => {
+    gs().setMode('target', 'edit', get)
+    gs().patch('target', { prompt: '把椅子改成红色' })
+    // 可灵没有编辑能力，留在灰掉的 Tab 上会报一个用户改不动的错
+    gs().setModel('target', 'kling-video-o1', get)
+    expect(state()).toMatchObject({ model: 'kling-video-o1', mode: 'ref' })
+    gs().setModel('target', 'sd2.5', get); gs().setMode('target', 'edit', get)
+    expect(state().prompt).toBe('把椅子改成红色')
   })
   it('任务保存不可变快照；完成任务不回写媒体或污染新草稿', () => {
     gs().patch('target', { prompt: '把椅子改成红色', scope: 'segment', range: { start: 3, end: 7 } })
@@ -91,10 +101,53 @@ describe('初次连接与参数兼容', () => {
   it('参数落在集合外时收敛到最近的合法值，而不是置灰', () => {
     gs().setMode('target', 'ref', get)
     gs().patch('target', { params: { duration: 30, resolution: '1080p', ratio: '9:16', sound: false } })
-    gs().setModel('target', '2.0', get)
+    gs().setModel('target', 'sd2.0', get)
     // 2.0 保留 1080p 与 9:16，只把 30s 收敛到上限 15s
     expect(state().params).toEqual({ duration: 15, resolution: '1080p', ratio: '9:16', sound: false })
-    gs().setModel('target', '2.0-mini', get)
+    gs().setModel('target', 'sd2.0-mini', get)
     expect(state().params.resolution).toBe('480p')
+  })
+})
+
+/** 连续操作：单步都对，连起来才暴露的状态问题。 */
+describe('连续操作', () => {
+  it('断开源视频再接新视频，编辑草稿的文字与局部意图都还在', () => {
+    gs().syncConn('flow', ['v', 'a'], get)
+    gs().setMode('flow', 'edit', get)
+    gs().patch('flow', { prompt: '仅把衣服改成蓝色', scope: 'segment', range: { start: 3, end: 7 } })
+    // 断开视频只留图片：编辑进不去，被动切到参考素材
+    gs().syncConn('flow', ['a'], get)
+    expect(gs().get1('flow').mode).toBe('ref')
+    // 接上另一段视频后回到编辑：文字与「改这一段」都在，选区因为换源而清空
+    gs().syncConn('flow', ['a', 'w'], get)
+    gs().setMode('flow', 'edit', get)
+    expect(gs().get1('flow')).toMatchObject({ prompt: '仅把衣服改成蓝色', scope: 'segment', range: null, slotEdit: 'w' })
+  })
+  it('切到可灵再切回 2.5，恢复出来的编辑草稿不会带着不支持编辑的模型', () => {
+    gs().patch('target', { prompt: '把椅子改成红色' })
+    gs().setModel('target', 'kling-video-o1', get)
+    expect(state()).toMatchObject({ mode: 'ref', model: 'kling-video-o1' })
+    gs().setModel('target', 'sd2.5', get)
+    gs().setMode('target', 'edit', get)
+    expect(state()).toMatchObject({ mode: 'edit', model: 'sd2.5', prompt: '把椅子改成红色' })
+    expect(taskError(state(), get)).toBeNull()
+  })
+  it('换源后范围待重选，仍然算「改这一段」，不被模型切换悄悄放大成整条', () => {
+    gs().patch('target', { prompt: '把椅子改成红色', scope: 'segment', range: { start: 3, end: 7 } })
+    gs().applyDrop('target', 'w', 'edit', null, get)
+    expect(state()).toMatchObject({ scope: 'segment', range: null })
+    // 不响应秒数的模型在选择列表里仍然是灰的
+    expect(modelBlockedReason(state(), 'sd2.0')).not.toBe('')
+    gs().setModel('target', 'sd2.0', get)
+    expect(state().scope).toBe('segment')
+  })
+  it('五个模式全部置灰时也提交不了：模式入口与生成校验共用一条素材规则', () => {
+    gs().setMode('target', 'ref', get)
+    gs().setModel('target', 'wan2.2-ti2v-5b', get)
+    gs().patch('target', { prompt: '海边日落' })
+    const g = state()
+    expect(tabStates(g.conn, get, g.model).some((t) => t.enabled)).toBe(false)
+    expect(taskError(g, get)).toBeTruthy()
+    expect(() => gs().submit('target', get)).toThrow()
   })
 })

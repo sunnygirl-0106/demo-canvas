@@ -10,7 +10,7 @@ interface Draft extends Slots {
 export interface TaskRecord { id: string; status: 'running' | 'complete'; createdAt: number; payload: TaskPayload }
 /** pinned：用户手动选过 Tab。选过之后系统不再自动切走，除非当前 Tab 失效。 */
 export interface GenState extends Draft { mode: Mode; conn: string[]; pinned: boolean; drafts: Partial<Record<Mode, Draft>>; tasks: TaskRecord[] }
-const freshDraft = (): Draft => ({ ...emptySlots(), model: '2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, scope: 'whole', range: null, direction: null, sourceSrc: null, sourceId: null, references: {}, notice: '' })
+const freshDraft = (): Draft => ({ ...emptySlots(), model: 'sd2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, scope: 'whole', range: null, direction: 'after', sourceSrc: null, sourceId: null, references: {}, notice: '' })
 export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], pinned: false, drafts: {}, tasks: [] })
 function draftOf(g: GenState): Draft {
   const { mode: _mode, conn: _conn, pinned: _pinned, drafts: _drafts, tasks: _tasks, ...draft } = g
@@ -22,8 +22,34 @@ function sourceSync(d: Draft, get: MatGet): Draft {
   if (src !== d.sourceSrc || d.slotEdit !== d.sourceId) return { ...d, sourceSrc: src, sourceId: d.slotEdit, range: null,
     notice: d.sourceSrc ? '源视频已更换，已清除时间范围，请重新检查作用范围。' : d.notice }
   // 用最宽松的区间判断，避免把仍然合法的选区误清掉
-  if (d.range && (sourceError(mat?.dur, mat?.ready, 'extend') || d.range.end > Math.floor(mat?.dur ?? 0))) return { ...d, range: null }
+  if (d.range && (sourceError(mat?.dur, mat?.ready, 'extend', d.model) || d.range.end > Math.floor(mat?.dur ?? 0))) return { ...d, range: null }
   return d
+}
+/** 参数落在模型集合外时静默收敛到最近的合法值，而不是置灰。 */
+function fitParams(model: Model, params: Params): Params {
+  const cap = MODEL_CAPABILITIES[model]
+  const near = (list: number[], v: number) => list.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a, list[0])
+  return { ...params,
+    duration: cap.durations.includes(params.duration) ? params.duration : near(cap.durations, params.duration),
+    resolution: cap.resolutions.includes(params.resolution) ? params.resolution : cap.resolutions[0],
+    ratio: cap.ratios.includes(params.ratio) ? params.ratio : cap.ratios[0] }
+}
+/**
+ * 草稿里的模型可能已经支持不了这个 Tab（之前被别的模型挤走过），
+ * 直接恢复会把用户送进一个「Tab 亮着、生成按钮报不支持」的死角，所以用当前模型接住。
+ */
+function fitModel(d: Draft, mode: Mode, model: Model): Draft {
+  if (MODEL_CAPABILITIES[d.model].genModes.includes(mode)) return d
+  if (!MODEL_CAPABILITIES[model].genModes.includes(mode)) return d
+  return { ...d, model, params: fitParams(model, d.params) }
+}
+/** 换模式：存好当前草稿，取回目标模式的草稿（没有就按连接新分配一份）。 */
+function switchMode(g: GenState, mode: Mode, get: MatGet, pinned: boolean): GenState {
+  if (mode === g.mode) return g
+  const saved = g.drafts[mode]
+  const next = saved ? fitModel(saved, mode, g.model)
+    : { ...freshDraft(), model: g.model, params: g.params, ...allocate(emptySlots(), g.conn, mode, get) }
+  return { ...g, ...sourceSync(next, get), mode, pinned, drafts: { ...g.drafts, [g.mode]: draftOf(g) } }
 }
 interface GenStore {
   map: Record<string, GenState>; get1: (id: string) => GenState
@@ -55,18 +81,28 @@ export const useGenerator = create<GenStore>((set, get) => {
        * 3. 用户手动选过且仍有效 → 不动它
        */
       let mode = g.mode; const notice = g.notice; let pinned = g.pinned
-      if (!modeAvailable(mode, conn, matGet)) {
-        mode = fallbackMode(conn, matGet); pinned = false
+      if (!modeAvailable(mode, conn, matGet, g.model)) {
+        mode = fallbackMode(conn, matGet, g.model); pinned = false
       } else if (!pinned && mode === 'text' && conn.length) mode = 'ref'
       if (!conn.length) pinned = false
       const jumped = mode !== g.mode
       const added = conn.filter((mid) => !g.conn.includes(mid))
-      const current = sourceSync({ ...draftOf(g), ...allocate(g, conn, mode, matGet, first || jumped, added) }, matGet)
+      const sync = (d: Draft, key: Mode, fresh = false) =>
+        sourceSync({ ...d, ...allocate(d, conn, key, matGet, fresh, added) }, matGet)
       const drafts = { ...g.drafts }
-      for (const key of Object.keys(drafts) as Mode[]) {
-        const d = drafts[key]!
-        drafts[key] = sourceSync({ ...d, ...allocate(d, conn, key, matGet, false, added) }, matGet)
-      }
+      for (const key of Object.keys(drafts) as Mode[]) drafts[key] = sync(drafts[key]!, key)
+      /**
+       * 被动切走时（素材没了、Tab 失效），当前草稿要存回它自己的 Tab，而不是跟着带进新 Tab：
+       * 否则「断开视频 → 接上新视频 → 回到编辑」会拿到一份空草稿，用户写的修改要求凭空消失。
+       * 存回去的草稿只清选区（源变了），文字、作用范围、参数都留着。
+       */
+      let current: Draft
+      if (jumped && !first) {
+        drafts[g.mode] = sync(draftOf(g), g.mode)
+        const saved = drafts[mode]
+        current = saved ? fitModel(saved, mode, g.model)
+          : sync({ ...freshDraft(), model: g.model, params: g.params }, mode, true)
+      } else current = sync(draftOf(g), mode, first || jumped)
       return { ...g, ...current, notice, mode, pinned, conn, drafts }
     }),
     syncSources: (id, matGet) => edit(id, (g) => {
@@ -77,20 +113,23 @@ export const useGenerator = create<GenStore>((set, get) => {
       }
       return changed ? { ...g, ...current, drafts } : g
     }),
-    setMode: (id, mode, matGet) => edit(id, (g) => {
-      if (mode === g.mode) return g
-      const saved = g.drafts[mode]
-      const next = saved ?? { ...freshDraft(), model: g.model, ...allocate(emptySlots(), g.conn, mode, matGet) }
-      return { ...g, ...sourceSync(next, matGet), mode, pinned: true, drafts: { ...g.drafts, [g.mode]: draftOf(g) } }
-    }),
-    /** 模型只决定参数取值域。切换永远允许，落在集合外的旧值静默收敛到最近的合法值。 */
-    setModel: (id, model) => edit(id, (g) => {
+    setMode: (id, mode, matGet) => edit(id, (g) => switchMode(g, mode, matGet, true)),
+    /**
+     * 模型决定参数取值域与支不支持当前模式。切换永远允许：
+     * 落在集合外的参数静默收敛到最近的合法值，新模型没有的模式落回可用的 Tab。
+     */
+    setModel: (id, model, matGet) => edit(id, (g) => {
       const cap = MODEL_CAPABILITIES[model]
-      const near = (list: number[], v: number) => list.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a, list[0])
-      return { ...g, model, params: { ...g.params,
-        duration: cap.durations.includes(g.params.duration) ? g.params.duration : near(cap.durations, g.params.duration),
-        resolution: cap.resolutions.includes(g.params.resolution) ? g.params.resolution : cap.resolutions[0],
-        ratio: cap.ratios.includes(g.params.ratio) ? g.params.ratio : cap.ratios[0] } }
+      // 「改这一段 / 从这一段接」是用户的意图，不因为新模型不认秒数就悄悄扩大成整条：
+      // 不响应秒数的模型在模型列表里本来就是灰的（modelBlockedReason），
+      // 真要放大范围有「改为整条，解除模型限制」这个明确的出口。
+      const next: GenState = { ...g, model, params: fitParams(model, g.params) }
+      if (cap.genModes.includes(g.mode)) return next
+      // 停在一个灰掉的 Tab 上会让生成按钮报一个用户改不动的错，所以这里直接换走。
+      // 注意用 g 而不是 next 去切：被挤走的那个 Tab 的草稿要按「原来的模型」存回去，
+      // 否则切回 2.5 再点编辑，恢复出来的还是那个不支持编辑的模型。
+      const moved = switchMode(g, fallbackMode(g.conn, matGet, model), matGet, false)
+      return { ...moved, model, params: fitParams(model, moved.params) }
     }),
     applyDrop: (id, matId, zone, _idx, matGet) => edit(id, (g) => {
       if (!g.conn.includes(matId)) return g

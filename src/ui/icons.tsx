@@ -61,6 +61,13 @@ export const IcCredit = ({ size = 14, color = 'currentColor' }: P) => (
 export const IcSend = (p: P) => <Svg {...p}><path d="M4.5 12.5l15.5-7-7 15.5-1.8-6.3z" /><path d="M11.2 14.7l3.6-3.9" /></Svg>
 /** 延长方向：向后为默认朝向，向前翻转 */
 export const IcArrowR = (p: P) => <Svg {...p}><path d="M4 12h14" /><path d="M13 6l6 6-6 6" /></Svg>
+/** 退出编辑 / 延长操作 */
+export const IcClose = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6L6 18" /></Svg>
 export const IcPlay = ({ size = 28 }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M8 5l11 7-11 7z" /></svg>
 )
+
+/** 模型 icon */
+export const IcSeedance = (p: P) => <Svg {...p}><rect x="5" y="10" width="2.5" height="8" rx="1" /><rect x="10.25" y="6" width="2.5" height="12" rx="1" /><rect x="15.5" y="8" width="2.5" height="10" rx="1" /></Svg>
+export const IcWan = (p: P) => <Svg {...p}><path d="M4 12c2-4 4-6 8-6s6 2 8 6-2 6-8 6-6-2-8-6z" /></Svg>
+export const IcKling = (p: P) => <Svg {...p}><circle cx="6" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="18" cy="12" r="2" /><path d="M3 12h4M8 12h4M14 12h4" /></Svg>

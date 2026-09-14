@@ -1,6 +1,7 @@
 /** 当前任务的素材角色。隐藏资产仅保留连接，不进入有效输入。 */
 export type Mode = 'text' | 'frames' | 'ref' | 'edit' | 'extend'
-export type Model = '2.5' | '2.0' | '2.0-fast' | '2.0-mini'
+export type Model = 'sd2.5' | 'sd2.0' | 'sd2.0-1080p' | 'sd2.0-4k' | 'sd2.0-fast' | 'sd2.0-mini'
+  | 'sd1.5' | 'kling-video-o1' | 'wan2.2' | 'wan2.2-ti2v-5b' | 'wan2.2-i2v-a14b'
 export type Zone = 'edit' | 'first' | 'last' | 'tray' | 'unused'
 export interface Mat {
   id: string; name: string; kind: 'image' | 'video'; dur?: number
@@ -14,10 +15,10 @@ export interface Slots {
 export const emptySlots = (): Slots => ({ slotEdit: null, slotFirst: null, slotLast: null, tray: [], unused: [] })
 
 /**
- * 模型能力表。取值依据火山方舟官方文档（Seedance 2.5 教程 / 2.5 提示词指南 / 2.0 系列教程，2026-09-11）。
+ * 模型能力表。取值来自平台的模型清单（`models.json`），型号 ID 与展示名与平台一致。
  *
- * 关键：四个模型都支持全部 5 种任务类型，模型不决定「哪个 Tab 能进」。
- * 模型决定的是参数取值域、素材配额，以及下面三个能力开关。
+ * 模型决定三层里的两层：第一层（模式）是「素材够不够 ∧ 模型有没有这个能力」，
+ * 第二层参数取值域由模型单向决定、静默收敛，第三层素材配额是模型 × 模式二维。
  */
 export interface ModelCap {
   label: string
@@ -25,72 +26,83 @@ export interface ModelCap {
   resolutions: string[]; durations: number[]; ratios: string[]; formats: string[]
   durationRange: [number, number]
   quota: { image: number; video: number; audio: number; mediaSeconds: number }
-  /** 是否响应整数秒时间戳。2.0 系列只响应「镜头 N」序号，拖出来的秒数会被忽略。 */
+  /** 是否响应整数秒时间戳。除 2.5 外的型号只响应「镜头 N」序号，拖出来的秒数会被忽略。 */
   timestamp: boolean
   /** 是否支持纯音频参考（不搭配图片或视频）。 */
   audioAlone: boolean
-  /** 是否有 adaptive 锁定机制（编辑 / 延长 / 首尾帧强制随原素材）。2.0 系列没有。 */
+  /** 是否有 adaptive 锁定机制（编辑 / 延长 / 首尾帧强制随原素材）。只有 2.5 有。 */
   locking: boolean
+  /** 编辑任务对待编辑视频的最短时长。Seedance 2.5 文档要求 4 秒，其余型号没有这条专属下限。 */
+  editSourceMin: number
+  /** 这个型号支持哪几种模式。编辑和延长是 Seedance 2.0 起才有的能力，别家模型没有。 */
+  genModes: Mode[]
+  /** 有没有配音开关。可灵与 Wan 的参数里没有这一项。 */
+  hasAudioToggle: boolean
 }
+const ALL_MODES: Mode[] = ['text', 'frames', 'ref', 'edit', 'extend']
+/** 编辑与延长走 omni_reference_task_type，是 Seedance 2.0 才有的能力，其余型号只能生成。 */
+const GEN_MODES: Mode[] = ['text', 'frames', 'ref']
+const RATIOS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
+/** 2.0 系列共用一套取值域：4–15 秒、9 图 / 3 视频 / 3 音频、不锁定、不响应秒数。 */
+const sd20 = (label: string, resolutions: string[]): ModelCap => ({
+  label, resolutions, durations: [4, 5, 6, 8, 10, 15], ratios: RATIOS, formats: ['mp4'],
+  durationRange: [4, 15], quota: { image: 9, video: 3, audio: 3, mediaSeconds: 15 },
+  timestamp: false, audioAlone: false, locking: false, editSourceMin: 2,
+  genModes: ALL_MODES, hasAudioToggle: true,
+})
+/**
+ * Wan 的两个单模式变体：各自只做一件事。上游用一个 `size` 像素串（1280*704 / 704*1280）
+ * 同时表达分辨率和画幅，这里拆成 720p + 两档比例呈现。
+ */
+const wanVariant = (label: string, genModes: Mode[], quota: ModelCap['quota']): ModelCap => ({
+  ...sd20(label, ['720p']),
+  durations: [5], durationRange: [5, 5], ratios: ['16:9', '9:16'],
+  quota, genModes, hasAudioToggle: false,
+})
 export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
-  '2.5': {
+  'sd2.5': {
     label: 'Seedance 2.5',
-    resolutions: ['480p', '720p', '1080p'], durations: [4, 5, 8, 10, 15, 20, 30],
-    ratios: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'], formats: ['mp4', 'mov'],
+    resolutions: ['480p', '720p', '1080p'], durations: [4, 5, 6, 8, 10, 15, 20, 30],
+    ratios: RATIOS, formats: ['mp4', 'mov'],
     durationRange: [4, 30], quota: { image: 30, video: 10, audio: 10, mediaSeconds: 30 },
-    timestamp: true, audioAlone: true, locking: true,
+    timestamp: true, audioAlone: true, locking: true, editSourceMin: 4,
+    genModes: ALL_MODES, hasAudioToggle: true,
   },
-  '2.0': {
-    label: 'Seedance 2.0',
-    resolutions: ['480p', '720p', '1080p', '4K'], durations: [4, 5, 8, 10, 15],
-    ratios: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'], formats: ['mp4'],
-    durationRange: [4, 15], quota: { image: 9, video: 3, audio: 3, mediaSeconds: 15 },
-    timestamp: false, audioAlone: false, locking: false,
+  'sd2.0': sd20('Seedance 2.0', ['480p', '720p', '1080p', '4K']),
+  /** 平台把高价档位拆成独立模型条目承载定价，所以分辨率只有一档。 */
+  'sd2.0-1080p': sd20('SD 2.0 1080p', ['1080p']),
+  'sd2.0-4k': sd20('SD 2.0 4K', ['4K']),
+  'sd2.0-fast': sd20('Seedance 2.0 Fast', ['480p', '720p']),
+  'sd2.0-mini': sd20('Seedance 2.0 Mini', ['480p', '720p']),
+  'sd1.5': { ...sd20('Seedance 1.5', ['480p', '720p', '1080p']), genModes: GEN_MODES },
+  'kling-video-o1': {
+    ...sd20('可灵 O1', ['720p', '1080p']),
+    durations: [5, 10], durationRange: [5, 10], ratios: ['16:9', '1:1', '9:16'],
+    genModes: GEN_MODES, hasAudioToggle: false,
   },
-  '2.0-fast': {
-    label: 'Seedance 2.0 Fast',
-    resolutions: ['480p', '720p'], durations: [4, 5, 8, 10, 15],
-    ratios: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'], formats: ['mp4'],
-    durationRange: [4, 15], quota: { image: 9, video: 3, audio: 3, mediaSeconds: 15 },
-    timestamp: false, audioAlone: false, locking: false,
-  },
-  '2.0-mini': {
-    label: 'Seedance 2.0 Mini',
-    resolutions: ['480p', '720p'], durations: [4, 5, 8, 10, 15],
-    ratios: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'], formats: ['mp4'],
-    durationRange: [4, 15], quota: { image: 9, video: 3, audio: 3, mediaSeconds: 15 },
-    timestamp: false, audioAlone: false, locking: false,
-  },
+  'wan2.2': { ...sd20('Wan 2.2', ['480p', '720p', '1080p']), genModes: GEN_MODES, hasAudioToggle: false },
+  'wan2.2-ti2v-5b': wanVariant('Wan 2.2 文生视频', ['text'], { image: 0, video: 0, audio: 0, mediaSeconds: 0 }),
+  'wan2.2-i2v-a14b': wanVariant('Wan 2.2 图生视频', ['ref'], { image: 1, video: 0, audio: 0, mediaSeconds: 0 }),
 }
 export const MODELS = Object.keys(MODEL_CAPABILITIES) as Model[]
 
-/** 模式规则：锁定项、源视频时长区间、提示词必须出现的关键词。 */
+/** 模式规则：锁定项。任务类型由当前 Tab 决定，不再靠提示词里的触发词推断。 */
 export interface ModeRule {
   /** 仅当模型 locking 为真时生效 */
   locks: { ratio?: 'adaptive'; duration?: 'source' }
-  /** 源视频时长区间。编辑比其他任务严：[4,30]；延长等非编辑任务 [2,30] */
-  sourceDuration?: [number, number]
-  /** 少了它模型会把任务判成别的类型（InvalidParameter.TaskTypeMismatch） */
-  keywords?: string[]
 }
 export const MODE_RULES: Record<Mode, ModeRule> = {
   text: { locks: {} },
   frames: { locks: { ratio: 'adaptive' } },
   ref: { locks: {} },
-  edit: {
-    locks: { ratio: 'adaptive', duration: 'source' }, sourceDuration: [4, 30],
-    keywords: ['编辑视频', '增加', '加上', '删除', '去掉', '修改', '替换', '改成'],
-  },
-  extend: {
-    locks: { ratio: 'adaptive' }, sourceDuration: [2, 30],
-    keywords: ['向前延长', '向后延长', '延长', '延续', '续写'],
-  },
+  edit: { locks: { ratio: 'adaptive', duration: 'source' } },
+  extend: { locks: { ratio: 'adaptive' } },
 }
 export const locksRatio = (mode: Mode, model: Model) =>
   MODEL_CAPABILITIES[model].locking && MODE_RULES[mode].locks.ratio === 'adaptive'
-export const locksDuration = (mode: Mode, model: Model) =>
-  MODEL_CAPABILITIES[model].locking && MODE_RULES[mode].locks.duration === 'source'
-/** 只有 2.5 能把「改这一段 / 从这一段接」表达出去；2.0 系列拖了也会被忽略。 */
+/** 编辑任务整条进、整条出，与模型无关，所以锁定不看 locking 开关。 */
+export const locksDuration = (mode: Mode) => MODE_RULES[mode].locks.duration === 'source'
+/** 只有 Seedance 2.5 能把「改这一段 / 从这一段接」表达出去；其余型号拖了也会被忽略。 */
 export const supportsRange = (model: Model) => MODEL_CAPABILITIES[model].timestamp
 export const rangeBlockedReason = (model: Model) =>
   supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不响应秒数，时间范围会被忽略`
@@ -107,22 +119,34 @@ export function countConn(conn: string[], get: MatGet): Counts {
   for (const id of conn) { const m = get(id); if (m?.kind === 'image') image++; else if (m?.kind === 'video') video++ }
   return { image, video, total: image + video }
 }
-/** Tab 能不能进，只由画布上连了什么决定。模型不参与这一层。 */
+/** 素材这一半：画布上连了什么决定 Tab 能不能进。模型那一半见 tabStates。 */
 export const TAB_REQUIREMENT: Record<Mode, (c: Counts) => string> = {
   text: (c) => c.total ? '画布上已连接素材。文生视频只接受文本，断开连接后可用' : '',
-  frames: (c) => c.image ? '' : '需要至少 1 张图片作首帧',
+  frames: (c) => !c.image ? '需要至少 1 张图片作首帧'
+    : c.image > 2 ? `已连接 ${c.image} 张图片，首尾帧最多使用 2 张` : '',
   ref: (c) => c.total ? '' : '需要至少 1 个素材',
   edit: (c) => c.video ? '' : '需要 1 段视频作为源',
   extend: (c) => c.video ? '' : '需要 1 段视频作为源',
 }
 export interface TabState { k: Mode; label: string; enabled: boolean; reason: string }
-export function tabStates(conn: string[], get: MatGet): TabState[] {
+/** Tab 能不能进 = 素材够不够 ∧ 模型有没有这个能力。模型这一半先判，理由更具体。 */
+export function tabStates(conn: string[], get: MatGet, model: Model): TabState[] {
   const c = countConn(conn, get)
-  return TABS.map((t) => { const reason = TAB_REQUIREMENT[t.k](c); return { ...t, enabled: !reason, reason } })
+  const cap = MODEL_CAPABILITIES[model]
+  return TABS.map((t) => {
+    const reason = !cap.genModes.includes(t.k)
+      ? `${cap.label} 不支持${t.label}`
+      : TAB_REQUIREMENT[t.k](c)
+    return { ...t, enabled: !reason, reason }
+  })
 }
-export const modeAvailable = (mode: Mode, conn: string[], get: MatGet) => !TAB_REQUIREMENT[mode](countConn(conn, get))
-/** 当前 Tab 失效时落到哪里：还有素材就去参考素材，空画布回文生视频。 */
-export const fallbackMode = (conn: string[], get: MatGet): Mode => countConn(conn, get).total ? 'ref' : 'text'
+export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Model) =>
+  MODEL_CAPABILITIES[model].genModes.includes(mode) && !TAB_REQUIREMENT[mode](countConn(conn, get))
+/** 当前 Tab 失效时落到哪里：还有素材就去参考素材，空画布回文生视频；模型也不支持时继续往下找。 */
+export const fallbackMode = (conn: string[], get: MatGet, model: Model): Mode => {
+  const order: Mode[] = countConn(conn, get).total ? ['ref', 'text'] : ['text', 'ref']
+  return order.find((m) => modeAvailable(m, conn, get, model)) ?? 'text'
+}
 
 export function activeIds(s: Slots, mode: Mode): string[] {
   if (mode === 'text') return []
@@ -146,26 +170,42 @@ export function partition(s: Slots, mode: Mode, model: Model, get: MatGet): { ac
   }
   for (const id of s.unused) {
     const m = get(id); if (!m || skipped.some((x) => x.id === id)) continue
-    skipped.push({ id, reason: unusedReason(mode, m) })
+    skipped.push({ id, reason: unusedReason(mode) })
   }
   return { active, skipped }
 }
-function unusedReason(mode: Mode, m: Mat): string {
+function unusedReason(mode: Mode): string {
   if (mode === 'text') return '文生视频只接受文本，已连接的素材本次不参与'
-  if (mode === 'frames') return m.kind === 'image'
-    ? '首尾帧最多使用 2 张图片（首帧 + 尾帧），其余本次不参与'
-    : '首尾帧只使用图片，已连接的视频本次不参与'
+  if (mode === 'frames') return '首尾帧只使用图片，已连接的视频本次不参与'
   return '已从本次输入中移除，连接仍然保留'
 }
+/**
+ * 「本次有效输入」的完整描述：素材槽位 + 模式 + 模型 + 作用范围。
+ * 素材展示、配额校验、时长合计都读这一份，不再各算各的。
+ */
+export interface InputSpec extends Slots {
+  mode: Mode; model: Model; scope?: 'whole' | 'segment'; range?: { start: number; end: number } | null
+}
+/**
+ * 单个素材本次真正送进模型的秒数。
+ * 延长选了「从这一段接」时，主视频只有选中的那一段是输入，其余部分不进模型，
+ * 所以按整段原片计会把用户挡在一个并不存在的超限上。编辑是整条进整条出，照原片计。
+ */
+export function inputSecondsOf(g: InputSpec, id: string, get: MatGet): number {
+  const m = get(id)
+  if (m?.kind !== 'video') return 0
+  const ranged = g.mode === 'extend' && g.scope === 'segment' && g.range
+  return id === g.slotEdit && ranged ? g.range!.end - g.range!.start : m.dur ?? 0
+}
+/** 本次有效输入的视频秒数合计。 */
+export const inputSeconds = (g: InputSpec, get: MatGet): number =>
+  partition(g, g.mode, g.model, get).active.reduce((sum, id) => sum + inputSecondsOf(g, id, get), 0)
 /** 视频总时长超限时指不到具体是哪一段，只报警不置灰，让用户自己决定删哪个。 */
-export function mediaSecondsWarning(s: Slots, mode: Mode, model: Model, get: MatGet): string {
-  const cap = MODEL_CAPABILITIES[model]
-  let total = 0
-  for (const id of partition(s, mode, model, get).active) {
-    const m = get(id); if (m?.kind === 'video') total += m.dur ?? 0
-  }
+export function mediaSecondsWarning(g: InputSpec, get: MatGet): string {
+  const cap = MODEL_CAPABILITIES[g.model]
+  const total = inputSeconds(g, get)
   return total > cap.quota.mediaSeconds
-    ? `参考视频总时长 ${fmt(total)}，超出 ${cap.label} 的 ${cap.quota.mediaSeconds} 秒上限，请移除其中一段`
+    ? `本次输入视频合计 ${fmt(total)}，超出 ${cap.label} 的 ${cap.quota.mediaSeconds} 秒上限，请移除其中一段`
     : ''
 }
 

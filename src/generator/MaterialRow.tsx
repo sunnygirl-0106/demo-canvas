@@ -22,8 +22,8 @@ function MaterialTile({ mat, role, size, mark }: { mat: Mat; role: string; size:
   return <div className={`material-wrap ${size}`} onMouseEnter={enter} onMouseLeave={leave} onFocus={enter} onBlur={leave}>
     <button ref={ref} className={`material-tile${lit ? ' lit' : ''}`} aria-label={info} onClick={showPreview}>
       {mat.thumb && <img src={mat.thumb} alt="" />}
-      {/* 缩略图只留一个标记：视频一个播放小方框，首尾帧一个角标。其余信息都交给悬浮卡 */}
-      {mat.kind === 'video' && <span className="material-play">▶</span>}
+      {/* 缩略图只留一个标记：视频一个居中的播放三角，首尾帧一个角标。其余信息都交给悬浮卡 */}
+      {mat.kind === 'video' && <span className="material-play" aria-hidden><IcPlay size={13} /></span>}
       {mark && <span className="material-mark">{mark}</span>}
     </button>
     {hover && !preview && <Overlay passive tail label={info} anchor={ref} className="material-card" onClose={() => setHover(false)} onMouseEnter={() => { clearTimeout(closeTimer.current); useCanvas.getState().setHoverMat(mat.id) }} onMouseLeave={leave}>
@@ -32,7 +32,7 @@ function MaterialTile({ mat, role, size, mark }: { mat: Mat; role: string; size:
         <span className="material-card-veil" />
         <span className="material-card-cue">{mat.kind === 'video' ? <IcPlay size={16} /> : <IcExpand size={15} sw={2} />}</span>
       </button>
-      <div className="material-card-meta"><strong>{mat.name}</strong></div>
+      <div className="material-card-meta"><strong>{mat.name}</strong><span>{role}</span></div>
     </Overlay>}
     {preview && <MediaPreview mat={mat} onClose={() => setPreview(false)} />}
   </div>
@@ -78,9 +78,8 @@ export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen:
       </div>
     </div> : <>
       {(gen.mode === 'edit' || gen.mode === 'extend') && <div className="source-material">
-        {gen.slotEdit ? tile(gen.slotEdit, gen.mode === 'edit' ? '待编辑视频' : '待延长视频', 'source')
+        {gen.slotEdit ? tile(gen.slotEdit, gen.mode === 'edit' ? '这个视频用来编辑' : '这个视频用来延长', 'source')
           : <EmptySlot role="源视频" size="source" kind="视频" required />}
-        <span>源视频</span>
       </div>}
       <div className="reference-materials">
         {gen.tray.map((id) => tile(id, '参考素材', 'reference'))}

@@ -188,11 +188,9 @@ button:disabled{opacity:.4;cursor:not-allowed}
   animation:gp-travel 2.6s ease-in-out infinite}
 
 /* ── 操作标题 ── */
-.task-heading{display:flex;align-items:center;justify-content:space-between;margin-top:14px;font-size:12.5px}
-.task-heading strong{font-weight:600;color:var(--ink-1)}
-.task-heading span{color:var(--ink-2);font-weight:400}
-.task-heading button{font-size:12px;color:var(--ink-2);padding:4px 0;transition:color .2s}
-.task-heading button:hover{color:var(--teal-on)}
+.task-exit{flex:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px;
+  margin-bottom:10px;border-radius:7px;color:var(--ink-3);transition:color .2s,background .2s}
+.task-exit:hover{color:var(--ink-0);background:var(--fill-2)}
 
 /* ── 素材位 ── */
 .material-row{display:flex;align-items:center;gap:14px;min-height:72px;margin-top:15px}
@@ -212,9 +210,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .material-empty.required{border-color:var(--teal-dash);background:var(--teal-wash);color:var(--chip-ink)}
 .material-mark{position:absolute;left:6px;bottom:6px;font-size:11px;font-weight:600;color:var(--ink);
   background:rgba(0,0,0,.55);padding:4px 6px;border-radius:6px;line-height:1}
-/* 视频的唯一标记：左上角一个播放小方框 */
-.material-play{position:absolute;left:5px;top:5px;font-size:9px;line-height:1;color:#fff;
-  background:rgba(0,0,0,.6);border-radius:5px;padding:3px 5px}
+/* 视频的唯一标记：正中一个播放三角 */
+.material-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  display:flex;align-items:center;justify-content:center;width:24px;height:24px;
+  color:#fff;background:rgba(0,0,0,.5);border-radius:50%;transition:background .2s}
+.material-wrap:hover .material-play,.material-wrap:focus-within .material-play{background:rgba(0,0,0,.72)}
 
 /* 首尾帧：同一条轨道上平移交换 */
 .frame-lane{position:relative;height:72px;flex:none}
@@ -267,6 +267,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   transition:transform .25s var(--ease-soft),background .25s}
 .material-card-shot:hover .material-card-cue{transform:scale(1.12);background:rgba(0,0,0,.85)}
 .material-card-meta{padding:10px 4px 2px}
+.material-card-meta span{display:block;margin-top:3px;font-size:11.5px;color:var(--ink-3)}
 .material-card-meta strong{display:block;font-size:13.5px;font-weight:600;color:var(--ink);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1100;display:grid;place-items:center;
@@ -349,16 +350,18 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .stepper span{min-width:52px;text-align:center;font:600 13px/1 var(--mono);color:var(--ink-1)}
 
 /* ── 提示词（无边框） ── */
-.prompt-editor{margin-top:15px}
-.prompt-hints{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px}
-.hint-chip{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);color:var(--ink-2);
-  font-size:13px;padding:7px 13px;border-radius:var(--r-pill);transition:all .22s}
-.hint-chip:hover{border-color:var(--teal-soft);color:#b9f4e8;background:var(--teal-bg);transform:translateY(-1px)}
-.prompt-editor textarea{display:block;width:100%;height:58px;min-height:52px;resize:vertical;max-height:180px;
-  background:transparent;border:0;font-size:17px;line-height:1.5;padding:0;color:var(--ink);
-  caret-color:var(--teal)}
+.prompt-editor{margin-top:15px;--pline:28px}
+/* 前缀和正文是同一句话：前缀铺在首行，正文用首行缩进接着它写下去 */
+.prompt-field{position:relative}
+.prompt-editor textarea{display:block;width:100%;min-height:calc(var(--pline)*2);max-height:200px;resize:none;
+  overflow-y:auto;background:transparent;border:0;outline:none;font-size:17px;line-height:var(--pline);padding:0;
+  color:var(--ink);caret-color:var(--teal)}
 .prompt-editor textarea::placeholder{color:var(--ink-3)}
-.prompt-context{display:flex;align-items:center;flex-wrap:wrap;gap:9px;font-size:17px;color:var(--ink-3);margin:0 0 8px}
+.prompt-context{position:absolute;top:0;left:0;right:0;font-size:17px;line-height:var(--pline);
+  color:var(--ink-3);pointer-events:none}
+.prompt-context button,.prompt-context .reference-chip{pointer-events:auto}
+.prompt-context .reference-chip{display:inline-block;height:24px;line-height:22px;padding:0 9px;
+  font-size:14px;vertical-align:-6px}
 .reference-chip{border-radius:8px;color:var(--chip-ink);background:var(--chip-bg);border:1px solid var(--chip-line);
   padding:5px 9px;font-size:13.5px;font-weight:600;transition:background .22s,color .22s}
 .reference-chip:hover{background:rgba(46,211,183,.18)}
@@ -369,6 +372,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* ── 提示与提交 ── */
 .submission-note{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
 .helper{font-size:12.5px;color:var(--ink-3);line-height:1.6}
+/* 产出形态常驻在提示词上方：写要求之前就知道会拿到什么 */
 .validation{color:var(--warn);font-size:12.5px;line-height:1.6}
 .source-notice{display:flex;gap:12px;justify-content:space-between;margin-top:12px;padding:10px 13px;
   border-radius:var(--r-ctl);background:rgba(230,192,138,.1);border:1px solid rgba(230,192,138,.2);
@@ -405,8 +409,17 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
 /* ── 模型与参数浮层 ── */
 .model-popover{width:290px;padding:8px}
-.model-option{display:block;width:100%;text-align:left;padding:12px 10px;border-radius:11px;transition:background .2s}
-.model-option small{display:block;line-height:1.5;font-size:11px;color:var(--ink-3);margin-top:6px}
+/* 行高固定：说明文字常驻占位（绝对定位不撑高），悬浮时模型名上移、说明淡入 */
+.model-option{position:relative;display:flex;flex-direction:column;justify-content:center;width:100%;height:58px;
+  text-align:left;padding:0 10px;border-radius:11px;overflow:hidden;transition:background .2s}
+.model-option span{display:flex;align-items:center;gap:8px;transition:transform .24s var(--ease)}
+.model-icon{display:flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;color:var(--ink-2)}
+.model-option:hover .model-icon,.model-option.selected .model-icon{color:var(--ink)}
+.model-option small{position:absolute;left:10px;right:10px;top:27px;display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:15px;max-height:30px;font-size:11px;color:var(--ink-3);
+  opacity:0;transform:translateY(3px);pointer-events:none;transition:opacity .2s,transform .24s var(--ease)}
+.model-option:hover span,.model-option:focus-visible span,.model-option.selected span{transform:translateY(-13px)}
+.model-option:hover small,.model-option:focus-visible small,.model-option.selected small{opacity:1;transform:translateY(0)}
 .model-option:hover{background:var(--fill-2)}
 .model-option.selected{background:var(--teal-bg);color:var(--teal-on);box-shadow:inset 0 0 0 1px var(--teal-ring)}
 .model-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}
@@ -442,6 +455,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .gp-bot{bottom:-14px;gap:8px}.gp-botL{flex:1}.gp-botR{gap:10px}
   .setting-trigger,.gp-model,.gp-chip{padding:9px 12px;font-size:13px}
   .prompt-editor textarea,.prompt-context{font-size:15.5px}
+  .prompt-context .reference-chip{font-size:13px}
   .tb-right{gap:6px}.tb-right .pay,.tb-people,.tb-sync{display:none}
   .timeline-actions{gap:10px}.timeline-actions>span{font-size:10px}.segment-selector>video{height:140px}
 }
@@ -451,10 +465,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .gp-ind i{display:none}
 }
 @media(max-height:800px){
-  .gp{padding:12px 18px}.gp-tab{padding:6px 14px 8px}.task-heading{margin-top:10px}.material-row{margin-top:11px}
+  .gp{padding:12px 18px}.gp-tab{padding:6px 14px 8px}.material-row{margin-top:11px}
   .edit-scope{margin-top:11px}.segment-selector{margin-top:8px}.segment-selector>video{height:100px}
   .timeline-heading{margin:8px 0 6px}.timeline-actions{margin-top:5px}.prompt-editor{margin-top:11px}
-  .prompt-editor textarea{height:48px}.prompt-hints{margin-bottom:9px}.prompt-context{margin-bottom:4px}
+  .prompt-editor{--pline:26px}
+  .prompt-context .reference-chip{height:22px;line-height:20px;vertical-align:-5px}
   .prompt-tools{margin-top:6px}.submission-note{margin-top:6px}
   .gp-bot{margin-top:10px;padding-top:10px;bottom:-12px;min-height:40px}
 }

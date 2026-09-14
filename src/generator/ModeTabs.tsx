@@ -7,9 +7,11 @@ interface Props {
   /** 由画布上连了什么算出来，模型不参与。灰掉的 Tab 仍然占位，悬浮说明为什么。 */
   tabs: TabState[]
   onPick: (m: Mode) => void
+  /** Tab 行右端的插槽，目前放编辑 / 延长的退出键 */
+  right?: React.ReactNode
 }
 
-export default function ModeTabs({ mode, tabs, onPick }: Props) {
+export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
   const wrap = useRef<HTMLDivElement>(null)
   const [ind, setInd] = useState({ x: 0, w: 0 })
   /** 灰掉的原因不弹横幅，鼠标悬浮（或键盘聚焦）到那个 Tab 上才说。 */
@@ -43,6 +45,7 @@ export default function ModeTabs({ mode, tabs, onPick }: Props) {
         ))}
         <span className="gp-ind" aria-hidden style={{ transform: `translateX(${ind.x}px)`, width: ind.w }}><i /></span>
       </div>
+      {right}
       {tip && <Overlay passive tail label={tip.reason} anchor={tipAt} className="tab-tip" onClose={() => setTip(null)}>
         {tip.reason}
       </Overlay>}
