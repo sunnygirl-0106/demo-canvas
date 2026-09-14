@@ -4,7 +4,7 @@ import { useGenerator } from '../store/generator'
 import { matOf } from '../demo/assets'
 import { activeIds, promptHint, tabStates, supportsRange, rangeBlockedReason, MODEL_CAPABILITIES, type MatGet } from './materialLayout'
 import { IcArrowR, IcClose } from '../ui/icons'
-import { isTodoError, taskError, timecode, defaultRange, rangeOnDirection } from './videoTask'
+import { isTodoError, taskError, timecode, defaultRange, rangeOnDirection, modelBlockedReason } from './videoTask'
 import ModeTabs from './ModeTabs'
 import MaterialRow from './MaterialRow'
 import PromptBox from './PromptBox'
@@ -12,6 +12,7 @@ import BottomBar from './BottomBar'
 import MediaPreview from './MediaPreview'
 import SegmentSelector from './SegmentSelector'
 import VideoSettings from './VideoSettings'
+import { useTip } from './useTip'
 /** 文生视频没有素材位，用灵感词填住这块空白，点一下追加到提示词。 */
 export default function VideoPanel({ nodeId }: { nodeId: string }) {
   const nodes = useCanvas((s) => s.nodes)
@@ -20,6 +21,8 @@ export default function VideoPanel({ nodeId }: { nodeId: string }) {
   const [preview, setPreview] = useState(false)
   const anchor = useRef<HTMLDivElement>(null)
   const patch = useGenerator((s) => s.patch)
+  /** 灰掉的控件为什么点不了，悬浮 / 聚焦就说 */
+  const { tip, node: tipNode } = useTip()
   /** 延长方向的滑块跟着选中项移动，和 2A 的分段器一致。 */
   const dirWrap = useRef<HTMLDivElement>(null)
   const [dirInd, setDirInd] = useState({ x: 0, w: 0 })
@@ -52,6 +55,7 @@ export default function VideoPanel({ nodeId }: { nodeId: string }) {
   }
   const latest = gen.tasks[gen.tasks.length - 1]
   return <>
+    {tipNode}
     <ModeTabs mode={gen.mode} tabs={tabs} onPick={(mode) => useGenerator.getState().setMode(nodeId, mode, get)}
       right={taskMode ? <button className="task-exit" title="退出操作" aria-label={`退出${gen.mode === 'edit' ? '编辑' : '延长'}操作`}
         onClick={() => useGenerator.getState().setMode(nodeId, 'ref', get)}><IcClose size={14} /></button> : undefined} />
@@ -72,11 +76,11 @@ export default function VideoPanel({ nodeId }: { nodeId: string }) {
           <button aria-pressed={gen.scope === 'whole'} className={gen.scope === 'whole' ? 'selected' : ''}
                   onClick={() => patch(nodeId, { scope: 'whole' })}>{gen.mode === 'edit' ? '改整条' : '从整条接'}</button>
           <button aria-pressed={gen.scope === 'segment'} className={gen.scope === 'segment' ? 'selected' : ''}
-                  disabled={!rangeOK} title={rangeWhy || undefined}
-                  onClick={() => patch(nodeId, { scope: 'segment', range: gen.range ?? pickRange() })}>{gen.mode === 'edit' ? '改这一段' : '从这一段接'}</button>
+                  aria-disabled={!rangeOK} aria-label={rangeWhy ? `${gen.mode === 'edit' ? '改这一段' : '从这一段接'}：${rangeWhy}` : undefined} {...tip(rangeWhy || undefined)}
+                  onClick={() => rangeOK && patch(nodeId, { scope: 'segment', range: gen.range ?? pickRange() })}>{gen.mode === 'edit' ? '改这一段' : '从这一段接'}</button>
         </div>
-        {!rangeOK && <span>{rangeWhy}</span>}
-        {!rangeOK && <button className="scope-fix" onClick={() => useGenerator.getState().setModel(nodeId, 'sd2.5', get)}>切到 Seedance 2.5 启用</button>}
+        {/* 2.5 自己也接不住这个源时就别给这个出口了，点了只会把用户弹出当前模式 */}
+        {!rangeOK && !modelBlockedReason(gen, 'sd2.5', get) && <button className="scope-fix" onClick={() => useGenerator.getState().setModel(nodeId, 'sd2.5', get)}>切到 Seedance 2.5 启用</button>}
       </div>
       {gen.scope === 'segment' && rangeOK && <SegmentSelector key={source.id + source.src} mat={source} mode={gen.mode} model={gen.model} range={gen.range} onChange={(range) => patch(nodeId, { range })} />}
     </>}

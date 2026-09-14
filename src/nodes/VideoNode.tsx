@@ -26,7 +26,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
     <NodeShell
       id={id} kind="video" name={data.name} selected={!!selected}
       action={<span onClick={upload.open} title="上传"><IcUpload size={13} /></span>}
-      toolbar={<VideoToolbar nodeId={id} visible={!!selected && has} src={data.src} name={data.name} />}
+      toolbar={<VideoToolbar nodeId={id} visible={!!selected && has} src={data.src} name={data.name} dur={data.dur} />}
       panel={<GeneratorPanel visible={!!selected}><VideoPanel nodeId={id} /></GeneratorPanel>}
     >
       {has ? (

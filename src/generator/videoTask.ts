@@ -1,13 +1,11 @@
 import type { GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, locksRatio, countConn, modelUnusableReason, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
+import { MODEL_CAPABILITIES, fmt, partition, mediaSecondsWarning, supportsRange, rangeBlockedReason, locksRatio, connInfo, modelUnusableReason, sourceBounds, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
+export { sourceBounds } from './materialLayout'
 export interface TimeRange { start: number; end: number }
 export const timecode = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 /** 延长的选区会作为输入送进模型，受输入视频 2 秒下限约束；编辑的选区只是写进提示词的时间戳，单位 1 秒。 */
 export const rangeMin = (mode: Mode) => mode === 'extend' ? 2 : 1
-/** 源视频时长区间：编辑的下限由模型决定，其余任务一律 2 秒。 */
-export const sourceBounds = (mode: Mode, model: Model): [number, number] =>
-  [mode === 'edit' ? MODEL_CAPABILITIES[model].editSourceMin : 2, 30]
 export function sourceError(d?: number, ready = true, mode: Mode = 'edit', model: Model = 'sd2.5'): string | null {
   const [lo, hi] = sourceBounds(mode, model)
   if (!ready || d == null || !Number.isFinite(d)) return '正在读取源视频时长，准备好后即可继续'
@@ -68,7 +66,7 @@ export function taskError(g: GenState, get: MatGet): string | null {
   const cap = MODEL_CAPABILITIES[g.model]
   if (!cap.genModes.includes(g.mode)) return `${cap.label} 不支持${TABS.find((t) => t.k === g.mode)!.label}`
   // 素材规则也和 Tab 置灰共用同一份判断：否则会出现「五个模式全部置灰、生成却还能提交」
-  const unusable = TAB_REQUIREMENT[g.mode](countConn(g.conn, get))
+  const unusable = TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, g.model))
   if (unusable) return unusable
   const { active } = partition(g, g.mode, g.model, get)
   if (g.mode === 'frames' && !g.slotFirst) return TODO.first
@@ -105,15 +103,19 @@ export function taskError(g: GenState, get: MatGet): string | null {
  * 理由里不带型号名：它就写在模型列表的同一行上。
  */
 export function modelBlockedReason(g: GenState, model: Model, get: MatGet): string {
-  return modeBlocksModel(g, model) || rangeBlocksModel(g, model) || modelUnusableReason(g.conn, get, model)
+  return modeBlocksModel(g, model, get) || rangeBlocksModel(g, model) || modelUnusableReason(g.conn, get, model)
 }
 /**
  * 正在做的事它做不了。和 Tab 置灰、生成校验共用同一句判断：
  * Tab 会因为型号灰掉，型号也该因为 Tab 灰掉，两边不能只拦一头。
  */
-function modeBlocksModel(g: GenState, model: Model): string {
-  if (MODEL_CAPABILITIES[model].genModes.includes(g.mode)) return ''
-  return `不支持${TABS.find((t) => t.k === g.mode)!.label}，先切到别的模式再选`
+function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
+  if (!MODEL_CAPABILITIES[model].genModes.includes(g.mode)) {
+    return `不支持${TABS.find((t) => t.k === g.mode)!.label}，先切到别的模式再选`
+  }
+  // 换个型号可能连源视频都接不住了：2.5 编辑要 4 秒起，2.0 只要 2 秒
+  if (g.mode === 'edit' || g.mode === 'extend') return TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, model))
+  return ''
 }
 /**
  * 切到不响应秒数的模型会让用户拖出来的范围失效，所以拦住它，并给出解除办法。

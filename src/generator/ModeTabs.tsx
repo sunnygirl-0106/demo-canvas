@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { Mode, TabState } from './materialLayout'
-import Overlay from './Overlay'
+import { useTip } from './useTip'
 
 interface Props {
   mode: Mode
@@ -15,8 +15,7 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
   const wrap = useRef<HTMLDivElement>(null)
   const [ind, setInd] = useState({ x: 0, w: 0 })
   /** 灰掉的原因、以及「这个模式会忽略什么」都不弹横幅，悬浮（或键盘聚焦）到那个 Tab 上才说。 */
-  const [tip, setTip] = useState<TabState | null>(null)
-  const tipAt = useRef<HTMLElement | null>(null)
+  const { tip, node: tipNode } = useTip()
 
   /** 指示条跟随选中项。选中态字重变化会改变宽度，下一帧再量一次。 */
   useLayoutEffect(() => {
@@ -30,8 +29,6 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
   }, [mode, tabs])
 
   const tipOf = (t: TabState) => t.reason || t.note
-  const openTip = (t: TabState, el: HTMLElement) => { if (!tipOf(t)) return; tipAt.current = el; setTip(t) }
-  const closeTip = (t: TabState) => setTip((cur) => cur?.k === t.k ? null : cur)
 
   return (
     <div className="gp-tabrow">
@@ -40,16 +37,13 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
           <button key={t.k} role="tab" aria-selected={mode === t.k} aria-disabled={!t.enabled}
                   aria-label={tipOf(t) ? `${t.label}：${tipOf(t)}` : t.label}
                   className={'gp-tab' + (mode === t.k ? ' on' : '') + (t.enabled ? '' : ' off')}
-                  onMouseEnter={(e) => openTip(t, e.currentTarget)} onMouseLeave={() => closeTip(t)}
-                  onFocus={(e) => openTip(t, e.currentTarget)} onBlur={() => closeTip(t)}
+                  {...tip(tipOf(t))}
                   onClick={() => t.enabled && onPick(t.k)}>{t.label}</button>
         ))}
         <span className="gp-ind" aria-hidden style={{ transform: `translateX(${ind.x}px)`, width: ind.w }}><i /></span>
       </div>
       {right}
-      {tip && <Overlay passive tail label={tipOf(tip)} anchor={tipAt} className="tab-tip" onClose={() => setTip(null)}>
-        {tipOf(tip)}
-      </Overlay>}
+      {tipNode}
     </div>
   )
 }

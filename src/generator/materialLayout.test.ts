@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeIds, allocate, assign, remove, emptySlots, partition, tabStates, modeAvailable, modelUnusableReason, fallbackMode, supportsRange, locksRatio, locksDuration, MODEL_CAPABILITIES, type Mat, type MatGet } from './materialLayout'
+import { activeIds, allocate, assign, remove, emptySlots, partition, tabStates, modeAvailable, modelUnusableReason, sourceEntryReason, fallbackMode, supportsRange, locksRatio, locksDuration, MODEL_CAPABILITIES, type Mat, type MatGet } from './materialLayout'
 const mats: Mat[] = [
   { id: 'a', name: 'ABCD', kind: 'image', grad: '' }, { id: 'b', name: 'EFGH', kind: 'image', grad: '' },
   { id: 'v', name: 'IJKL', kind: 'video', dur: 15.1, grad: '' }, { id: 'w', name: 'MNOP', kind: 'video', dur: 4, grad: '' },
@@ -32,7 +32,8 @@ describe('模式能力与有效素材', () => {
     for (const m of ['sd1.5', 'kling-video-o1', 'wan2.2'] as const) {
       const states = tabStates(conn, get, m)
       expect(states.filter((t) => !t.enabled).map((t) => t.k)).toEqual(['text', 'edit', 'extend'])
-      expect(states.find((t) => t.k === 'edit')!.reason).toBe(`${MODEL_CAPABILITIES[m].label} 不支持编辑视频`)
+      // 灰掉的同时把出路说出来：换哪个型号进得去
+      expect(states.find((t) => t.k === 'edit')!.reason).toBe(`${MODEL_CAPABILITIES[m].label} 不支持编辑视频，换 Seedance 2.5 可以`)
       expect(modeAvailable('edit', conn, get, m)).toBe(false)
       expect(fallbackMode(conn, get, m)).toBe('ref')
     }
@@ -45,6 +46,31 @@ describe('模式能力与有效素材', () => {
     expect(skipped.every((x) => x.reason.includes('只使用图片'))).toBe(true)
     const many = { ...emptySlots(), tray: ['v', 'w'] }
     expect(partition(many, 'ref', 'sd2.5', get).skipped).toEqual([])
+  })
+  it('源视频时长不合规不是事后的黄字，是 Tab 进不去', () => {
+    // 2 秒的视频：2.5 编辑要 4 秒起，进不去并指到 2.0；延长 2 秒起，照常进得去
+    const short: MatGet = (id) => { const m = get(id); return m ? { ...m, dur: m.kind === 'video' ? 2.1 : undefined } : null }
+    const states = tabStates(conn, short, 'sd2.5')
+    expect(states.find((t) => t.k === 'edit')!.reason).toBe('已连接的视频都不在 4–30 秒内，编辑用不了，换 Seedance 2.0 可以')
+    expect(states.find((t) => t.k === 'extend')!.enabled).toBe(true)
+    expect(modeAvailable('edit', conn, short, 'sd2.5')).toBe(false)
+    expect(modeAvailable('edit', conn, short, 'sd2.0')).toBe(true)
+    // 一秒的视频谁都编辑不了，就不给「换 X 可以」这种指不到的出路
+    const tiny: MatGet = (id) => { const m = get(id); return m ? { ...m, dur: m.kind === 'video' ? 1 : undefined } : null }
+    expect(tabStates(conn, tiny, 'sd2.5').find((t) => t.k === 'edit')!.reason).toBe('已连接的视频都不在 4–30 秒内，编辑用不了')
+    // 时长还没读出来的先放行，读到了再判
+    const loading: MatGet = (id) => { const m = get(id); return m ? { ...m, dur: undefined } : null }
+    expect(modeAvailable('edit', conn, loading, 'sd2.5')).toBe(true)
+  })
+  it('视频节点上的入口：没有型号接得住这段时长就灰掉', () => {
+    // 2.1 秒：2.5 编辑不了，但 2.0 可以，所以入口照常能点，进去时自动换型号
+    expect(sourceEntryReason(2.1, 'edit')).toBe('')
+    expect(sourceEntryReason(2.1, 'extend')).toBe('')
+    // 1 秒 / 40 秒：谁都接不住，入口处就灰掉并说出区间
+    expect(sourceEntryReason(1, 'edit')).toBe('这段视频 1s，编辑需要 2–30 秒的视频')
+    expect(sourceEntryReason(40, 'extend')).toBe('这段视频 40s，延长需要 2–30 秒的视频')
+    // 时长还没读出来，不先拦
+    expect(sourceEntryReason(undefined, 'edit')).toBe('')
   })
   it('一个模式都进不去的型号，在模型列表里就灰掉', () => {
     // 只做文生视频的型号：画布上一连素材就没得做，别让用户选进一个全灰的 Tab

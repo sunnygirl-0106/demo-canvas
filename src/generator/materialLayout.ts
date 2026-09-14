@@ -107,6 +107,27 @@ export const supportsRange = (model: Model) => MODEL_CAPABILITIES[model].timesta
 export const rangeBlockedReason = (model: Model) =>
   supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不响应秒数，时间范围会被忽略`
 
+/** 源视频时长区间：编辑的下限由模型决定，其余任务一律 2 秒。 */
+export const sourceBounds = (mode: Mode, model: Model): [number, number] =>
+  [mode === 'edit' ? MODEL_CAPABILITIES[model].editSourceMin : 2, 30]
+/**
+ * 视频节点上的「编辑视频 / 延长视频」入口能不能点：这段时长有没有任何型号接得住。
+ * 一段都接不住就在入口处灰掉并说清楚区间，不要放人进去再用黄字告诉他不行。
+ */
+export function sourceEntryReason(dur: number | undefined, mode: 'edit' | 'extend'): string {
+  if (dur == null || !Number.isFinite(dur)) return ''   // 还在读时长，先不拦
+  const able = MODELS.filter((m) => MODEL_CAPABILITIES[m].genModes.includes(mode))
+  if (able.some((m) => { const [lo, hi] = sourceBounds(mode, m); return dur >= lo && dur <= hi })) return ''
+  const lo = Math.min(...able.map((m) => sourceBounds(mode, m)[0]))
+  return `这段视频 ${fmt(dur)}，${mode === 'edit' ? '编辑' : '延长'}需要 ${lo}–30 秒的视频`
+}
+/** 这段视频能不能当这个模式的源。时长还没读出来的先当可以，读到了自然会再判一次。 */
+export function fitsAsSource(m: Mat, mode: Mode, model: Model): boolean {
+  if (m.kind !== 'video') return false
+  if (m.dur == null || !Number.isFinite(m.dur)) return true
+  const [lo, hi] = sourceBounds(mode, model)
+  return m.dur >= lo && m.dur <= hi
+}
 export const TABS: { k: Mode; label: string }[] = [
   { k: 'text', label: '文生视频' }, { k: 'frames', label: '首尾帧' },
   { k: 'ref', label: '参考素材' }, { k: 'edit', label: '编辑视频' }, { k: 'extend', label: '延长视频' },
@@ -119,14 +140,31 @@ export function countConn(conn: string[], get: MatGet): Counts {
   for (const id of conn) { const m = get(id); if (m?.kind === 'image') image++; else if (m?.kind === 'video') video++ }
   return { image, video, total: image + video }
 }
+/** 连了什么 + 用哪个型号。编辑 / 延长能不能进还要看时长，所以素材本身也带上。 */
+export interface ConnInfo extends Counts { mats: Mat[]; model: Model }
+export function connInfo(conn: string[], get: MatGet, model: Model): ConnInfo {
+  const mats = conn.map(get).filter((m): m is Mat => !!m)
+  const image = mats.filter((m) => m.kind === 'image').length
+  return { image, video: mats.length - image, total: mats.length, mats, model }
+}
+/**
+ * 时长不合规不是「进去之后才报的黄字」，是进不进得去本身：
+ * 连着的视频没有一段能当源，编辑 / 延长就该在入口处灰掉，并把区间说出来。
+ */
+function sourceRequirement(c: ConnInfo, mode: 'edit' | 'extend'): string {
+  if (!c.video) return '需要 1 段视频作为源'
+  if (c.mats.some((m) => fitsAsSource(m, mode, c.model))) return ''
+  const [lo, hi] = sourceBounds(mode, c.model)
+  return `已连接的视频都不在 ${lo}–${hi} 秒内，${mode === 'edit' ? '编辑' : '延长'}用不了`
+}
 /** 素材这一半：画布上连了什么决定 Tab 能不能进。模型那一半见 tabStates。 */
-export const TAB_REQUIREMENT: Record<Mode, (c: Counts) => string> = {
+export const TAB_REQUIREMENT: Record<Mode, (c: ConnInfo) => string> = {
   text: (c) => c.total ? '画布上已连接素材。文生视频只接受文本，断开连接后可用' : '',
   frames: (c) => !c.image ? '需要至少 1 张图片作首帧'
     : c.image > 2 ? `已连接 ${c.image} 张图片，首尾帧最多使用 2 张` : '',
   ref: (c) => c.total ? '' : '需要至少 1 个素材',
-  edit: (c) => c.video ? '' : '需要 1 段视频作为源',
-  extend: (c) => c.video ? '' : '需要 1 段视频作为源',
+  edit: (c) => sourceRequirement(c, 'edit'),
+  extend: (c) => sourceRequirement(c, 'extend'),
 }
 /**
  * 进得去、但有连着的素材用不上：不在面板里摆一排「不参与」的缩略图，
@@ -147,17 +185,22 @@ export function tabNote(mode: Mode, c: Counts, model: Model): string {
 export interface TabState { k: Mode; label: string; enabled: boolean; reason: string; note: string }
 /** Tab 能不能进 = 素材够不够 ∧ 模型有没有这个能力。模型这一半先判，理由更具体。 */
 export function tabStates(conn: string[], get: MatGet, model: Model): TabState[] {
-  const c = countConn(conn, get)
+  const c = connInfo(conn, get, model)
   const cap = MODEL_CAPABILITIES[model]
   return TABS.map((t) => {
-    const reason = !cap.genModes.includes(t.k)
+    let reason = !cap.genModes.includes(t.k)
       ? `${cap.label} 不支持${t.label}`
       : TAB_REQUIREMENT[t.k](c)
+    // 进不去但换个型号就进得去时，直接把那个型号说出来 —— 否则用户在灰掉的 Tab 上无路可走
+    if (reason && (t.k === 'edit' || t.k === 'extend') && c.video) {
+      const better = MODELS.find((m) => m !== model && modeAvailable(t.k, conn, get, m))
+      if (better) reason += `，换 ${MODEL_CAPABILITIES[better].label} 可以`
+    }
     return { ...t, enabled: !reason, reason, note: reason ? '' : tabNote(t.k, c, model) }
   })
 }
 export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Model) =>
-  MODEL_CAPABILITIES[model].genModes.includes(mode) && !TAB_REQUIREMENT[mode](countConn(conn, get))
+  MODEL_CAPABILITIES[model].genModes.includes(mode) && !TAB_REQUIREMENT[mode](connInfo(conn, get, model))
 /**
  * 这个型号在当前连接下一个模式都进不去 —— 选了它只会落在一个全灰的 Tab 上，
  * 所以在模型列表里就灰掉。典型的是只做文生视频的型号：画布上一连素材它就没得做了。

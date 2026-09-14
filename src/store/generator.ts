@@ -119,12 +119,12 @@ export const useGenerator = create<GenStore>((set, get) => {
      * 落在集合外的参数静默收敛到最近的合法值，新模型没有的模式落回可用的 Tab。
      */
     setModel: (id, model, matGet) => edit(id, (g) => {
-      const cap = MODEL_CAPABILITIES[model]
       // 「改这一段 / 从这一段接」是用户的意图，不因为新模型不认秒数就悄悄扩大成整条：
       // 不响应秒数的模型在模型列表里本来就是灰的（modelBlockedReason），
       // 真要放大范围有「改为整条，解除模型限制」这个明确的出口。
       const next: GenState = { ...g, model, params: fitParams(model, g.params) }
-      if (cap.genModes.includes(g.mode)) return next
+      // 能不能留在当前 Tab 看的是完整的一条规则（能力 + 素材 + 时长），不只是 genModes
+      if (modeAvailable(g.mode, g.conn, matGet, model)) return next
       // 停在一个灰掉的 Tab 上会让生成按钮报一个用户改不动的错，所以这里直接换走。
       // 注意用 g 而不是 next 去切：被挤走的那个 Tab 的草稿要按「原来的模型」存回去，
       // 否则切回 2.5 再点编辑，恢复出来的还是那个不支持编辑的模型。
