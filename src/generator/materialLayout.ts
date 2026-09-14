@@ -158,6 +158,17 @@ export function tabStates(conn: string[], get: MatGet, model: Model): TabState[]
 }
 export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Model) =>
   MODEL_CAPABILITIES[model].genModes.includes(mode) && !TAB_REQUIREMENT[mode](countConn(conn, get))
+/**
+ * 这个型号在当前连接下一个模式都进不去 —— 选了它只会落在一个全灰的 Tab 上，
+ * 所以在模型列表里就灰掉。典型的是只做文生视频的型号：画布上一连素材它就没得做了。
+ */
+export function modelUnusableReason(conn: string[], get: MatGet, model: Model): string {
+  const cap = MODEL_CAPABILITIES[model]
+  if (cap.genModes.some((m) => modeAvailable(m, conn, get, model))) return ''
+  const only = cap.genModes.map((m) => TABS.find((t) => t.k === m)!.label).join(' / ')
+  // 型号名就在这行上，理由里不用再念一遍
+  return countConn(conn, get).total ? `只做${only}，画布上已连接素材` : `只做${only}，需要先连接素材`
+}
 /** 当前 Tab 失效时落到哪里：还有素材就去参考素材，空画布回文生视频；模型也不支持时继续往下找。 */
 export const fallbackMode = (conn: string[], get: MatGet, model: Model): Mode => {
   const order: Mode[] = countConn(conn, get).total ? ['ref', 'text'] : ['text', 'ref']

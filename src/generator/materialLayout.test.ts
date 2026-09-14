@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeIds, allocate, assign, remove, emptySlots, partition, tabStates, modeAvailable, fallbackMode, supportsRange, locksRatio, locksDuration, MODEL_CAPABILITIES, type Mat, type MatGet } from './materialLayout'
+import { activeIds, allocate, assign, remove, emptySlots, partition, tabStates, modeAvailable, modelUnusableReason, fallbackMode, supportsRange, locksRatio, locksDuration, MODEL_CAPABILITIES, type Mat, type MatGet } from './materialLayout'
 const mats: Mat[] = [
   { id: 'a', name: 'ABCD', kind: 'image', grad: '' }, { id: 'b', name: 'EFGH', kind: 'image', grad: '' },
   { id: 'v', name: 'IJKL', kind: 'video', dur: 15.1, grad: '' }, { id: 'w', name: 'MNOP', kind: 'video', dur: 4, grad: '' },
@@ -45,6 +45,19 @@ describe('模式能力与有效素材', () => {
     expect(skipped.every((x) => x.reason.includes('只使用图片'))).toBe(true)
     const many = { ...emptySlots(), tray: ['v', 'w'] }
     expect(partition(many, 'ref', 'sd2.5', get).skipped).toEqual([])
+  })
+  it('一个模式都进不去的型号，在模型列表里就灰掉', () => {
+    // 只做文生视频的型号：画布上一连素材就没得做，别让用户选进一个全灰的 Tab
+    expect(modelUnusableReason(conn, get, 'wan2.2-ti2v-5b')).toContain('已连接素材')
+    expect(modelUnusableReason([], get, 'wan2.2-ti2v-5b')).toBe('')
+    // 只做图生视频的型号反过来：空画布上没得做
+    expect(modelUnusableReason([], get, 'wan2.2-i2v-a14b')).toContain('需要先连接素材')
+    expect(modelUnusableReason(conn, get, 'wan2.2-i2v-a14b')).toBe('')
+    // 五种模式都支持的型号，连或不连都有得做
+    for (const m of ['sd2.5', 'sd2.0', 'kling-video-o1'] as const) {
+      expect(modelUnusableReason(conn, get, m)).toBe('')
+      expect(modelUnusableReason([], get, m)).toBe('')
+    }
   })
   it('用不上的素材不在面板上占位，改由 Tab 悬浮说明', () => {
     // 首尾帧只吃图片：连着的视频不摆「不参与」缩略图，进模式之前在 Tab 上就说清楚
