@@ -184,12 +184,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* ── 模式 tab：下划线指示条随选中项滑动，亮带自左向右巡游 ── */
 .gp-tabrow{display:flex;align-items:center;justify-content:space-between}
 .gp-tabs{position:relative;display:flex;align-items:flex-end;gap:4px;padding-bottom:13px;flex:1;min-width:0}
-.gp-tab{display:flex;align-items:center;gap:6px;padding:6px 14px 8px;font-size:14.5px;font-weight:500;
+.gp-tab{display:flex;align-items:center;padding:6px 14px 8px;font-size:14.5px;font-weight:500;
   letter-spacing:.02em;white-space:nowrap;
   background:transparent;border:0;color:var(--ink-off);cursor:pointer;user-select:none;transition:color .3s}
 .gp-tab:hover{color:var(--ink-1)}
 .gp-tab.on,.gp-tab.on:hover{color:var(--ink-0);font-weight:650}
-.gp-tab-no{font-size:12px;line-height:1}
 /*
  * 选中位置只由一个滑点标出来：它落在选中项的中线上，宽度与那个 Tab 有多少字无关。
  * 换 Tab 的一刻被拉成短棒、到站收回成点 —— 让「它是从哪儿走过来的」这件事看得见，

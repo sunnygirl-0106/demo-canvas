@@ -57,8 +57,6 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
                   className={'gp-tab' + (mode === t.k ? ' on' : '') + (t.enabled ? '' : ' off')}
                   {...tip(tipOf(t))}
                   onClick={() => pick(t)}>
-            {/* 做不了的事画一个禁行圈，比删除线更像「现在没这条路」，也不假装文字被划掉了 */}
-            {!t.enabled && <span className="gp-tab-no" aria-hidden>⊘</span>}
             {t.label}
           </button>
         ))}
