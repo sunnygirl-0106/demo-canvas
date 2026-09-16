@@ -180,7 +180,7 @@ export const useGenerator = create<GenStore>((set, get) => {
     patch: (id, patch) => edit(id, (g) => ({ ...g, ...patch })),
     submit: (id, matGet) => {
       const g = get().get1(id)
-      if (g.tasks.some((t) => t.status === 'running')) throw new Error('演示任务正在处理中')
+      if (g.tasks.some((t) => t.status === 'running')) throw new Error('演示任务正在生成')
       const payload = taskPayload(g, matGet)
       const taskId = crypto.randomUUID()
       edit(id, (state) => ({ ...state, tasks: [...state.tasks, { id: taskId, status: 'running', createdAt: Date.now(), payload }] }))

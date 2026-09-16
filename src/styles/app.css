@@ -23,6 +23,14 @@ input,textarea{font:inherit;color:inherit}
 .react-flow__handle:after{display:none}
 .rf-edgepath{animation:gp-flow 3.4s linear infinite}
 .react-flow__edge.selected .rf-edgepath{stroke-width:2.4}
+/* 连线上的剪刀：悬浮到线上才出现，点一下断开这一条连接（⌘Z 可撤销） */
+.edge-cut{position:absolute;pointer-events:all;width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--surface-3);border:1px solid var(--teal-soft);color:var(--teal);
+  box-shadow:0 2px 10px rgba(0,0,0,.5);animation:gp-rise .12s ease-out;
+  transition:background .16s,color .16s,border-color .16s}
+.edge-cut:hover{background:var(--teal-solid);border-color:var(--teal-solid);color:var(--teal-ink)}
+.edge-cut:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px}
 .react-flow__node-toolbar{z-index:20}
 .react-flow__pane{cursor:default}
 
@@ -118,7 +126,8 @@ input,textarea{font:inherit;color:inherit}
   border:1px solid var(--line-2);overflow:hidden;position:relative;display:flex;align-items:center;
   justify-content:center;transition:border-color .22s,box-shadow .22s}
 .nd.sel .nd-body{border-color:var(--teal-soft);box-shadow:0 0 0 1px var(--teal-soft)}
-.nd.hl .nd-body{border-color:var(--teal);box-shadow:0 0 0 1px var(--teal),0 6px 22px rgba(0,0,0,.55)}
+/* 悬浮只是一声招呼，不是选中：一条细的、淡的青边就够，不再套第二圈实色描边 */
+.nd.hl .nd-body{border-color:var(--teal-ring);box-shadow:0 6px 20px rgba(0,0,0,.45)}
 .nd.dim{opacity:.35}
 .nd-ph{width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:var(--ink-2);
@@ -175,7 +184,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* ── 模式 tab：下划线指示条随选中项滑动，亮带自左向右巡游 ── */
 .gp-tabrow{display:flex;align-items:center;justify-content:space-between}
 .gp-tabs{position:relative;display:flex;align-items:flex-end;gap:4px;padding-bottom:13px;flex:1;min-width:0}
-.gp-tabs::after{content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;background:var(--line)}
 .gp-tab{display:flex;align-items:center;gap:6px;padding:6px 14px 8px;font-size:14.5px;font-weight:500;
   letter-spacing:.02em;white-space:nowrap;
   background:transparent;border:0;color:var(--ink-off);cursor:pointer;user-select:none;transition:color .3s}
@@ -579,12 +587,18 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 上面是一排图，下面是一句话，两件事：留的气口得比一排图里方块之间的缝（12px）明显宽，
    否则句首的缩略图标签会和上面那排贴成一片，看着像同一排东西被挤成了两行 */
 /*
- * 这一块一律按最高的那一档留着（--ptools 是工具行连它的上边距）：
+ * 这一块一律按最高的那一档留着（--ptools 是工具行连它的上边距，--prow 是素材行连它的上边距）：
  * 换个 Tab 就整块往上蹿一截，读起来像换了个界面 —— 高度统一，换的只是里面的内容。
  * 没有工具行的那几个模式，多出来的高度归可编辑区，不是一条空带子：多出来的地方点下去就是打字。
  */
-.prompt-editor{margin-top:20px;--pline:28px;--ptools:38px;
-  display:flex;flex-direction:column;min-height:calc(var(--pline)*3 + var(--ptools))}
+.prompt-editor{margin-top:20px;--pline:28px;--ptools:38px;--prow:0px;
+  display:flex;flex-direction:column;min-height:calc(var(--pline)*3 + var(--ptools) + var(--prow))}
+/*
+ * 文生视频上面没有素材行 —— 那一截（一个方块加它的上边距）也归可编辑区，
+ * 于是从别的 Tab 切过来，面板的上下沿都不动，动的只是里面的内容。
+ * 句子照旧从最上面一行起头：空出来的地方补在下面，不是把这句话推到半空。
+ */
+.prompt-editor.rowless{--prow:calc(var(--tile) + 11px)}
 /*
  * 光标压在这句话上就得是「能改」的样子。可编辑区不是 input/textarea，浏览器不会替它挑光标，
  * 而面板整体写着 cursor:default —— 不明写这一条，箭头会一路继承进来，字看着就像不能动。
@@ -601,8 +615,12 @@ button:disabled{opacity:.4;cursor:not-allowed}
   white-space:pre-wrap;word-break:break-word;cursor:text}
 /* 标签是整枚原子，不是可改的字：I 形光标会骗人说这里能插字 */
 .prompt-input .mark-chip{cursor:default}
-/* 占位文案接在句子后面（而不是压在开头）：起了头也还看得见「接下来该写什么」 */
-.prompt-input[data-empty]::after{content:attr(data-ph);color:var(--ink-3);pointer-events:none}
+/*
+ * 占位文案接在句子后面（而不是压在开头）：起了头也还看得见「接下来该写什么」。
+ * 字号跟正文一模一样 —— 它站的就是用户下一个字要落的那个位置，
+ * 小一号的话，打第一个字整句会跳一下。退的只是颜色：暗一档、也更灰，不跟 Tab 抢。
+ */
+.prompt-input[data-empty]::after{content:attr(data-ph);color:var(--ink-ph);pointer-events:none}
 /*
  * 每一枚标签在句子里落在哪条线上，统一交给外面那层 [data-seg] 决定。
  * 标签本身是 inline-flex，基线取自第一个子项 —— 时间段那一枚的第一个子项是文字，
@@ -685,13 +703,24 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .setting-trigger em{color:var(--teal);font-style:normal}
 .setting-trigger>svg,.gp-model>svg{opacity:.85}
 .gp-sep{width:1px;height:18px;background:var(--line-2);flex:none}
-.gp-cost{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-3)}
-.gp-cost b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.gp-send{width:40px;height:40px;flex:none;border-radius:var(--r-ctl);border:1px solid rgba(255,255,255,.10);
-  background:rgba(255,255,255,.05);display:grid;place-items:center;color:var(--teal);
-  transition:background .24s,border-color .24s,transform .24s}
-.gp-send:not([aria-disabled=true]):hover{background:var(--fill-3);border-color:rgba(255,255,255,.22);transform:translateY(-2px)}
-.gp-send-ic{display:grid;place-items:center;animation:gp-float 4.5s ease-in-out infinite}
+/* 价钱是这一行里要读的数，不是脚注：跟旁边的模型名、参数条一档字号，数字再大半档 */
+.gp-cost{display:flex;align-items:center;gap:7px;font-size:14.5px;color:var(--ink-3)}
+.gp-cost b{font-size:16px;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+/*
+ * 这一行末尾的「发出去」：常驻一个圆。方角的框圈着一架斜飞的纸飞机，
+ * 四个角空着、机头又顶着一条边，圈和图形各说各的；圆的边到哪儿都跟机身等距，
+ * 才像是把飞机端在手里的那一圈，而不是给它套了个盒子。
+ */
+.gp-send{width:46px;height:46px;flex:none;border-radius:50%;border:0;
+  background:var(--send-disc);display:grid;place-items:center;color:var(--teal-pale);
+  transition:background .24s,color .24s,transform .24s}
+/* 悬浮时这一圈提亮一档、顺手放大一点，手感上更像「按得下去」 */
+.gp-send:not([aria-disabled=true]):hover,
+.gp-send:not([aria-disabled=true]):focus-visible{background:var(--send-disc-on);
+  color:var(--teal-on);transform:scale(1.08)}
+/* 圈是静止的，飞机就不好再飘 3px —— 那一档幅度在 40px 的圈里看着是没对齐，不是有生气 */
+@keyframes gp-send-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+.gp-send-ic{display:grid;place-items:center;animation:gp-send-float 4.5s ease-in-out infinite}
 .gp-send.busy{cursor:default}
 .spin{width:16px;height:16px;border-radius:50%;border:2px solid rgba(94,234,212,.22);border-top-color:var(--teal);
   animation:sp .8s linear infinite}
@@ -736,11 +765,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .sound-switch.on span{transform:translateX(14px);background:var(--teal-ink)}
 
 /* ── 任务记录 ── */
-.task-record{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;font-size:12px;color:var(--ink-3)}
-.task-record summary{cursor:pointer;line-height:1.6}
-.task-record summary span{margin-left:10px;color:var(--teal-on)}
-.task-record p{margin:9px 0;line-height:1.6;overflow-wrap:anywhere}
-.task-record button{color:var(--teal);padding:4px 0}
 .vtool a{display:flex;align-items:center;gap:5px;padding:0 11px;font-size:12px;color:var(--ink-2);
   text-decoration:none;white-space:nowrap}
 

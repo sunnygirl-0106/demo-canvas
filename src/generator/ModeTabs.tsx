@@ -21,7 +21,7 @@ export default function ModeTabs({ mode, tabs, onPick, right }: Props) {
   const [on, setOn] = useState({ x: 0, w: 0 })
   const [moving, setMoving] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout>>()
-  /** 灰掉的原因、以及「这个模式会忽略什么」都不弹横幅，悬浮（或键盘聚焦）到那个 Tab 上才说。 */
+  /** 灰掉的原因、以及「这个模式有哪些素材不参与」都不弹横幅，悬浮（或键盘聚焦）到那个 Tab 上才说。 */
   const { tip, node: tipNode } = useTip()
 
   /** 指示条跟随选中项。选中态字重变化会改变宽度，下一帧再量一次。 */

@@ -45,16 +45,14 @@ export const IcCompose = (p: P) => <Svg {...p}><rect x="2" y="6" width="14" heig
 export const IcCube = (p: P) => <Svg {...p}><path d="M12 2l9 5v10l-9 5-9-5V7z" /><path d="M12 22V12M3 7l9 5 9-5" /></Svg>
 export const IcWarn = (p: P) => <Svg {...p} sw={3}><path d="M12 6v7M12 17v.5" /></Svg>
 
-/** 星钻 */
-export const IcStar = ({ size = 14, color = '#e7ebee' }: P) => (
+/**
+ * 星钻：一大一小两枚四角星芒。每条边都往中心弯，小尺寸下四个角才立得住 ——
+ * 直边画出来的是一个菱形块，不是「闪」。
+ */
+export const IcSparkle = ({ size = 14, color = 'currentColor' }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-    <path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9zM5 14l.7 1.6 1.6.7-1.6.7L5 18.6l-.7-1.6-1.6-.7 1.6-.7z" />
-  </svg>
-)
-/** 积分：单枚五角星 */
-export const IcCredit = ({ size = 14, color = 'currentColor' }: P) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-    <path d="M12 2l2.1 6.3L20.5 10l-5.2 3.8L17 20l-5-3.6L7 20l1.7-6.2L3.5 10l6.4-1.7z" />
+    <path d="M9.5 5.6Q9.5 13.5 1.9 13.5 9.5 13.5 9.5 21.4 9.5 13.5 17.1 13.5 9.5 13.5 9.5 5.6Z" />
+    <path d="M18.6 2.2Q18.6 6.4 14.5 6.4 18.6 6.4 18.6 10.6 18.6 6.4 22.7 6.4 18.6 6.4 18.6 2.2Z" />
   </svg>
 )
 /** 发送（生成）按钮里的纸飞机 */

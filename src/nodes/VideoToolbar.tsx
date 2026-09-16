@@ -32,7 +32,7 @@ export default function VideoToolbar({ nodeId, visible, src, name, dur }: { node
     if (better !== g.model) { gs.setModel(id, better, get); gs.setMode(id, mode, get) }
   }
   const entry = (mode: 'edit' | 'extend', label: string, icon: React.ReactNode) => {
-    const reason = sourceEntryReason(dur, mode)
+    const reason = sourceEntryReason(dur, mode, name)
     return <button aria-disabled={!!reason} aria-label={reason ? `${label}：${reason}` : label}
       {...tip(reason || undefined)} onClick={() => { if (!reason) open(mode) }}>{icon}{label}</button>
   }

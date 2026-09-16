@@ -2,9 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useCanvas } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { matOf } from '../demo/assets'
-import { partition, promptHint, refModeOf, tabStates, MODEL_CAPABILITIES, type MatGet } from './materialLayout'
+import { partition, promptHint, refModeOf, tabStates, type MatGet } from './materialLayout'
 import { IcArrowR, IcClose } from '../ui/icons'
-import { taskError, timecode } from './videoTask'
+import { taskError } from './videoTask'
 import { commitDraft, markCount } from './marks'
 import ModeTabs from './ModeTabs'
 import MaterialRow from './MaterialRow'
@@ -82,15 +82,13 @@ export default function VideoPanel({ nodeId }: { nodeId: string }) {
    */
   const held = markCount(gen.marks)
   const standing = [held.regions ? `${held.regions} 处` : '', held.ranges ? `${held.ranges} 段` : ''].filter(Boolean).join(' · ')
-  /** 演示估算：按时长与清晰度粗算，不接计费。 */
-  const cost = Math.round(gen.params.duration * (gen.params.resolution === '1080p' ? 2 : 1.6))
+  /** 演示估算：按秒计价，1080p 贵一档，不接计费 —— 默认 5 秒 720p 是 188 星钻 */
+  const cost = Math.round(gen.params.duration * (gen.params.resolution === '1080p' ? 47 : 37.6))
   const send = () => {
     // 提交不合规的任务这条路已经在按钮上堵死了（灰掉 + 悬浮说明），真抛出来只可能是代码问题
     try { const taskId = useGenerator.getState().submit(nodeId, get); window.setTimeout(() => useGenerator.getState().complete(nodeId, taskId), 1400) }
     catch (e) { console.error(e) }
   }
-  const latest = gen.tasks[gen.tasks.length - 1]
-  const tally = latest ? markCount(latest.payload.marks) : null
   return <>
     {tipNode}
     <ModeTabs mode={gen.mode} tabs={tabs} onPick={(mode) => useGenerator.getState().setMode(nodeId, mode, get)}
@@ -106,6 +104,8 @@ export default function VideoPanel({ nodeId }: { nodeId: string }) {
       renderSeg={(s) => <PromptSeg s={s} doc={gen.doc} mat={source} get={get} direction={gen.direction} duration={gen.params.duration}
         role={gen.mode === 'edit' ? '这个视频用来编辑' : '这个视频用来延长'} />}
       placeholder={promptHint(gen.mode, !!gen.slotLast).map((p) => p.t).join('')} mats={mats}
+      /* 文生视频上面没有素材行 —— 那一截高度让给这块可编辑区，换 Tab 时面板不会整个矮一截 */
+      rowless={gen.mode === 'text'}
       onInsert={(doc, m) => writeDoc(doc, { references: { ...gen.references, [m.name]: m.id } })}
       tools={gen.mode === 'edit' && source ? <MarkEntry nodeId={nodeId} gen={gen} get={get} open={dialog} onOpen={() => setDialog(true)} />
         /*
@@ -123,10 +123,5 @@ export default function VideoPanel({ nodeId }: { nodeId: string }) {
     {dialog && source && <MarkDialog mat={source} model={gen.model} standing={standing} onClose={() => setDialog(false)}
       onCommit={(d) => writeDoc(insertGroup(gen.doc, commitDraft(d, gen.markSeq + 1)), { markSeq: gen.markSeq + 1 })} />}
     <BottomBar busy={busy} disabled={!!error} reason={error ?? undefined} cost={cost} onSend={send} left={<VideoSettings nodeId={nodeId} gen={gen} source={source} get={get} />} />
-    {latest && <details className="task-record" open={busy || undefined}><summary>{latest.status === 'running' ? '正在记录演示任务…' : '最近演示任务已完成 · 未生成或修改视频'}<span>{latest.payload.output}</span></summary>
-      <p>{MODEL_CAPABILITIES[latest.payload.model].label} · {latest.payload.params.resolution} · {latest.payload.params.duration}s · {latest.payload.params.sound ? '有声' : '无声'}{!!tally?.regions && ` · 标记 ${tally.regions} 处`}{!!tally?.ranges && ` · ${tally.ranges} 段`}{latest.payload.range && ` · 原片范围 ${timecode(latest.payload.range.start)}–${timecode(latest.payload.range.end)}`}{latest.payload.direction && ` · ${latest.payload.direction === 'before' ? '向前延长' : '向后延长'}`}</p>
-      <p>{latest.payload.prompt}</p><p>已记录 {latest.payload.inputIds.length} 个有效输入</p>
-      <button onClick={() => { const blob = new Blob([JSON.stringify(gen.tasks, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = '演示任务记录.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }}>下载任务记录（{gen.tasks.length}）</button>
-    </details>}
   </>
 }

@@ -1,4 +1,5 @@
 import { useCanvas } from '../store/canvas'
+import { MEDIA_FAIL } from '../generator/materialLayout'
 
 /** 读取真实时长和封面；只回填仍在使用这份文件的节点。 */
 export function loadVideoMetadata(id: string, src: string) {
@@ -16,8 +17,9 @@ export function loadVideoMetadata(id: string, src: string) {
     video.removeAttribute('src')
     video.load()
   }
-  const timeout = setTimeout(() => { if (!metadataReady) update({ mediaReady: false, mediaError: '视频读取超时，请重新上传' }); cleanup() }, 15000)
-  video.onerror = () => { update({ mediaReady: false, mediaError: '视频无法读取，请重新上传' }); cleanup() }
+  // 存的是原因，不是整句话：谁来说这句话（素材区说「视频 ABCD」、首尾帧说「首帧 ABCD」）由展示的那一头定
+  const timeout = setTimeout(() => { if (!metadataReady) update({ mediaReady: false, mediaError: MEDIA_FAIL.read }); cleanup() }, 15000)
+  video.onerror = () => { update({ mediaReady: false, mediaError: MEDIA_FAIL.read }); cleanup() }
   video.onloadedmetadata = () => {
     if (Number.isFinite(video.duration)) { metadataReady = true; update({ dur: video.duration, mediaReady: true, mediaError: undefined }) }
     video.currentTime = Math.min(0.5, video.duration / 2)

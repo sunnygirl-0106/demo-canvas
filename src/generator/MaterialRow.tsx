@@ -21,7 +21,7 @@ function MaterialTile({ mat, role, size, mark, why }: { mat: Mat; role: string; 
   useEffect(() => () => { clearTimeout(openTimer.current); clearTimeout(closeTimer.current); if (useCanvas.getState().hoverMat === mat.id) useCanvas.getState().setHoverMat(null) }, [mat.id])
   const ratio = useAspect(mat.thumb)
   const showPreview = () => { ref.current?.focus({ preventScroll: true }); clearTimeout(openTimer.current); clearTimeout(closeTimer.current); setHover(false); setPreview(true) }
-  const dur = mat.kind === 'video' ? (mat.dur != null ? fmt(mat.dur) : '读取时长中') : ''
+  const dur = mat.kind === 'video' ? (mat.dur != null ? fmt(mat.dur) : '正在读取时长') : ''
   const info = `${role} · ${mat.name}${dur ? ' · ' + dur : ''}${why ? ' · ' + why : ''}`
   return <div className={`material-wrap ${size}`} onMouseEnter={enter} onMouseLeave={leave} onFocus={enter} onBlur={leave}>
     <button ref={ref} className={`material-tile${lit ? ' lit' : ''}${why ? ' off' : ''}`} aria-label={info} onClick={showPreview}>

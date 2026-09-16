@@ -1,4 +1,4 @@
-import { IcBack, IcBell, IcShare, IcStar, IcUser } from '../ui/icons'
+import { IcBack, IcBell, IcShare, IcSparkle, IcUser } from '../ui/icons'
 
 export default function TopBar({ onShowcase, onDemo }: { onShowcase: () => void; onDemo: () => void }) {
   return (
@@ -14,7 +14,8 @@ export default function TopBar({ onShowcase, onDemo }: { onShowcase: () => void;
         <button className="tb-demo" onClick={onShowcase} title="重置并查看所有节点状态">节点示例</button>
         <button className="tb-demo" onClick={onDemo}>连线示例</button>
         <span className="pay">充值中心</span>
-        <span className="tb-coin"><IcStar size={13} color="#2fd0d0" />100,000</span>
+        {/* 顶栏是星钻余额，和底栏单次价格用同一枚图标：同一种货币不该有两个样子 */}
+        <span className="tb-coin"><IcSparkle size={13} color="var(--ink-0)" />100,000</span>
         <span className="tb-bell"><IcBell size={17} /><b>1</b></span>
         <span className="tb-avatar" />
       </div>

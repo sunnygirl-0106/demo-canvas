@@ -40,6 +40,23 @@ describe('画布交互回归', () => {
     expect(matOf(useCanvas.getState().nodes[0])).toMatchObject({ id, kind: 'video', dur: undefined })
   })
 
+  it('剪刀断开的是那一条线，两头的节点都留着，一次撤销就接回来', () => {
+    const store = useCanvas.getState()
+    const source = store.addNode('image', { x: 0, y: 0 })
+    const target = store.spawnDownstream(source)!
+    const edge = useCanvas.getState().edges[0].id
+    store.disconnect(edge)
+    expect(useCanvas.getState().edges).toHaveLength(0)
+    expect(useCanvas.getState().nodes.map((n) => n.id)).toEqual([source, target])
+    store.undo()
+    expect(useCanvas.getState().edges.map((e) => e.id)).toEqual([edge])
+    // 已经断开过的那一条再剪一次不进撤销栈，⌘Z 不会莫名其妙退回更早的一步
+    store.disconnect(edge)
+    store.disconnect(edge)
+    store.undo()
+    expect(useCanvas.getState().edges.map((e) => e.id)).toEqual([edge])
+  })
+
   it('不存在的来源不产生悬空连线', () => {
     const store = useCanvas.getState()
     const target = store.addNode('video', { x: 0, y: 0 })

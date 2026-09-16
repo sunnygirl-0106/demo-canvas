@@ -22,6 +22,11 @@ interface Props {
   onInsert?: (doc: Seg[], mat: Mat) => void
   /** 工具行左侧的常驻控件（编辑模式的标记入口）。有它时这一行不再跟着 @ 引用一起出现和消失 */
   tools?: ReactNode
+  /**
+   * 这个模式上面没有素材行（文生视频）。那一截高度归可编辑区 ——
+   * 面板的上下沿不跟着 Tab 变，句子还是从最上面一行起头，只是底下能写的地方更宽裕。
+   */
+  rowless?: boolean
 }
 /**
  * 提示词框。这里不是「灰色模板 + 一个输入框」，而是一整句可以编辑的话：
@@ -31,7 +36,7 @@ interface Props {
  * （children 用 useMemo 锁住引用，React 会整棵跳过）—— 否则每敲一个字光标都会跳回去。
  * 每次输入都把 DOM 读回一份 doc，谁被删了、谁被挪了，读一遍就知道。
  */
-export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, tools }: Props) {
+export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, tools, rowless }: Props) {
   const ed = useRef<HTMLDivElement>(null); const wrap = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState(false)
   /** 呼出时的光标位置。挑完素材要回到这里，把触发菜单的那个 @ 一起换掉。 */
@@ -135,7 +140,7 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ver])
 
-  return <div className="prompt-editor nodrag nowheel" ref={wrap}>
+  return <div className={`prompt-editor nodrag nowheel${rowless ? ' rowless' : ''}`} ref={wrap}>
     <div className="prompt-field" onPointerDown={(e) => { if (e.target === e.currentTarget) ed.current?.focus() }}>
       <div key={ver} ref={ed} className="prompt-input" contentEditable suppressContentEditableWarning
         role="textbox" aria-multiline aria-label="修改或生成要求"

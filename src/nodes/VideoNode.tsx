@@ -6,7 +6,7 @@ import VideoToolbar from './VideoToolbar'
 import GeneratorPanel from '../generator/GeneratorPanel'
 import VideoPanel from '../generator/VideoPanel'
 import { IcExpand, IcPlay, IcUpload, IcVideo } from '../ui/icons'
-import { fmt } from '../generator/materialLayout'
+import { fmt, MEDIA_FAIL } from '../generator/materialLayout'
 import { useUploadInto } from './useUpload'
 
 export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
@@ -37,7 +37,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
             playsInline loop preload="metadata" onClick={toggle}
             onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
             onLoadedMetadata={(e) => { const duration = e.currentTarget.duration; if (Number.isFinite(duration)) useCanvas.getState().updateNode(id, { dur: duration, mediaReady: true, mediaError: undefined }) }}
-            onError={() => { setPlaying(false); useCanvas.getState().updateNode(id, { mediaReady: false, mediaError: '视频无法读取，请重新上传' }) }} onEnded={() => setPlaying(false)}
+            onError={() => { setPlaying(false); useCanvas.getState().updateNode(id, { mediaReady: false, mediaError: MEDIA_FAIL.read }) }} onEnded={() => setPlaying(false)}
           />
           {!playing && <div className="nd-play nodrag" onClick={toggle}><span><IcPlay size={26} /></span></div>}
           {/* 时长直接摆在缩略图上：几秒的视频能做什么任务，规则全挂在这个数上 */}

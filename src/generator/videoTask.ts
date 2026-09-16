@@ -1,23 +1,21 @@
 import type { GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, fmt, isRef, refModeOf, matBlockedReason, partition, mediaSecondsWarning, mediaSecondsBlocked, supportsRange, rangeBlockedReason, locksRatio, connInfo, modeAfterModel, modelUnusableReason, sourceBounds, tabNote, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
-import { invalidMark, markCount, markScope, marksReading, rangeHull, type MarkGroup } from './marks'
-import { docWritten } from './promptDoc'
+import { MODEL_CAPABILITIES, fmt, isRef, refModeOf, matBlockedReason, partition, mediaSecondsWarning, mediaSecondsBlocked, supportsRange, rangeBlockedReason, locksRatio, connInfo, modeAfterModel, modeAvailable, modelUnusableReason, sourceBounds, tabNote, durRange, mediaFailure, readingDuration, TAB_REQUIREMENT, type MatGet, type Mode, type Model, TABS } from './materialLayout'
+import { invalidMark, markScope, marksReading, rangeHull, type MarkGroup } from './marks'
 export { sourceBounds } from './materialLayout'
 // 时间范围的类型与算法都下沉到 marks.ts（标记组自己带着范围），这里原样转出去，调用方不用改 import
 export { RANGE_MIN, timecode, adjustRange, type TimeRange } from './marks'
-export function sourceError(d?: number, ready = true, mode: Mode = 'edit', model: Model = 'sd2.5'): string | null {
+export function sourceError(d?: number, ready = true, mode: Mode = 'edit', model: Model = 'sd2.5', name = ''): string | null {
   const [lo, hi] = sourceBounds(mode, model)
-  if (!ready || d == null || !Number.isFinite(d)) return '正在读取源视频时长，准备好后即可继续'
-  if (d < lo) return `源视频不足 ${lo} 秒，${mode === 'edit' ? '编辑' : '延长'}任务需要 ${lo}–${hi} 秒的视频`
-  if (d > hi) return `源视频超过 ${hi} 秒，${mode === 'edit' ? '编辑' : '延长'}任务需要 ${lo}–${hi} 秒的视频`
+  // 读完会自己恢复，不用再补一句「准备好后即可继续」
+  if (!ready || d == null || !Number.isFinite(d)) return readingDuration(name)
+  if (d < lo || d > hi) return durRange(lo, hi, name)
   return null
 }
 /** 「还没填」类提示：空槽位与占位符在界面上一眼可见，面板里不再重复，只用于禁用按钮与按钮悬停说明。 */
 const TODO = {
-  first: '请添加首帧', ref: '请添加参考素材', refImage: '请添加参考图',
-  source: '请选择源视频', direction: '请选择向前或向后延长',
-  badRange: '标记指向的时间已经超出这段原片，请重新标记',
-  promptEdit: '描述想要修改的内容', prompt: '请填写生成要求',
+  first: '还需添加首帧', ref: '还需添加参考素材', refImage: '还需添加参考图',
+  source: '还需选择源视频', direction: '还需选择延长方向',
+  badRange: '标记时间超出源视频范围，重新标记后可继续',
 }
 const TODO_SET = new Set<string>(Object.values(TODO))
 export const isTodoError = (error: string | null) => !!error && TODO_SET.has(error)
@@ -31,14 +29,14 @@ function referenceError(g: GenState, active: string[], get: MatGet): string | nu
     if (id === source) continue // 主视频有自己的区间要求，已经单独查过
     const m = get(id)
     if (m?.kind !== 'video') continue
-    if (m.ready === false || m.dur == null || !Number.isFinite(m.dur)) return `正在读取参考视频 ${m.name} 的时长，准备好后即可继续`
+    if (m.ready === false || m.dur == null || !Number.isFinite(m.dur)) return readingDuration(m.name)
   }
   return null
 }
 export function taskError(g: GenState, get: MatGet): string | null {
   // 模型没有这个能力时，生成和 Tab 给同一句话
   const cap = MODEL_CAPABILITIES[g.model]
-  if (!cap.genModes.includes(g.mode)) return `${cap.label} 不支持${TABS.find((t) => t.k === g.mode)!.label}`
+  if (!cap.genModes.includes(g.mode)) return modeUnsupported(g, g.model, get)
   // 素材规则也和 Tab 置灰共用同一份判断：否则会出现「五个模式全部置灰、生成却还能提交」
   const unusable = TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, g.model, g.slotEdit))
   if (unusable) return unusable
@@ -46,22 +44,22 @@ export function taskError(g: GenState, get: MatGet): string | null {
   if (g.mode === 'frames') {
     if (!g.slotFirst) return TODO.first
     const first = get(g.slotFirst)
-    if (first?.error) return `首帧 ${first.name}：${first.error}`
+    if (first?.error) return mediaFailure('首帧', first.name, first.error)
   }
   // 用有效输入判断，不用连线数：配额为 0 的素材连着也不算数。
   // 连着、却一个都用不上时，说的是那一段为什么用不上，不是干巴巴一句「请添加参考素材」
   if (isRef(g.mode) && !active.length) {
     const first = g.tray.map(get).find((m): m is NonNullable<typeof m> => !!m)
     const why = first && matBlockedReason(first, g.mode, g.model)
-    return why ? `${first!.name} ${why}` : g.mode === 'refImage' ? TODO.refImage : TODO.ref
+    return why || (g.mode === 'refImage' ? TODO.refImage : TODO.ref)
   }
   if (g.mode === 'edit' || g.mode === 'extend') {
     const m = g.slotEdit ? get(g.slotEdit) : null
     if (!m) return TODO.source
     // 素材本身用不了（读不出来、时长不在区间内）时，缩略图已经是灰的，这里只把同一句话交给生成按钮
     const blocked = matBlockedReason(m, g.mode, g.model)
-    if (blocked) return `${m.name} ${blocked}`
-    const error = sourceError(m.dur, m.ready, g.mode, g.model)
+    if (blocked) return blocked
+    const error = sourceError(m.dur, m.ready, g.mode, g.model, m.name)
     if (error) return error
     // 延长一律整条进：原片从哪一头接由方向决定，没有「接哪一段」这回事
     // 只要标了东西就是在指范围 —— 每一处标记都带着一个整数秒，不带时间段的框也一样要模型认秒数
@@ -76,11 +74,22 @@ export function taskError(g: GenState, get: MatGet): string | null {
   const warn = mediaSecondsWarning(g, get)
   if (warn) return warn
   const invalid = Object.entries(g.references).find(([name, id]) => g.prompt.includes(`@${name}`) && !active.includes(id))
-  if (invalid) return `引用 @${invalid[0]} 已不在本次素材中，请删除引用或重新添加素材`
-  // 句子开头那几个字是替用户写的，不算他说过话：去掉之后还剩字，才叫说清楚了要改什么
-  if (!docWritten(g.doc, g.prompt)) return g.mode === 'edit' ? TODO.promptEdit : TODO.prompt
+  // 连着也可能不参与：不一定是「重新添加素材」能解决的
+  if (invalid) return `引用 @${invalid[0]} 未参与本次生成，可移除引用或调整素材`
+  // 提示词不设门槛：一句话都不写也让他生成 —— 空句子是他的选择，不是缺一步没做完
   return null
 }
+/**
+ * 型号做不了这件事（U07）。模式标签、模型列表和生成按钮共用这一句。
+ * 只有 Seedance 2.5 同时接得住当前素材和这件事时才给这条出路 —— 推荐一个同样用不了的型号更糟。
+ */
+function modeUnsupported(g: GenState, model: Model, get: MatGet): string {
+  const label = TABS.find((t) => t.k === g.mode)!.label
+  const alt = model !== DELUXE && modeAvailable(g.mode, g.conn, get, DELUXE, g.slotEdit)
+    ? `，可使用 ${MODEL_CAPABILITIES[DELUXE].label}` : ''
+  return `${MODEL_CAPABILITIES[model].label} 不支持${label}${alt}`
+}
+const DELUXE: Model = 'sd2.5'
 /**
  * 换这个型号会让当前这件事做不成的所有原因，模型列表按它置灰 —— 所有规则一个入口。
  * 顺序按「说得多具体」排：先说它接不住哪一段素材（源视频 → 参考视频 → 合计时长），
@@ -117,7 +126,7 @@ function refsBlockModel(g: GenState, model: Model, get: MatGet): string {
     if (id === source) continue // 主视频有自己那一条，已经在 modeBlocksModel 里查过
     const m = get(id)
     if (m?.kind !== 'video' || m.dur == null || !Number.isFinite(m.dur)) continue
-    if (m.dur < lo || m.dur > hi) return `参考视频 ${m.name} 为 ${fmt(m.dur)}，这个型号要求 ${lo}–${hi} 秒`
+    if (m.dur < lo || m.dur > hi) return durRange(lo, hi, m.name)
   }
   return ''
 }
@@ -130,7 +139,7 @@ function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
   // 不能按「不支持」把型号灰掉 —— 那会让「连了素材就选不到 Wan」变成一个走不出去的死角，
   // 因为另一个参考 Tab 在当前型号下本来就是灰的，「先切到别的模式再选」这条出路并不存在。
   if (isRef(g.mode) ? !refModeOf(model) : !MODEL_CAPABILITIES[model].genModes.includes(g.mode)) {
-    return `不支持${TABS.find((t) => t.k === g.mode)!.label}，先切到别的模式再选`
+    return modeUnsupported(g, model, get)
   }
   if (g.mode !== 'edit' && g.mode !== 'extend') return ''
   // 换个型号可能连手上这段源视频都接不住了：2.5 编辑要 4 秒起、最长 30 秒，2.0 是 2–15 秒。
@@ -139,7 +148,7 @@ function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
   const m = g.slotEdit ? get(g.slotEdit) : null
   if (m?.kind === 'video' && m.dur != null && Number.isFinite(m.dur)) {
     const [lo, hi] = sourceBounds(g.mode, model)
-    if (m.dur < lo || m.dur > hi) return `源视频 ${m.name} 为 ${fmt(m.dur)}，这个型号要求 ${lo}–${hi} 秒`
+    if (m.dur < lo || m.dur > hi) return durRange(lo, hi, m.name)
   }
   return TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, model, g.slotEdit))
 }
@@ -150,10 +159,8 @@ function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
  */
 export function marksBlockModel(g: GenState, model: Model): string {
   if (g.mode !== 'edit' || !g.marks.length || supportsRange(model)) return ''
-  const { regions, ranges } = markCount(g.marks)
-  // 只选了时间段、一处没圈也算标了东西，这句话不能读成「标了 0 处」
-  const tally = [regions ? `${regions} 处` : '', ranges ? `${ranges} 段` : ''].filter(Boolean).join('、')
-  return `不响应范围，当前标了 ${tally}`
+  // 理由和标记入口上挂的是同一句，只多一条解除办法；标了几处不用在这里重复
+  return `${rangeBlockedReason(model)}，移除标记后可切换`
 }
 export function taskPayload(g: GenState, get: MatGet) {
   const error = taskError(g, get)
@@ -180,7 +187,8 @@ export function taskPayload(g: GenState, get: MatGet) {
     marks: marks.map((x): MarkGroup => ({ ...x, range: x.range && { ...x.range }, regions: x.regions.map((r) => ({ ...r, rect: [...r.rect], strokes: r.strokes?.map((st) => st.map((pt) => [...pt] as [number, number])) })) })),
     /** 读作：这一整句提示词最终是什么意思，对着它就能验收 */
     reads: g.mode === 'edit' && source
-      ? `把「视频 ${source.name}」${marks.length ? `中 ${marksReading(marks)} 的 ` : '的 '}${g.prompt.trim()}`
+      // 一句要求都没写时不留一个吊着的「的」：读到哪算哪
+      ? `把「视频 ${source.name}」${marks.length ? `中 ${marksReading(marks)} 的 ` : '的 '}${g.prompt.trim()}`.trimEnd().replace(/的$/, '').trimEnd()
       : null,
     direction: g.mode === 'extend' ? g.direction : null,
     // 提交记录必须和界面显示的参数一致：界面能手选比例的模型（2.0 不锁定）就照手选值提交，

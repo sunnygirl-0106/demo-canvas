@@ -51,6 +51,8 @@ interface CanvasStore {
   updateNode: (id: string, patch: Partial<CanvasNodeData>) => void
   deleteSelection: () => void
   connect: (source: string, target: string) => void
+  /** 断开一条连线（悬浮到线上的小剪刀） */
+  disconnect: (edgeId: string) => void
   /** 点右 ⊕（不拖）：右侧 360px 直接新建空视频节点并连上 */
   spawnDownstream: (source: string) => string | null
   setHoverMat: (id: string | null) => void
@@ -169,6 +171,18 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
     if (!isValidConnection({ source, target, sourceHandle: 'out', targetHandle: 'in' }, nodes, edges)) return
     get().snapshot()
     set({ edges: addEdge({ id: `e-${source}-${target}`, source, target, type: 'dashed' }, edges) })
+  },
+
+  /**
+   * 断开一条连线。和删除节点走同一条撤销栈 —— 剪错了一条线，⌘Z 就能接回来。
+   * 只动这一条边：两头的节点、面板里的草稿都留着，
+   * 素材从「本次输入」里退出去由 App 那一层跟着连接自己落位（syncConn）。
+   */
+  disconnect: (edgeId) => {
+    const { edges } = get()
+    if (!edges.some((e) => e.id === edgeId)) return
+    get().snapshot()
+    set({ edges: edges.filter((e) => e.id !== edgeId) })
   },
 
   spawnDownstream: (source) => {

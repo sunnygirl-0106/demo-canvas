@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Mat, Model } from './materialLayout'
+import { mediaFailure, MEDIA_FAIL, type Mat, type Model } from './materialLayout'
 import { sourceError } from './videoTask'
 import { warmFrame } from './markFrame'
 import Overlay from './Overlay'
@@ -36,7 +36,8 @@ export default function MarkDialog({ mat, model, standing, onCommit, onClose }: 
   const { tip, node: tipNode } = useTip()
   const duration = mat.dur ?? 0
   const loading = !broken && !mat.error && (mat.ready === false || mat.dur == null)
-  const why = broken || mat.error || sourceError(mat.dur, mat.ready, 'edit', model) || ''
+  const why = broken || (mat.error ? mediaFailure('视频', mat.name, mat.error) : '')
+    || sourceError(mat.dur, mat.ready, 'edit', model, mat.name) || ''
   const empty = draftEmpty(draft)
   const pristine = empty
 
@@ -95,7 +96,7 @@ export default function MarkDialog({ mat, model, standing, onCommit, onClose }: 
     const r = draft.range
     if (r && (v.currentTime < r.start || v.currentTime >= r.end)) seek(r.start)
     else if (!r && v.currentTime >= duration - 0.05) seek(0)
-    void v.play().catch(() => setBroken('视频无法播放，请重新上传'))
+    void v.play().catch(() => setBroken(mediaFailure('视频', mat.name, MEDIA_FAIL.play)))
   }
   /** 按下画面的那一刻：停在这一整秒，并记一笔可撤销 */
   const begin = (t: number) => { push(); pauseAt(t) }
@@ -116,8 +117,8 @@ export default function MarkDialog({ mat, model, standing, onCommit, onClose }: 
   const commit = () => { if (why || empty) return; onCommit(draft); onClose() }
 
   const undoWhy = why || (!depth ? '暂无可撤销的操作' : '')
-  const clearWhy = why || (empty ? '尚未标记任何区域' : '')
-  const commitWhy = why || (empty ? '请先在画面中标记一处，或在轨道上选定片段' : '')
+  const clearWhy = why || (empty ? '暂无可清除的标记' : '')
+  const commitWhy = why || (empty ? '先标记区域或选择时间范围' : '')
 
   return <Overlay modal label="标记修改区域" className="mark-dialog" onClose={tryClose}>
     <div onKeyDown={(e) => {
@@ -135,14 +136,14 @@ export default function MarkDialog({ mat, model, standing, onCommit, onClose }: 
         paused={!playing} playing={playing} veil={why} loading={loading}
         onTogglePlay={togglePlay} onBegin={begin} onDraft={(d, i) => { setDraft(d); setActive(i) }} onCancel={pop} />
       {/* video 的事件绑在 MarkStage 渲染出来的那个元素上，这里只挂回调 */}
-      <VideoWiring video={video} range={draft.range} duration={duration} src={mat.src}
+      <VideoWiring video={video} range={draft.range} duration={duration} src={mat.src} name={mat.name}
         onHead={setHead} onPlaying={setPlaying} onSecond={setSecond} onBroken={setBroken} />
       <div className="mark-tools">
         <div className="segmented">
           <button aria-pressed={!draft.range} aria-disabled={!!why} className={draft.range ? '' : 'selected'}
             {...tip(why || undefined)} onClick={() => setScope(false)}>整段视频</button>
           <button aria-pressed={!!draft.range} aria-disabled={!!why} className={draft.range ? 'selected' : ''}
-            {...tip(why || '仅播放该片段，标记也只能落在其中')}
+            {...tip(why || '仅播放所选片段，也仅在该片段内标记')}
             onClick={() => setScope(true)}>指定片段</button>
         </div>
         <i className="mark-sep" aria-hidden />
@@ -153,7 +154,7 @@ export default function MarkDialog({ mat, model, standing, onCommit, onClose }: 
         {/* 这一行只留一个「撤回上一步」：清空整次标记在标题栏上已经有一个出口，
             再摆一把橡皮擦只是同一件事的第二个按钮，还会被误读成「擦掉笔迹」这种并不存在的工具 */}
         <div className="mark-acts">
-          <button className="mark-round" aria-label="撤回上一步" aria-disabled={!!undoWhy} {...tip(undoWhy || '撤回上一步')} onClick={pop}><IcUndo size={15} /></button>
+          <button className="mark-round" aria-label="撤销" aria-disabled={!!undoWhy} {...tip(undoWhy || '撤销上一步操作')} onClick={pop}><IcUndo size={15} /></button>
         </div>
       </div>
       <MarkTrack mat={mat} range={draft.range} regions={draft.regions} head={head} why={why}
@@ -187,8 +188,9 @@ export default function MarkDialog({ mat, model, standing, onCommit, onClose }: 
   </Overlay>
 }
 /** 播放状态与播放头：video 元素在 MarkStage 里，这里只负责把它的事件接出来。 */
-function VideoWiring({ video, range, duration, src, onHead, onPlaying, onSecond, onBroken }: {
-  video: React.RefObject<HTMLVideoElement>; range: { start: number; end: number } | null; duration: number; src?: string
+function VideoWiring({ video, range, duration, src, name, onHead, onPlaying, onSecond, onBroken }: {
+  video: React.RefObject<HTMLVideoElement>; range: { start: number; end: number } | null; duration: number
+  src?: string; name: string
   onHead: (t: number) => void; onPlaying: (v: boolean) => void; onSecond: (t: number) => void; onBroken: (v: string) => void
 }) {
   const box = useRef({ range, duration, src }); box.current = { range, duration, src }
@@ -205,13 +207,13 @@ function VideoWiring({ video, range, duration, src, onHead, onPlaying, onSecond,
     const ended = () => { v.currentTime = box.current.range?.start ?? 0; void v.play().catch(() => undefined) }
     // 暂停到的每一秒顺手存一张干净帧：提交之后句子里的 chip 立刻就有图，不用再解一遍视频
     const seeked = () => { if (box.current.src) warmFrame(v, box.current.src, Math.round(v.currentTime)) }
-    const fail = () => onBroken('视频无法读取，请重新上传')
+    const fail = () => onBroken(mediaFailure('视频', name, MEDIA_FAIL.read))
     v.addEventListener('play', play); v.addEventListener('pause', pause); v.addEventListener('timeupdate', time)
     v.addEventListener('ended', ended); v.addEventListener('seeked', seeked); v.addEventListener('error', fail)
     return () => {
       v.removeEventListener('play', play); v.removeEventListener('pause', pause); v.removeEventListener('timeupdate', time)
       v.removeEventListener('ended', ended); v.removeEventListener('seeked', seeked); v.removeEventListener('error', fail)
     }
-  }, [video, onHead, onPlaying, onSecond, onBroken])
+  }, [video, name, onHead, onPlaying, onSecond, onBroken])
   return null
 }

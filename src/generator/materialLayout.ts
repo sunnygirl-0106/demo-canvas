@@ -125,7 +125,7 @@ export const locksDuration = (mode: Mode) => MODE_RULES[mode].locks.duration ===
 /** 只有 Seedance 2.5 能把「改这一段 / 从这一段接」表达出去；其余型号拖了也会被忽略。 */
 export const supportsRange = (model: Model) => MODEL_CAPABILITIES[model].timestamp
 export const rangeBlockedReason = (model: Model) =>
-  supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不响应范围，只能改整条`
+  supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不支持局部编辑`
 
 /**
  * 这个任务类型收多长的视频 —— 待编辑视频和辅助参考视频共用这一条。
@@ -139,43 +139,65 @@ export const sourceBounds = (mode: Mode, model: Model): [number, number] => {
  * 视频节点上的「编辑视频 / 延长视频」入口能不能点：这段时长有没有任何型号接得住。
  * 一段都接不住就在入口处灰掉并说清楚区间，不要放人进去再用黄字告诉他不行。
  */
-export function sourceEntryReason(dur: number | undefined, mode: 'edit' | 'extend'): string {
+export function sourceEntryReason(dur: number | undefined, mode: 'edit' | 'extend', name = ''): string {
   if (dur == null || !Number.isFinite(dur)) return ''   // 还在读时长，先不拦
   const able = MODELS.filter((m) => MODEL_CAPABILITIES[m].genModes.includes(mode))
   if (able.some((m) => { const [lo, hi] = sourceBounds(mode, m); return dur >= lo && dur <= hi })) return ''
   const lo = Math.min(...able.map((m) => sourceBounds(mode, m)[0]))
   const hi = Math.max(...able.map((m) => sourceBounds(mode, m)[1]))
-  return `这段视频 ${fmt(dur)}，${mode === 'edit' ? '编辑' : '延长'}需要 ${lo}–${hi} 秒的视频`
+  // 区间按这个入口自己的规则填，不为了和别处说一样的话改数值
+  return durRange(lo, hi, name)
 }
 /**
- * 这个素材在当前任务里用不上的原因，空串表示能用 —— 界面按这一句把素材置灰并悬浮说明，
+ * 提示里的素材描述：「视频 ABCD 」这种「类型或角色 + 名称」的说法。
+ * 名字是用来定位问题的，缺席时退回只说类型，不留一个空档。
+ */
+export const subject = (what: string, ...names: string[]) => {
+  const said = names.filter(Boolean).join('、')
+  return said ? `${what} ${said} ` : what
+}
+/** 时长一律阿拉伯数字 + 「秒」，区间用「–」。同一条区间上的多段视频合成一句，不逐段重复 */
+export const durRange = (lo: number, hi: number, ...names: string[]) =>
+  `${subject('视频', ...names)}的时长需在 ${lo}–${hi} 秒之间`
+/** 读不出来 / 放不出来：首帧图片说「首帧 ABCD」，不能一律说成「视频」 */
+export const mediaFailure = (what: string, name: string, cause: string) =>
+  `${subject(what, name)}${cause}，可尝试重新上传`
+/** 节点上只存原因，素材描述在展示时才拼 —— 同一份错误在首帧位和素材区读起来不一样 */
+export const MEDIA_FAIL = { read: '无法读取', play: '无法播放' } as const
+export const readingDuration = (name = '') => `正在读取${subject('视频', name)}的时长`
+export const secs = (d: number) => `${d % 1 ? d.toFixed(1) : d} 秒`
+/**
+ * 这个素材在当前任务里用不上的原因：返回 null 表示能用。
+ * 理由拆成「怎么说」和「说哪几段」两半 —— 同一个原因涉及多段视频时合并素材名（tabNote），
+ * 不把同一句话逐段重复一遍。
+ */
+export interface Block { key: string; say: (names: string[]) => string }
+export function matBlock(m: Mat, mode: Mode, model: Model): Block | null {
+  const kind = m.kind === 'video' ? '视频' : '图片'
+  if (m.error) return { key: `error:${m.id}`, say: () => mediaFailure(kind, m.name, m.error!) }
+  if (mode === 'text' || mode === 'frames') return null
+  const cap = MODEL_CAPABILITIES[model]
+  // 一整类都不收的型号（Wan 图生视频不收视频）：说「不支持」，不说「最多使用 0 段」
+  if (!cap.quota[m.kind]) return { key: `kind:${m.kind}`, say: () => `${cap.label} 不支持${kind}输入` }
+  if (m.kind !== 'video') return null
+  if (m.dur == null || !Number.isFinite(m.dur)) return null
+  const [lo, hi] = sourceBounds(mode, model)
+  // 说的是这件事的门槛本身，不是「哪个型号的哪条规格」：用户听得懂的是秒数。
+  // 低于 / 高于所有型号合起来的那条线时，说的是那条线 —— 换型号、换 Tab 都救不回来，
+  // 没必要拿当前型号更严的门槛去唬人。
+  const range = m.dur < FLOOR || m.dur > CEIL ? [FLOOR, CEIL] : m.dur < lo || m.dur > hi ? [lo, hi] : null
+  return range ? { key: `dur:${range[0]}-${range[1]}`, say: (names) => durRange(range[0], range[1], ...names) } : null
+}
+/**
+ * 这个素材用不上的那一句话，空串表示能用 —— 界面按这一句把素材置灰并悬浮说明，
  * 不再等到用户写完提示词、点生成时才用黄字告诉他。
  * 时长还没读出来的先当能用：读到了自然会再判一次。
  */
-export function matBlockedReason(m: Mat, mode: Mode, model: Model): string {
-  if (m.error) return m.error
-  if (mode === 'text' || mode === 'frames') return ''
-  const cap = MODEL_CAPABILITIES[model]
-  // 一整类都不收的型号（Wan 图生视频不收视频）：说「不收」，不说「最多使用 0 段」
-  if (!cap.quota[m.kind]) return `${cap.label}不使用${m.kind === 'video' ? '视频' : '图片'}素材`
-  if (m.kind !== 'video') return ''
-  if (m.dur == null || !Number.isFinite(m.dur)) return ''
-  const [lo, hi] = sourceBounds(mode, model)
-  // 说的是这件事的门槛本身，不是「哪个型号的哪条规格」：短了就是短了，用户听得懂的是秒数。
-  // 低于 / 高于所有型号合起来的那条线时，说的是那条线 —— 换型号、换 Tab 都救不回来，
-  // 没必要拿当前型号更严的门槛去唬人。
-  if (m.dur < FLOOR) return `视频时长不能小于${cn(FLOOR)}秒`
-  if (m.dur > CEIL) return `视频时长不能超过${cn(CEIL)}秒`
-  if (m.dur < lo) return `视频时长不能小于${cn(lo)}秒`
-  if (m.dur > hi) return `视频时长不能超过${cn(hi)}秒`
-  return ''
-}
+export const matBlockedReason = (m: Mat, mode: Mode, model: Model): string =>
+  matBlock(m, mode, model)?.say([m.name]) ?? ''
 /** 所有型号合起来的收片区间：2–30 秒。这两条线之外的素材，整个产品都用不了 */
 const FLOOR = Math.min(...MODELS.map((m) => MODEL_CAPABILITIES[m].videoSeconds[0]))
 const CEIL = Math.max(...MODELS.map((m) => MODEL_CAPABILITIES[m].videoSeconds[1]))
-/** 门槛写成中文数字，读起来是一句话，不是一条参数 */
-const CN: Record<number, string> = { 2: '两', 4: '四', 15: '十五', 30: '三十' }
-const cn = (n: number) => CN[n] ?? String(n)
 /**
  * 面板上该摆哪些参考素材：用不上的那些不摆。
  * 摆一排灰掉的缩略图再解释「它为什么不参与」，等于把一句失败说明钉在面板上 ——
@@ -221,60 +243,65 @@ export function connInfo(conn: string[], get: MatGet, model: Model, sourceId?: s
  */
 function sourceRequirement(c: ConnInfo, mode: 'edit' | 'extend'): string {
   if (!c.source || c.source.kind !== 'video') return NEEDS.video
-  const why = matBlockedReason(c.source, mode, c.model)
-  return why ? `${c.source.name} ${why}` : ''
+  return matBlockedReason(c.source, mode, c.model)
 }
 /**
  * 素材还没连够时说的那句话：说的是「去画布上连什么」这个动作，
  * 不是「本模式需要几个输入」这种规格描述 —— 用户要的是下一步怎么做。
  */
 const NEEDS = {
-  image: '需要连接图片节点（1–2 个）',
-  video: '需要连接视频节点',
-  any: '需要连接图片或视频节点',
+  image: '连接 1–2 张图片后可用',
+  video: '连接视频后可用',
+  /** 只收图片的型号不能让用户去连视频 */
+  any: (c: ConnInfo) => `连接${MODEL_CAPABILITIES[c.model].quota.video ? '图片或视频' : '图片'}后可用`,
 }
 /** 素材这一半：画布上连了什么决定 Tab 能不能进。模型那一半见 tabStates。 */
 export const TAB_REQUIREMENT: Record<Mode, (c: ConnInfo) => string> = {
-  text: (c) => c.total ? '画布上已连接素材。文生视频只接受文本，断开连接后可用' : '',
+  text: (c) => c.total ? '文生视频仅使用文本，断开素材连接后可用' : '',
   frames: (c) => !c.image ? NEEDS.image
-    : c.image > 2 ? `已连接 ${c.image} 张图片，首尾帧最多使用 2 张` : '',
+    : c.image > 2 ? `首尾帧最多支持 2 张图片，当前已连接 ${c.image} 张` : '',
   // 参考是所有 Tab 失效时的落脚点，只要画布上有东西就进得去：
   // 用不上的那些只是「本次不参与」（缩略图置灰、Tab 悬浮说明），不把整个 Tab 关掉 ——
   // 否则连一段 1.5 秒的视频会让五个 Tab 全灰，用户无处可去
-  ref: (c) => c.total ? '' : NEEDS.any,
+  ref: (c) => c.total ? '' : NEEDS.any(c),
   // 参考图这一条和全能参考完全一样，不改成「必须有图」：只连了视频的 Wan 用户会六个 Tab 全灰、
   // 无处可去。连了视频进来照旧是「缩略图置灰 + 悬浮说明 + 生成按钮拦住」。
-  refImage: (c) => c.total ? '' : NEEDS.any,
+  refImage: (c) => c.total ? '' : NEEDS.any(c),
   edit: (c) => sourceRequirement(c, 'edit'),
   extend: (c) => sourceRequirement(c, 'extend'),
 }
 /**
  * 进得去、但有连着的素材用不上：不在面板里摆一排「不参与」的缩略图，
- * 只在这个 Tab 上挂一句悬浮说明 —— 进来之前就知道会忽略什么。
+ * 只在这个 Tab 上挂一句悬浮说明 —— 进来之前就知道哪些素材不参与。
  */
 export function tabNote(mode: Mode, c: ConnInfo, model: Model): string {
   if (mode === 'text') return ''
-  if (mode === 'frames') return c.video ? '此模式会忽略已连接的视频节点' : ''
+  if (mode === 'frames') return c.video ? SKIP('视频') : ''
   const cap = MODEL_CAPABILITIES[model]
-  // 一整类都不收的模式（参考图不收视频）：说的是「这个模式会忽略哪一类」，不逐个点名 ——
-  // 和首尾帧忽略视频是同一件事，就说同一句话；也别说成「最多使用 0 段」
+  // 一整类都不收的模式（参考图不收视频）：说的是「这一类不参与」，不逐个点名 ——
+  // 和首尾帧不用视频是同一件事，就说同一句话；也别说成「最多使用 0 段」
   const ignored = [!cap.quota.video && c.video ? '视频' : '', !cap.quota.image && c.image ? '图片' : ''].filter(Boolean)
   // 剩下的才逐个说：时长不合规、读不出来的都不拦着生成，也不静默丢，
   // 进来之前就在 Tab 上说清楚哪几个不参与，理由相同的并成一句
-  const groups = new Map<string, string[]>()
+  const groups = new Map<string, { say: Block['say']; names: string[] }>()
   for (const m of c.mats) {
     if (!cap.quota[m.kind]) continue   // 这一类已经整类说过了
-    const why = matBlockedReason(m, mode, model)
-    if (why) groups.set(why, [...(groups.get(why) ?? []), m.name])
+    const b = matBlock(m, mode, model)
+    if (!b) continue
+    const g = groups.get(b.key) ?? { say: b.say, names: [] }
+    g.names.push(m.name); groups.set(b.key, g)
   }
-  const said = [ignored.length ? `此模式会忽略已连接的${ignored.join('与')}节点` : '',
-    ...[...groups].map(([why, names]) => `${names.join('、')} ${why}`)].filter(Boolean)
+  // 原因照旧，后面补一句「不参与本次生成」：说清楚影响范围是这一段素材，不是整件事做不成
+  const said = [ignored.length ? SKIP(ignored.join('与')) : '',
+    ...[...groups.values()].map((g) => `${g.say(g.names)}，不参与本次生成`)].filter(Boolean)
   if (said.length) return said.join('；')
   const over: string[] = []
   if (c.image > cap.quota.image) over.push(`${cap.quota.image} 张图片`)
   if (c.video > cap.quota.video) over.push(`${cap.quota.video} 段视频`)
-  return over.length ? `${cap.label} 最多使用 ${over.join('、')}，超出的本次不参与` : ''
+  return over.length ? `${cap.label} 最多支持 ${over.join('、')}，超出部分不参与本次生成` : ''
 }
+/** 素材留着、连接也留着，只是这一次不用它 —— 不说成「忽略」「移除」 */
+const SKIP = (what: string) => `${what}不参与本次生成`
 export interface TabState { k: Mode; label: string; enabled: boolean; reason: string; note: string }
 /**
  * 这个型号做得了的那几件事，各自能不能进。
@@ -294,7 +321,7 @@ export function tabStates(conn: string[], get: MatGet, model: Model, sourceOf?: 
     // 进不去但换个型号就进得去时，直接把那个型号说出来 —— 否则用户在灰掉的 Tab 上无路可走
     if (reason && (t.k === 'edit' || t.k === 'extend') && c.video) {
       const better = MODELS.find((m) => m !== model && modeAvailable(t.k, conn, get, m, source))
-      if (better) reason += `，换 ${MODEL_CAPABILITIES[better].label} 可以`
+      if (better) reason += `；可切换至 ${MODEL_CAPABILITIES[better].label}`
     }
     return { ...t, enabled: !reason, reason, note: reason ? '' : tabNote(t.k, c, model) }
   })
@@ -317,12 +344,11 @@ export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Mo
 export function modelUnusableReason(conn: string[], get: MatGet, model: Model): string {
   const cap = MODEL_CAPABILITIES[model]
   if (cap.genModes.some((m) => modeAvailable(m, conn, get, model))) return ''
-  const only = cap.genModes.map((m) => TABS.find((t) => t.k === m)!.label).join(' / ')
-  // 型号名就在这行上，理由里不用再念一遍。
-  // 只做一件事的型号，缺素材时把那一件事要连什么直接说出来，和 Tab 上的说法保持同一句。
-  if (countConn(conn, get).total) return `只做${only}，画布上已连接素材`
-  const needs = cap.genModes.length === 1 ? TAB_REQUIREMENT[cap.genModes[0]](connInfo([], get, model)) : ''
-  return `只做${only}，${needs || '需要先连接素材节点'}`
+  // 说的就是它那件事做不成的原因本身，和那个 Tab 上挂的是同一句话 ——
+  // 不再加「只做参考图」这种前缀：型号做得了什么就写在这一行上，理由里不用再念一遍。
+  const c = connInfo(conn, get, model)
+  for (const m of cap.genModes) { const why = TAB_REQUIREMENT[m](c); if (why) return why }
+  return `${cap.label} 不支持当前素材`
 }
 /** 当前 Tab 失效时落到哪里：还有素材就去这个型号的参考 Tab，空画布回文生视频；模型也不支持时继续往下找。 */
 export const fallbackMode = (conn: string[], get: MatGet, model: Model): Mode => {
@@ -356,8 +382,8 @@ export function partition(s: Slots, mode: Mode, model: Model, get: MatGet): { ac
     const m = get(id); if (!m) continue
     const blocked = matBlockedReason(m, mode, model)
     if (blocked) { skipped.push({ id, reason: blocked }); continue }
-    if (m.kind === 'image' && ++image > cap.quota.image) skipped.push({ id, reason: `${cap.label} 最多使用 ${cap.quota.image} 张图片，超出的本次不参与` })
-    else if (m.kind === 'video' && ++video > cap.quota.video) skipped.push({ id, reason: `${cap.label} 最多使用 ${cap.quota.video} 段视频，超出的本次不参与` })
+    if (m.kind === 'image' && ++image > cap.quota.image) skipped.push({ id, reason: `${cap.label} 最多支持 ${cap.quota.image} 张图片，超出部分不参与本次生成` })
+    else if (m.kind === 'video' && ++video > cap.quota.video) skipped.push({ id, reason: `${cap.label} 最多支持 ${cap.quota.video} 段视频，超出部分不参与本次生成` })
     else active.push(id)
   }
   for (const id of s.unused) {
@@ -367,9 +393,9 @@ export function partition(s: Slots, mode: Mode, model: Model, get: MatGet): { ac
   return { active, skipped }
 }
 function unusedReason(mode: Mode): string {
-  if (mode === 'text') return '文生视频只接受文本，已连接的素材本次不参与'
-  if (mode === 'frames') return '首尾帧只使用图片，已连接的视频本次不参与'
-  return '已从本次输入中移除，连接仍然保留'
+  if (mode === 'text') return SKIP('素材')
+  if (mode === 'frames') return SKIP('视频')
+  return `${SKIP('')}，连接保留`
 }
 /**
  * 「本次有效输入」的完整描述：素材槽位 + 模式 + 模型。
@@ -390,20 +416,21 @@ export const inputSeconds = (g: InputSpec, get: MatGet): number =>
 export function mediaSecondsWarning(g: InputSpec, get: MatGet): string {
   const cap = MODEL_CAPABILITIES[g.model]
   const total = inputSeconds(g, get)
-  return total > cap.quota.mediaSeconds
-    ? `本次输入视频合计 ${fmt(total)}，超出 ${cap.label} 的 ${cap.quota.mediaSeconds} 秒上限，请移除其中一段`
-    : ''
+  // 不说「移除其中一段」：移掉一段也未必就够，该移几段由用户自己看着办
+  return total > cap.quota.mediaSeconds ? overSeconds(total, cap.label, cap.quota.mediaSeconds) : ''
 }
+const overSeconds = (total: number, label: string, limit: number) =>
+  `视频总时长为 ${secs(total)}，超过 ${label} 的 ${limit} 秒上限`
 /**
  * 换成这个型号之后，手上这些视频的合计时长会超出它的上限（2.5 是 30 秒，2.0 系列 15 秒）。
  * 当前型号本来就超了的话不算在这个型号头上 —— 那是素材的问题，生成按钮已经在说了。
- * 理由里不带型号名：它就写在模型列表的同一行上。
+ * 和生成按钮上那一句说的是同一件事，所以用同一句话。
  */
 export function mediaSecondsBlocked(g: InputSpec, model: Model, get: MatGet): string {
-  const limit = MODEL_CAPABILITIES[model].quota.mediaSeconds
+  const cap = MODEL_CAPABILITIES[model]
   const total = inputSeconds({ ...g, model }, get)
-  if (total <= limit || mediaSecondsWarning(g, get)) return ''
-  return `本次输入视频合计 ${fmt(total)}，这个型号最多收 ${limit} 秒`
+  if (total <= cap.quota.mediaSeconds || mediaSecondsWarning(g, get)) return ''
+  return overSeconds(total, cap.label, cap.quota.mediaSeconds)
 }
 
 export function accepts(z: Zone, id: string, get: MatGet) {
@@ -456,7 +483,7 @@ export function promptHint(mode: Mode, hasLast = false): PromptSeg[] {
   const hints: Record<Mode, string> = {
     text: '描述你想要生成的画面内容', frames: hasLast ? '描述从首帧到尾帧之间发生的变化' : '描述从首帧开始的动作与镜头变化',
     ref: '描述你想要生成的画面，输入 @ 引用参考素材',
-    refImage: '描述你想要生成的画面，输入 @ 引用参考图', edit: '哪里改成什么样子',
+    refImage: '描述你想要生成的画面，输入 @ 引用参考图', edit: '某一处调整为目标效果',
     extend: '描述新接上的这段画面与动作',
   }
   return [{ t: hints[mode] }]

@@ -26,7 +26,7 @@ describe('模型置灰', () => {
     expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('')
     // 标了东西之后，不响应范围的 2.0 也跟着灰
     gs().patch('target', { marks: marks(3, { start: 3, end: 7 }) })
-    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不响应范围')
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('Seedance 2.0 不支持局部编辑，移除标记后可切换')
     // 只做文生视频的型号，在这两个模式下都是「不支持这个模式」这条先拦住它
     expect(modelBlockedReason(state(), 'wan2.2-ti2v-5b', get)).toContain('不支持编辑视频')
     gs().setMode('target', 'ref', get)
@@ -46,7 +46,7 @@ describe('模型置灰', () => {
     expect(tabs.find((t) => t.k === 'refImage')!.enabled).toBe(true)
     // 视频不参与：面板上不摆它，Tab 上说一句，生成按钮拿得到图所以照常亮着
     expect(visibleRefs(state().tray, 'refImage', 'wan2.2', get)).toEqual(['a', 'b'])
-    expect(tabs.find((t) => t.k === 'refImage')!.note).toBe('此模式会忽略已连接的视频节点')
+    expect(tabs.find((t) => t.k === 'refImage')!.note).toBe('视频不参与本次生成')
     // 换回来同样是改个名，不是「不支持参考图」
     expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('')
     gs().setModel('target', 'sd2.5', get)
@@ -54,15 +54,15 @@ describe('模型置灰', () => {
   })
   it('选得了但会变样的型号，在做选择之前就说：换过去落到哪、什么素材从此不参与', () => {
     gs().setMode('target', 'ref', get)
-    // 连着两段视频两张图，Wan 只收参考图：换之前就说清楚会落到哪、视频会被忽略
-    expect(modelNote(state(), 'wan2.2', get)).toBe('此模式会忽略已连接的视频节点')
+    // 连着两段视频两张图，Wan 只收参考图：换之前就说清楚会落到哪、哪些素材不参与
+    expect(modelNote(state(), 'wan2.2', get)).toBe('视频不参与本次生成')
     // 当前这个型号自己不说；灰掉的型号有自己的理由，不叠加这一句
     expect(modelNote(state(), 'sd2.5', get)).toBe('')
     expect(modelNote(state(), 'wan2.2-ti2v-5b', get)).toBe('')
     // 换过去之后 Tab 上挂的是同一句话 —— 提前说的和到了那儿说的不能是两回事
     gs().setModel('target', 'wan2.2', get)
     expect(tabStates(state().conn, get, 'wan2.2').find((t) => t.k === state().mode)!.note)
-      .toBe('此模式会忽略已连接的视频节点')
+      .toBe('视频不参与本次生成')
   })
   it('换过去会让参考视频不合规的型号也灰掉，不等提交才报', () => {
     // 源视频 10 秒两个型号都收，但 3 秒的参考视频只有 2.0 收得下
@@ -71,7 +71,7 @@ describe('模型置灰', () => {
     gs().setMode('target', 'edit', get)
     gs().setModel('target', 'sd2.0', get)
     expect(state().tray).toContain('r')
-    expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('参考视频 QRST 为 3s，这个型号要求 4–30 秒')
+    expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('视频 QRST 的时长需在 4–30 秒之间')
     // 反过来从 2.5 看 2.0 的下限是放宽，不拦
     gs().setModel('target', 'sd2.0', get)
     expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('')
@@ -83,7 +83,7 @@ describe('模型置灰', () => {
     gs().setMode('target', 'edit', get)
     expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('')
     for (const m of ['sd2.0', 'sd2.0-fast', 'sd2.0-mini'] as const) {
-      expect(modelBlockedReason(state(), m, get)).toBe('源视频 ABCD 为 16s，这个型号要求 2–15 秒')
+      expect(modelBlockedReason(state(), m, get)).toBe('视频 ABCD 的时长需在 2–15 秒之间')
     }
     // 单个都合规、合计超了的情况：10 + 8 秒在 2.5 的 30 秒内，却过不了 2.0 的 15 秒
     mats[0].dur = 10
@@ -92,7 +92,7 @@ describe('模型置灰', () => {
     gs().setMode('target', 'edit', get)
     expect(state().tray).toContain('r')
     expect(modelBlockedReason(state(), 'sd2.5', get)).toBe('')
-    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('本次输入视频合计 18s，这个型号最多收 15 秒')
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('视频总时长为 18 秒，超过 Seedance 2.0 的 15 秒上限')
   })
 })
 describe('模式草稿与源视频', () => {
@@ -199,7 +199,7 @@ describe('事前置灰，不事后报错', () => {
     gs().syncConn('pick', ['w', 'v'], get)
     const why = tabStates(['w', 'v'], get, 'sd2.5', () => null).find((t) => t.k === 'edit')!
     expect(why.enabled).toBe(false)
-    expect(why.reason).toBe('EFGH 视频时长不能小于四秒，换 Seedance 2.0 可以')
+    expect(why.reason).toBe('视频 EFGH 的时长需在 4–30 秒之间；可切换至 Seedance 2.0')
     // 反过来，把合规的那段排在前面才进得去，选哪一段始终是用户自己的动作
     expect(tabStates(['v', 'w'], get, 'sd2.5', () => null).find((t) => t.k === 'edit')!.enabled).toBe(true)
     // 真进去了也只会拿第一段，不会被悄悄换掉
@@ -212,7 +212,7 @@ describe('事前置灰，不事后报错', () => {
     gs().syncConn('only', ['w'], get)
     const edit = tabStates(['w'], get, 'sd2.5').find((t) => t.k === 'edit')!
     expect(edit.enabled).toBe(false)
-    expect(edit.reason).toBe('EFGH 视频时长不能小于四秒，换 Seedance 2.0 可以')
+    expect(edit.reason).toBe('视频 EFGH 的时长需在 4–30 秒之间；可切换至 Seedance 2.0')
     // 从视频节点入口进来时按「这一段」挑型号，落地就是能用的组合，不是一个灰面板
     expect(modelForSource('edit', ['w'], get, 'w', 'sd2.5')).toBe('sd2.0')
   })
@@ -232,7 +232,7 @@ describe('事前置灰，不事后报错', () => {
     // 编辑面板上不摆它，只在 Tab 悬浮说明里提一句
     expect(visibleRefs(gs().get1('jump').tray, 'edit', 'sd2.5', get)).not.toContain('w')
     expect(tabStates(['v', 'w'], get, 'sd2.5', () => 'v').find((t) => t.k === 'edit')!.note)
-      .toBe('EFGH 视频时长不能小于四秒')
+      .toBe('视频 EFGH 的时长需在 4–30 秒之间，不参与本次生成')
   })
   it('时长晚一步读出来：读到的那一刻把型号收敛过去，不留下一句事后的黄字', () => {
     // 进来时还在读时长（dur 未知），面板先放行
@@ -251,9 +251,9 @@ describe('事前置灰，不事后报错', () => {
     expect(gs().get1('late').mode).toBe('ref')
     // 落脚的参考素材进得去，但那一段本次不参与，理由是一句话的门槛
     const states = tabStates(['w'], get, 'sd2.5')
-    expect(states.find((t) => t.k === 'edit')!.reason).toBe('EFGH 视频时长不能小于两秒')
-    expect(states.find((t) => t.k === 'ref')!.note).toBe('EFGH 视频时长不能小于两秒')
-    expect(taskError({ ...gs().get1('late'), prompt: '海边日落' }, get)).toBe('EFGH 视频时长不能小于两秒')
+    expect(states.find((t) => t.k === 'edit')!.reason).toBe('视频 EFGH 的时长需在 2–30 秒之间')
+    expect(states.find((t) => t.k === 'ref')!.note).toBe('视频 EFGH 的时长需在 2–30 秒之间，不参与本次生成')
+    expect(taskError({ ...gs().get1('late'), prompt: '海边日落' }, get)).toBe('视频 EFGH 的时长需在 2–30 秒之间')
   })
 })
 
@@ -283,11 +283,11 @@ describe('连续操作', () => {
   it('切到不响应范围的型号，标记留着，只是生成按钮灰掉 —— 手画的东西不能被一次换型号抹掉', () => {
     gs().patch('target', { prompt: '把椅子改成红色', marks: marks(3, { start: 3, end: 7 }) })
     // 不响应范围的模型在选择列表里就是灰的，用户在做选择之前已经看到原因
-    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不响应范围')
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不支持局部编辑')
     gs().setModel('target', 'sd2.0', get)
     expect(state()).toMatchObject({ model: 'sd2.0', mode: 'edit', marks: marks(3, { start: 3, end: 7 }) })
     // 留着不等于放行：生成按钮说得出是被哪几组挡住的，出口是「移除标记，改整条」
-    expect(taskError(state(), get)).toContain('不响应范围')
+    expect(taskError(state(), get)).toContain('不支持局部编辑')
     gs().patch('target', { marks: [] })
     expect(taskError(state(), get)).toBeNull()
   })
