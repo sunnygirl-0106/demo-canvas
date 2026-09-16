@@ -63,6 +63,8 @@ export const IcSend = (p: P) => <Svg {...p}><path d="M4.5 12.5l15.5-7-7 15.5-1.8
 export const IcArrowR = (p: P) => <Svg {...p}><path d="M4 12h14" /><path d="M13 6l6 6-6 6" /></Svg>
 /** 退出编辑 / 延长操作 */
 export const IcClose = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6L6 18" /></Svg>
+/** @ 呼出的素材面板顶上的搜索 */
+export const IcSearch = (p: P) => <Svg {...p}><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></Svg>
 export const IcPlay = ({ size = 28 }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M8 5l11 7-11 7z" /></svg>
 )
@@ -71,3 +73,19 @@ export const IcPlay = ({ size = 28 }: P) => (
 export const IcSeedance = (p: P) => <Svg {...p}><rect x="5" y="10" width="2.5" height="8" rx="1" /><rect x="10.25" y="6" width="2.5" height="12" rx="1" /><rect x="15.5" y="8" width="2.5" height="10" rx="1" /></Svg>
 export const IcWan = (p: P) => <Svg {...p}><path d="M4 12c2-4 4-6 8-6s6 2 8 6-2 6-8 6-6-2-8-6z" /></Svg>
 export const IcKling = (p: P) => <Svg {...p}><circle cx="6" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="18" cy="12" r="2" /><path d="M3 12h4M8 12h4M14 12h4" /></Svg>
+/* ── 标记修改 ── */
+/**
+ * 入口用的套索：虚线圈 + 收绳 + 落点。比方框更像「圈一块出来」这件事，
+ * 缩到 14px 仍看得出是个圈 —— 线宽 1.7、虚线 3.4/2.8 是按这个尺寸定的。
+ */
+export const IcLasso = ({ size = 14, color = 'currentColor', sw = 1.7, style, className }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+    strokeWidth={sw} strokeLinecap="round" style={style} className={className}>
+    <ellipse cx="12" cy="9.4" rx="7.7" ry="5" strokeDasharray="3.4 2.8" />
+    <path d="M9 13.9c-.7 2-.4 3.7.9 5" />
+    <circle cx="10.4" cy="19.9" r="1.4" fill={color} stroke="none" />
+  </svg>
+)
+export const IcFrame = (p: P) => <Svg {...p}><path d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3" /></Svg>
+export const IcBrush = (p: P) => <Svg {...p}><path d="M15 4l5 5-9.5 9.5L5 20l1.5-5.5z" /><path d="M13 6l5 5" /></Svg>
+export const IcUndo = (p: P) => <Svg {...p}><path d="M4 10h9.5a4.5 4.5 0 1 1 0 9H8" /><path d="M8 6l-4 4 4 4" /></Svg>

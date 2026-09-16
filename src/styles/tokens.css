@@ -15,12 +15,40 @@
   --teal:#5eead4;  --teal-on:#9df5e6;  --teal-deep:#2ed3b7;  --teal-bg:rgba(46,211,183,.10);
   --teal-ring:rgba(94,234,212,.45);  --teal-soft:rgba(94,234,212,.5);  --teal-dash:rgba(94,234,212,.32);
   --teal-wash:rgba(46,211,183,.06);
+  /*
+   * 面板里缩略图方块悬浮时那条边。比 --teal 往白里调、再压掉大半透明度：
+   * 它只是「句子里说的就是这一段」的一声招呼，不是选中，不该是一整圈实色。
+   */
+  --hl-edge:rgba(126,238,218,.62);
   --teal-solid:#5eead4;  --teal-solid-hover:#7ff0dc;  --teal-ink:#04211c;
   --chip-ink:#7ff0dc;  --chip-bg:rgba(46,211,183,.12);  --chip-line:rgba(94,234,212,.3);
+  /*
+   * 句子里那几枚标签的中性底：素材、时间段、一处标记、延长参数，都走这一套。
+   * 只有底色，没有描边 —— 一句话里嵌着四五枚标签，每枚再镶一圈亮线，
+   * 满眼都是框，反倒看不清哪是词、哪是字；一块干净的灰底自己就把边界说清楚了。
+   * 没了描边就得靠底色站住，所以比控件的 --fill 三档亮一大截：
+   * 和面板底（#151717）的对比度 1.62，一眼看过去是一块实心的灰，
+   * 不是「正文底下压了层浅影」—— 沿用 --fill 那一档（对比 1.2）就是后者。
+   * 只有这一档，不分带图不带图：一句话里几枚标签深浅不一，
+   * 那点差别不会被读成「这枚更要紧」，只会读成没对齐。
+   */
+  --seg:rgba(255,255,255,.16);  --seg-on:rgba(255,255,255,.22);
   --warn:#e6c08a;  --danger:#ff5f5f; --danger-ink:#ff7a7a;
+  --mark:#ff4d5a;          /* 画面标记：红色只用在这里，和青色的「选中 / 可用」不打架 */
+  /* 素材方块的边长：面板里一切静止态缩略图都从这一个数派生（首尾帧的连线间距也跟着它） */
+  --tile:46px;
   --r-node:16px; --r-panel:22px; --r-pill:999px; --r-tile:13px; --r-slot:12px; --r-ctl:12px;
   --ease:cubic-bezier(.22,1,.36,1);  --ease-soft:cubic-bezier(.2,.8,.2,1);
   --pop:0 34px 70px -30px rgba(0,0,0,.9);
   --font:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',system-ui,sans-serif;
   --mono:ui-monospace,Menlo,Consolas,monospace;
+  /*
+   * 时间码专用的一套数字：Menlo 那类等宽字形是给代码看的，摆进 00:02 这种标签里
+   * 又宽又方，一眼先看见「代码」。改用系统正文字体的等宽数字（tabular-nums）——
+   * 字形和中文正文同源，冒号收得紧，位数再变也不会左右跳。
+   * 字重压在 400-500：同样的号数，SF Pro 比 Menlo 显粗，照搬 600 会把一行小标签压住 ——
+   * 灰底上的数字给 400，压在画面上的给 500（底下是图，得多留半档才看得清）。
+   * 想换更硬朗的工业感数字，把 'DIN Alternate' 加到这行最前面即可（macOS 自带）。
+   */
+  --num:'SF Pro Display','SF Pro Text',-apple-system,BlinkMacSystemFont,'Helvetica Neue','Segoe UI',system-ui,sans-serif;
 }

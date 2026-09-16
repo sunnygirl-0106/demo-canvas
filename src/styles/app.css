@@ -12,7 +12,6 @@ input,textarea{font:inherit;color:inherit}
 @keyframes gp-fade{from{opacity:0}to{opacity:1}}
 @keyframes gp-rise{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
 @keyframes gp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
-@keyframes gp-travel{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
 @keyframes sp{to{transform:rotate(360deg)}}
 @keyframes gp-flow{to{stroke-dashoffset:-80}}
 
@@ -168,58 +167,80 @@ input,textarea{font:inherit;color:inherit}
 button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
 button:disabled{opacity:.4;cursor:not-allowed}
 .gp{width:min(840px,calc(100vw - 24px));max-height:calc(100dvh - 80px);overflow:auto;scrollbar-width:thin;
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);padding:16px 22px 18px;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);padding:13px 22px 16px;
   display:flex;flex-direction:column;cursor:default;
   box-shadow:0 40px 90px -36px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.04);
   animation:gp-pop .24s var(--ease-soft) both}
 
 /* ── 模式 tab：下划线指示条随选中项滑动，亮带自左向右巡游 ── */
 .gp-tabrow{display:flex;align-items:center;justify-content:space-between}
-.gp-tabs{position:relative;display:flex;align-items:flex-end;gap:4px;padding-bottom:10px;flex:1;min-width:0}
+.gp-tabs{position:relative;display:flex;align-items:flex-end;gap:4px;padding-bottom:13px;flex:1;min-width:0}
 .gp-tabs::after{content:'';position:absolute;left:0;bottom:0;width:100%;height:1px;background:var(--line)}
-.gp-tab{padding:8px 16px 10px;font-size:15px;font-weight:500;letter-spacing:.02em;white-space:nowrap;
+.gp-tab{display:flex;align-items:center;gap:6px;padding:6px 14px 8px;font-size:14.5px;font-weight:500;
+  letter-spacing:.02em;white-space:nowrap;
   background:transparent;border:0;color:var(--ink-off);cursor:pointer;user-select:none;transition:color .3s}
 .gp-tab:hover{color:var(--ink-1)}
 .gp-tab.on,.gp-tab.on:hover{color:var(--ink-0);font-weight:650}
-.gp-ind{position:absolute;left:0;bottom:0;height:2px;border-radius:2px;background:var(--teal);z-index:1;
-  overflow:hidden;pointer-events:none;transition:transform .42s var(--ease),width .42s var(--ease)}
-.gp-ind i{position:absolute;top:0;bottom:0;width:34%;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);
-  animation:gp-travel 2.6s ease-in-out infinite}
+.gp-tab-no{font-size:12px;line-height:1}
+/*
+ * 选中位置只由一个滑点标出来：它落在选中项的中线上，宽度与那个 Tab 有多少字无关。
+ * 换 Tab 的一刻被拉成短棒、到站收回成点 —— 让「它是从哪儿走过来的」这件事看得见，
+ * 而不是凭空在新位置亮起来。滑点不占满整个 Tab，所以也不必跟着字重变宽变窄。
+ */
+.gp-ind{position:absolute;left:0;bottom:5px;height:5px;border-radius:3px;background:var(--teal);z-index:1;
+  pointer-events:none;transition:transform .28s cubic-bezier(.32,.94,.28,1),width .28s cubic-bezier(.32,.94,.28,1)}
 
 /* ── 操作标题 ── */
 .task-exit{flex:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px;
-  margin-bottom:10px;border-radius:7px;color:var(--ink-3);transition:color .2s,background .2s}
+  margin-bottom:8px;border-radius:7px;color:var(--ink-3);transition:color .2s,background .2s}
 .task-exit:hover{color:var(--ink-0);background:var(--fill-2)}
 
 /* ── 素材位 ── */
-.material-row{display:flex;align-items:center;gap:14px;min-height:72px;margin-top:15px}
-.material-wrap{position:relative;flex:none;width:72px;height:72px}
-.material-tile{width:100%;height:100%;border-radius:var(--r-tile);border:1px solid rgba(255,255,255,.10);
+.material-row{display:flex;align-items:center;gap:12px;min-height:var(--tile);margin-top:11px}
+.material-wrap{position:relative;flex:none;width:var(--tile);height:var(--tile)}
+.material-tile{width:100%;height:100%;border-radius:var(--r-tile);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10);
   position:relative;overflow:hidden;display:grid;place-items:center;background:var(--fill);
-  transition:transform .28s var(--ease-soft),border-color .28s,box-shadow .28s}
+  transition:transform .28s var(--ease-soft),box-shadow .28s}
 .material-tile img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
 .material-wrap:hover .material-tile,.material-wrap:focus-within .material-tile,.material-tile.lit{
-  transform:translateY(-3px);border-color:rgba(94,234,212,.8);box-shadow:0 14px 26px -14px rgba(0,0,0,.9)}
+  transform:translateY(-3px);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10),0 14px 26px -14px rgba(0,0,0,.9)}
+/*
+ * 悬浮 / 联动时那条青边：不再整圈描一条实心青线（原来是一圈 .8 的青，46px 的小方块
+ * 被框得只剩颜色，画面本身反倒退到后面去了）。改成一条 1px 的渐变边 ——
+ * 底下最亮、往上一路淡回原来那条中性描边，认得出是这一格，又不至于把缩略图框绿。
+ * 常驻但透明，只淡入淡出：一进一出跟着方块那 3px 的上浮同一条曲线走。
+ * 静止态的描边也从 border 换成 inset 阴影，这条环才好压在方块最外那一圈上 ——
+ * 方块 overflow:hidden，伪元素超出边框盒的部分会被裁掉。
+ */
+.material-tile::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;padding:1px;
+  background:linear-gradient(0deg,var(--hl-edge),rgba(126,238,218,.2) 45%,transparent 80%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;opacity:0;transition:opacity .28s}
+.material-wrap:hover .material-tile::after,.material-wrap:focus-within .material-tile::after,
+.material-tile.lit::after{opacity:1}
 .material-empty{width:100%;height:100%;border-radius:var(--r-tile);border:1px dashed var(--line-dash);
   background:rgba(255,255,255,.02);display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:3px;padding:0 4px;text-align:center;font-size:12px;line-height:1.3;color:var(--ink-3);
+  gap:2px;padding:0 3px;text-align:center;font-size:10.5px;line-height:1.25;color:var(--ink-3);
   transition:border-color .25s,color .25s,background .25s,transform .25s var(--ease-soft)}
-.material-empty small{font-size:10px;color:var(--ink-3)}
+.material-empty small{font-size:9px;color:var(--ink-3)}
 .material-empty:hover{border-color:var(--teal-soft);color:#b9f4e8;background:var(--teal-bg);transform:translateY(-2px)}
 .material-empty.required{border-color:var(--teal-dash);background:var(--teal-wash);color:var(--chip-ink)}
-.material-mark{position:absolute;left:6px;bottom:6px;font-size:11px;font-weight:600;color:var(--ink);
-  background:rgba(0,0,0,.55);padding:4px 6px;border-radius:6px;line-height:1}
+.material-mark{position:absolute;left:5px;bottom:5px;font-size:10px;font-weight:600;color:var(--ink);
+  background:rgba(0,0,0,.55);padding:3px 5px;border-radius:5px;line-height:1}
 /* 视频的唯一标记：正中一个播放三角 */
 .material-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  display:flex;align-items:center;justify-content:center;width:24px;height:24px;
-  color:#fff;background:rgba(0,0,0,.5);border-radius:50%;transition:background .2s}
-.material-wrap:hover .material-play,.material-wrap:focus-within .material-play{background:rgba(0,0,0,.72)}
+  display:flex;align-items:center;justify-content:center;width:21px;height:21px;
+  color:#fff;background:rgba(10,12,11,.55);box-shadow:0 0 0 1px rgba(255,255,255,.22);
+  backdrop-filter:blur(4px);border-radius:50%;transition:background .2s}
+.material-wrap:hover .material-play,.material-wrap:focus-within .material-play{background:rgba(10,12,11,.78)}
 
 /* 首尾帧：同一条轨道上平移交换 */
-.frame-lane{position:relative;height:72px;flex:none}
+/* 首帧位到尾帧位：方块 + 52px 连线，方块一改这里跟着改 */
+.frame-lane{--off:calc(var(--tile) + 52px);position:relative;height:var(--tile);width:calc(var(--off) + var(--tile));flex:none}
 .frame-pos{position:absolute;left:0;top:0;transition:transform .5s cubic-bezier(.65,.05,.25,1)}
-.frame-link{position:absolute;left:72px;top:50%;margin-top:-14px;width:52px;height:28px;z-index:4}
+.frame-link{position:absolute;left:var(--tile);top:50%;margin-top:-14px;width:52px;height:28px;z-index:4}
 .frame-line{position:absolute;left:0;right:0;top:50%;margin-top:-1px;height:2px;border-radius:2px;
   background:rgba(255,255,255,.12)}
 /* 悬停时一颗光点沿线跑一趟，暗示两端可以对调 */
@@ -243,33 +264,53 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .frame-link.on:hover::before{opacity:1}
 .source-material{display:flex;align-items:center;gap:10px;padding-right:16px;border-right:1px solid var(--line);flex:none}
 .source-material>span{font-size:12px;color:var(--ink-2)}
+/* 右边没有参考素材栏时，分割线就没有东西可分 */
+.source-material.solo{padding-right:0;border-right:none}
 .reference-materials{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+/* 标记参考图还在截：位置先占住，截好了就地填上，不会等一下再把旁边的东西挤开。
+   截出来的那一格和别的参考素材长得一样 —— 图上画着的红框已经说明它是怎么来的了 */
+.material-shot-wait{width:100%;height:100%;border-radius:var(--r-tile);display:grid;place-items:center;
+  background:var(--sunk);border:1px solid var(--line)}
 
 /* ── 浮层 ── */
 .overlay{z-index:1000;background:var(--surface-3);border:1px solid var(--line-2);border-radius:18px;
   box-shadow:var(--pop);padding:12px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);
   overflow:auto;font-size:13px;color:var(--ink);outline:none;animation:gp-pop .22s var(--ease-soft) both}
-/* 悬浮预览气泡：大图 + 放大提示圈，点一下进大图 */
+/*
+ * 悬浮放大：给的就是那张画面本身，所以浮层的底色、描边、内边距、尖角全部去掉 ——
+ * 外面再套一圈中性色的框，眼睛先看见框、再看见画面，放大这件事就白做了。
+ * 托起它的只有一层投影；从方块底边往上长出来，收放都对着方块。
+ */
+.overlay.shot-pop{padding:0;background:none;border:none;border-radius:0;box-shadow:none;overflow:visible;
+  transform-origin:50% 100%;animation:gp-shot .22s cubic-bezier(.2,.8,.25,1) both}
+@keyframes gp-shot{from{opacity:0;transform:translateY(6px) scale(.88)}to{opacity:1;transform:none}}
+.shot-pop .material-card-shot,.shot-pop .mark-pop-shot{box-shadow:0 20px 50px rgba(0,0,0,.78)}
 /* 灰掉的 Tab 悬浮说明 */
 .tab-tip{max-width:250px;padding:9px 12px;font-size:12.5px;line-height:1.55;
   color:var(--ink-1);border-radius:11px;overflow:visible}
-.material-card{width:268px;padding:10px;overflow:visible}
-.overlay-tail{position:absolute;width:13px;height:13px;margin-left:-7px;background:var(--surface-3);
+.overlay-tail{position:absolute;width:13px;height:13px;background:var(--surface-3);
   border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2)}
-.overlay-tail[data-side=down]{bottom:-7px;transform:rotate(45deg)}
-.overlay-tail[data-side=up]{top:-7px;transform:rotate(225deg)}
-.material-card-shot{display:block;position:relative;width:100%;height:150px;border-radius:12px;overflow:hidden;
+.overlay-tail[data-side=down]{bottom:-7px;margin-left:-7px;transform:rotate(45deg)}
+.overlay-tail[data-side=up]{top:-7px;margin-left:-7px;transform:rotate(225deg)}
+/* 贴在侧边说时尖角也跟着转到侧边，指的还是那一行 */
+.overlay-tail[data-side=left]{left:-7px;margin-top:-7px;transform:rotate(135deg)}
+.overlay-tail[data-side=right]{right:-7px;margin-top:-7px;transform:rotate(-45deg)}
+/* 尺寸由 JS 按素材真实比例算好：静止态一律正方形，展开才还原它本来的样子 */
+.material-card-shot{display:block;position:relative;margin:0 auto;border-radius:12px;overflow:hidden;
   background:var(--surface-2);cursor:zoom-in}
 .material-card-shot img{display:block;width:100%;height:100%;object-fit:cover}
-.material-card-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.05) 45%,rgba(0,0,0,.5))}
 .material-card-cue{position:absolute;left:50%;top:50%;margin:-21px 0 0 -21px;width:42px;height:42px;border-radius:50%;
   background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.4);color:#fff;display:grid;place-items:center;
   transition:transform .25s var(--ease-soft),background .25s}
 .material-card-shot:hover .material-card-cue{transform:scale(1.12);background:rgba(0,0,0,.85)}
-.material-card-meta{padding:10px 4px 2px}
-.material-card-meta span{display:block;margin-top:3px;font-size:11.5px;color:var(--ink-3)}
-.material-card-meta strong{display:block;font-size:13.5px;font-weight:600;color:var(--ink);
+/* 名字、时长、用不上的原因都压在画面底部的暗角里：一张图就是一张图，不在它外面再搭一层
+   角色（参考素材 / 源视频）不写 —— 它已经写在这块画面所在的那一栏上了，读屏另有 aria-label */
+.material-card-meta{position:absolute;left:0;right:0;bottom:0;padding:20px 11px 10px;text-align:left;
+  background:linear-gradient(180deg,transparent,rgba(0,0,0,.66))}
+.material-card-meta span{display:block;margin-top:3px;font-size:11.5px;color:rgba(255,255,255,.66)}
+.material-card-meta strong{display:block;font-size:13px;font-weight:600;color:#fff;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.material-card-meta small{display:block;margin-top:5px;font-size:11.5px;line-height:1.5;color:#f2d8a2}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1100;display:grid;place-items:center;
   padding:24px;backdrop-filter:blur(6px);animation:gp-fade .18s ease-out both}
 .media-preview{width:min(1060px,calc(100vw - 48px));padding:14px;max-height:calc(100dvh - 48px);
@@ -282,94 +323,349 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .media-preview header button:hover{background:var(--fill-2)}
 .media-preview img,.media-preview video{display:block;width:100%;max-height:calc(100dvh - 130px);object-fit:contain;
   background:#0b0c0c;border-radius:12px}
-.asset-picker{width:310px;padding:8px}
 .popover-heading{font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:space-between;padding:7px 6px 12px}
 .popover-heading button{padding:0 4px;color:var(--ink-2)}
-.asset-option{width:100%;display:flex;align-items:center;gap:10px;padding:9px 7px;text-align:left;border-radius:10px;
-  transition:background .2s}
-.asset-option:hover{background:var(--fill-2)}
-.asset-option img{width:42px;height:34px;object-fit:cover;border-radius:8px;background:var(--fill)}
-.asset-option strong{display:block;font-size:13px;font-weight:500}
-.asset-option small{display:block;color:var(--ink-2);margin-top:3px;font-size:11px}
-.asset-at{margin-left:auto;color:var(--chip-ink);font:600 11.5px/1 var(--mono)}
+/*
+ * 打一个 @ 呼出的素材面板：一条竖列，从光标那一点长出来。
+ * 每行只有缩略图、名字、时长三样 —— 名字多半是一串读不出东西的 id，
+ * 认得出这一段的是那张图，所以图占正方形、和句子里的素材标签同一副长相；
+ * 行末那一列只留时长，靠它一眼分出「哪一段是我要的那 5 秒」。
+ */
+.asset-picker{width:300px;padding:0;overflow:visible;border-radius:13px}
+.asset-search{display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid var(--line)}
+.asset-search>svg{flex:none;color:var(--ink-3)}
+.asset-search input{flex:1;min-width:0;background:none;border:0;outline:none;
+  font:inherit;font-size:13.5px;color:var(--ink-0)}
+.asset-search input::placeholder{color:var(--ink-3)}
+.asset-list{max-height:236px;overflow-y:auto;overflow-x:hidden;padding:6px;
+  scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+.asset-list::-webkit-scrollbar{width:6px}
+.asset-list::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+.asset-list .helper{padding:10px 8px 12px}
+/* 行依次落下：面板一开就能看出这是一条从上往下读的列表，而不是一整块突然出现的面 */
+.asset-option{width:100%;display:flex;align-items:center;gap:11px;padding:8px 9px;text-align:left;border-radius:8px;
+  transition:background .16s;animation:asset-row .28s cubic-bezier(.2,.7,.2,1) both}
+.asset-option:hover,.asset-option:focus-visible{background:var(--fill-2)}
+.asset-shot{flex:none;width:40px;height:40px;border-radius:7px;overflow:hidden;
+  background:var(--fill);box-shadow:inset 0 0 0 1px var(--line-2)}
+.asset-shot img{display:block;width:100%;height:100%;object-fit:cover}
+.asset-name{flex:1;min-width:0;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.asset-dur{flex:none;color:var(--ink-2);font:12px/1 var(--mono)}
+@keyframes asset-row{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+/* 尖角只在面板浮在句子上方时出现，指回打下 @ 的那一行 */
+.asset-picker[data-above]::after{content:'';position:absolute;left:16px;bottom:-6px;width:11px;height:11px;
+  background:var(--surface-3);border-left:1px solid var(--line-2);border-bottom:1px solid var(--line-2);
+  transform:rotate(-45deg)}
 
-/* ── 编辑范围与时间轴 ── */
-.edit-scope{display:flex;align-items:center;gap:14px;margin-top:15px;flex-wrap:wrap}
+/* ── 标记式局部编辑 ── */
+/* 入口：中性描边胶囊。青色只留给「生成」和句子里的标记标签，工具行里不该有第二个彩色焦点 */
+.mark-entry{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:var(--r-pill);
+  background:var(--fill);box-shadow:inset 0 0 0 1px var(--line-2);color:var(--ink-1);font-size:12.5px;
+  transition:background .22s,color .22s,box-shadow .22s}
+/* 悬浮才亮青色描边：套索的落点同时向里收一点，像绳子被收紧 */
+.mark-entry:hover{background:var(--teal-wash);box-shadow:inset 0 0 0 1px var(--teal-ring);color:var(--teal-on)}
+.mark-entry svg{transition:transform .22s var(--ease-soft)}
+.mark-entry:hover svg{transform:translate(1px,-1px)}
+/* 弹窗开着：按钮自己就是状态灯，文案换成「正在标记」 */
+.mark-entry.on{background:var(--teal-bg);box-shadow:inset 0 0 0 1px var(--teal-soft);color:var(--teal-on)}
+.mark-entry[aria-disabled=true]{opacity:.45;cursor:not-allowed;box-shadow:inset 0 0 0 1px var(--line)}
+.mark-entry[aria-disabled=true]:hover{background:var(--fill);color:var(--ink-1)}
+.mark-entry[aria-disabled=true]:hover svg{transform:none}
+
+/* 一帧画面 + 画在它上面的标记：句子里的小图块和悬浮放大的大图共用这一份。
+   --ar 是素材的真实宽高比，由 JS 量出来传进来；量不到时才当 16:9 */
+.mark-shot{position:relative;display:block;flex:none;width:var(--shot,22px);aspect-ratio:var(--ar,1.7778);
+  border-radius:4px;overflow:hidden;background:#000}
+.mark-shot-in{position:absolute;left:0;right:0;top:0;bottom:0}
+.mark-shot-in>img{display:block;width:100%;height:100%;object-fit:cover}
+.mark-art{position:absolute;inset:0;pointer-events:none}
+.mark-art .mark-box{position:absolute;border:1px solid var(--mark);
+  box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 18px -8px rgba(255,77,90,.7)}
+.mark-ink{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.ink-wide{fill:none;stroke:rgba(255,77,90,.42);stroke-linecap:round;stroke-linejoin:round}
+.ink-line{fill:none;stroke:var(--mark);stroke-width:1.5;vector-effect:non-scaling-stroke;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/*
+ * 句子里的标记标签：一处标记一枚，时间段也是独立的一枚，都不用点开，也都没有删除叉 ——
+ * 这一行是一句话，不是管理面板；增删改回「标记修改」弹窗里做。
+ * 26px 高，比这一行的行高（28px）矮一档：前缀那一行是居中对齐的一排，
+ * 标签只要不比行高更高，每一行就正好一个行高，句子不会被撑得高低错行。
+ * 配色走中性：这一屏的青色留给「生成」和被改的那段视频，标签里唯一的彩色是缩略图上的红框本身。
+ */
+.mark-chip{display:inline-flex;align-items:center;flex:none;gap:7px;height:26px;padding:0 7px 0 4px;
+  border-radius:7px;background:var(--seg);color:var(--ink-0);transition:background .2s,color .2s}
+.mark-chip:hover,.mark-chip:focus-within{background:var(--seg-on)}
+.mark-chip-body{display:inline-flex;align-items:center;gap:7px;height:100%;padding:0 2px;color:inherit;
+  font:400 11px/1 var(--num);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+/* 句子里的时间一律同一副字：<b> 默认会被浏览器加粗，于是带图的那几枚比时间段那一枚重一档，
+   一行看下来像两种字体。时间是这句话里的一个词，不是重点，统一走常规字重 */
+.mark-chip b{display:inline-flex;align-items:center;font-weight:400}
+/* 句子里的缩略图是填满的正方形小图块：整幅画面按真实比例铺进来，只有溢出的那一边被裁，
+   裁切中心由 --fx / --fy 对准圈出来的那一块 —— 横屏溢出在左右，竖屏溢出在上下 */
+.mark-chip .mark-shot{--shot:20px;aspect-ratio:1;border-radius:5px}
+.mark-chip .mark-shot-in{right:auto;bottom:auto;
+  width:max(100%,calc(var(--ar,1.7778) * 100%));height:max(100%,calc(100% / var(--ar,1.7778)));
+  left:var(--fx,0%);top:var(--fy,0%)}
+/*
+ * 时间段那一枚：没有「那一帧」可放，于是一个片段图标 + 起止时间，一行读完。
+ * 「这是视频里的一截」由图标说，不再写「时间段」三个字，也不画细轨 ——
+ * 两秒落在全片哪里，轨道那一层已经画过了，句子里再画一遍只是把标签撑高。
+ * 底色和其余几枚同一档（--seg），只是没有缩略图那一格，左右各补一点 padding。
+ */
+.mark-chip.range{padding:0 10px 0 8px}
+.mark-chip.range .mark-chip-body{gap:7px;padding:0;color:var(--ink-0)}
+/*
+ * 片段图标和它后面的时间是同一个词的两半，就得一样亮 ——
+ * 之前压到 --ink-2，图标看着像个水印，读出来是「时间前面有点什么东西」。
+ * 镜头那一小块填实：13px 上画一个空心小三角，中间那两三个像素糊成一团，
+ * 填实了才认得出这是个摄像机而不是一个方块加一撇。
+ */
+.mark-chip.range svg{flex:none}
+.mark-chip.range svg path{fill:currentColor}
+.mark-chip.range b i{font-style:normal;color:var(--ink-2)}
+/* 悬浮预览：把标签上那一帧放大看清楚，不是另一层信息 —— 所以也不该有卡片外框。
+   尺寸由 JS 按素材真实比例算好（横屏顶到宽、竖屏顶到高），和素材方块的悬浮放大同一套 */
+.mark-pop{width:max-content}
+.mark-pop-shot{position:relative;display:block;border-radius:12px;overflow:hidden}
+.mark-pop-shot .mark-shot{width:100%;height:100%;aspect-ratio:auto;border-radius:0}
+.mark-pop-shot em{position:absolute;left:9px;top:8px;font:500 11px/1 var(--num);font-variant-numeric:tabular-nums;
+  letter-spacing:.04em;font-style:normal;color:#fff;
+  background:rgba(0,0,0,.55);border-radius:5px;padding:3px 6px}
+/* 细轨贴着画面底边：放大出来只剩这一条和左上角的时间，别的都由标签自己说 */
+.mark-pop-range{position:absolute;left:10px;right:10px;bottom:10px;height:2px;border-radius:2px;
+  background:rgba(255,255,255,.24)}
+.mark-pop-range i{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--teal)}
+
+/* ── 标记弹窗 ── */
+.mark-dialog{width:min(720px,calc(100vw - 40px));padding:15px 16px 13px;
+  animation:gp-rise .26s var(--ease-soft) both}
+.mark-dialog>div{position:relative;min-width:0}
+.mark-head{display:flex;align-items:flex-start;gap:6px;margin-bottom:12px}
+.mark-head>div{min-width:0;margin-right:auto}
+.mark-head strong{display:block;font-size:14.5px;font-weight:600;color:var(--ink-0)}
+.mark-head span{display:block;margin-top:3px;font:12px/1.4 var(--num);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.mark-clear-all{font-size:12px;padding:5px 10px;border-radius:8px;color:var(--ink-2);transition:background .2s,color .2s}
+.mark-clear-all:hover{background:var(--fill);color:var(--ink)}
+.mark-clear-all[aria-disabled=true]{opacity:.42;cursor:not-allowed}
+.mark-x{width:28px;height:28px;flex:none;border-radius:9px;display:grid;place-items:center;
+  color:var(--ink-2);background:var(--fill);transition:background .2s,color .2s}
+.mark-x:hover{background:var(--fill-2);color:var(--ink)}
+
+.mark-stage{position:relative;aspect-ratio:16/9;background:#000;border-radius:var(--r-tile);overflow:hidden;
+  touch-action:none;user-select:none}
+.mark-stage>video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+/* 框要拖要缩，所以框本身收指针事件，覆盖层不收 */
+.mark-stage .mark-box{pointer-events:auto;cursor:move}
+.mark-stage .mark-box.on{box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 26px -4px rgba(255,77,90,.9)}
+.mark-box-label{position:absolute;left:-1px;top:-19px;white-space:nowrap;
+  font:500 11px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--mark);text-shadow:0 1px 3px #000}
+.mark-box-label.inside{top:4px;left:4px}
+.mark-grip{position:absolute;width:9px;height:9px;background:#fff;border-radius:2px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.mark-grip.nw{left:-5px;top:-5px;cursor:nwse-resize}
+.mark-grip.ne{right:-5px;top:-5px;cursor:nesw-resize}
+.mark-grip.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
+.mark-grip.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+.mark-paused{position:absolute;left:50%;top:11px;transform:translateX(-50%);pointer-events:none;
+  font-size:11.5px;color:var(--ink-1);background:rgba(8,9,9,.72);border-radius:var(--r-pill);padding:4px 11px}
+.mark-paused b{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink-0)}
+.mark-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;
+  border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(8,9,9,.58);backdrop-filter:blur(3px)}
+.mark-play:hover{background:rgba(8,9,9,.76)}
+.mark-veil{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:6px;padding:20px;
+  text-align:center;background:rgba(8,9,9,.84);backdrop-filter:blur(3px)}
+.mark-veil strong{font-size:13.5px;font-weight:500;color:var(--ink-0)}
+.mark-veil small{font-size:12px;color:var(--ink-3)}
+
+.mark-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:13px 0 12px}
 .segmented{display:flex;gap:2px;padding:3px;background:var(--fill);border:1px solid var(--line);
   border-radius:var(--r-pill)}
-.segmented button{height:28px;padding:0 15px;border-radius:var(--r-pill);font-size:13.5px;font-weight:500;
+.segmented button{height:26px;padding:0 13px;border-radius:var(--r-pill);font-size:12.5px;font-weight:500;
   color:var(--ink-2);transition:color .3s,background .3s,box-shadow .3s}
 .segmented button:hover{color:var(--ink)}
 .segmented .selected,.segmented .selected:hover{background:var(--fill-3);color:var(--ink-0);font-weight:600;
   box-shadow:inset 0 0 0 1px var(--line-2)}
-.edit-scope>span{font-size:12.5px;color:var(--ink-3)}
-.segment-selector{margin-top:12px;min-width:0}
-.segment-selector>video{display:block;width:100%;height:166px;background:var(--sunk);border-radius:var(--r-tile);object-fit:contain}
-.timeline-heading{display:flex;justify-content:space-between;gap:12px;font-size:12px;margin:12px 0 9px;
+.mark-sep{width:1px;height:18px;flex:none;background:var(--line)}
+.mark-tools .segmented button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
+.mark-toolpick{display:flex;gap:6px}
+.mark-toolpick button{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:10px;
+  font-size:12.5px;color:var(--ink-2);transition:background .22s,color .22s,box-shadow .22s}
+.mark-toolpick button:hover{color:var(--ink)}
+.mark-toolpick .selected,.mark-toolpick .selected:hover{background:var(--chip-bg);color:var(--chip-ink);
+  box-shadow:inset 0 0 0 1px var(--chip-line)}
+.mark-acts{margin-left:auto;display:flex;gap:6px}
+.mark-round{width:30px;height:30px;border-radius:var(--r-pill);display:grid;place-items:center;color:var(--ink-1);
+  background:var(--fill);box-shadow:inset 0 0 0 1px var(--line-2);transition:background .2s}
+.mark-round:hover{background:var(--fill-2)}
+.mark-round[aria-disabled=true]{opacity:.4;cursor:not-allowed;box-shadow:inset 0 0 0 1px var(--line)}
+
+/* ── 时间轴（原来在面板上那条，现在住在弹窗里） ── */
+.mark-track-wrap{min-width:0}
+.mark-track-tag{font:10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3)}
+.timeline-heading{display:flex;justify-content:space-between;gap:12px;font-size:12px;margin:0 0 9px;
   color:var(--ink-2);font-variant-numeric:tabular-nums}
-.timeline-heading>span:first-child{color:var(--ink-1)}
-.timeline-track{height:46px;position:relative;border-radius:var(--r-tile);background:var(--sunk);touch-action:none;
+.timeline-heading>span:first-child{color:var(--ink-1);font-family:var(--num);font-weight:400}
+.timeline-track{height:50px;position:relative;border-radius:var(--r-tile);background:var(--sunk);touch-action:none;
   user-select:none;cursor:crosshair;margin:0 7px}
 .timeline-track.disabled{opacity:.4;cursor:not-allowed}
-.timeline-frames{height:100%;display:flex;border-radius:var(--r-tile);overflow:hidden;opacity:.45;pointer-events:none}
-.timeline-frames img{height:100%;width:10%;object-fit:cover}
+.timeline-frames{height:100%;display:flex;border-radius:var(--r-tile);overflow:hidden;opacity:.55;pointer-events:none}
+.timeline-frames img{height:100%;width:10%;object-fit:cover;background:var(--sunk)}
 .timeline-selection{position:absolute;inset:0 auto 0 0;border-block:2px solid var(--teal);
-  background:rgba(94,234,212,.12);cursor:grab;display:grid;place-items:center}
+  background:rgba(94,234,212,.12);cursor:grab;display:grid;place-items:center;z-index:1}
 .timeline-selection:active{cursor:grabbing}
 .range-handle{position:absolute;top:-2px;bottom:-2px;width:14px;background:var(--teal);color:var(--teal-ink);
   cursor:ew-resize;display:grid;place-items:center;font-size:12px;font-weight:700;touch-action:none;z-index:2}
 .range-handle.start{left:-7px;border-radius:6px 0 0 6px}
 .range-handle.end{right:-7px;border-radius:0 6px 6px 0}
 .selection-grip{color:var(--teal-on);font-size:18px;padding:3px 6px;cursor:grab}
+/* 标记落在哪一秒，轨道上就钉一枚；掉在选区外的转琥珀 —— 是提醒，不是错 */
+.mark-pin{position:absolute;top:0;bottom:0;width:2px;border-radius:2px;background:var(--mark);
+  pointer-events:none;z-index:2}
+.mark-pin::after{content:'';position:absolute;left:-4px;top:-3px;width:10px;height:10px;border-radius:50%;
+  background:inherit;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
 .timeline-playhead{position:absolute;top:-5px;bottom:-5px;width:2px;background:#fff;pointer-events:none;
   box-shadow:0 0 2px #000;z-index:3}
 .timeline-ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin:6px 5px 0;
-  font-variant-numeric:tabular-nums}
-.timeline-actions{display:flex;align-items:center;gap:14px;margin-top:9px;font-size:12px}
-.timeline-actions button{padding:4px 0;color:var(--ink-1);transition:color .2s}
-.timeline-actions button:hover{color:var(--teal-on)}
-.timeline-actions>span{margin-left:auto;color:var(--ink-3);font-size:11px}
+  font-family:var(--num);font-variant-numeric:tabular-nums}
+
+.mark-foot{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--line)}
+.mark-pending{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-right:auto;
+  font-size:12px;color:var(--ink-3)}
+/* 待保存的清单：每一枚都能就地摘掉 —— 逐处的删除只在这个编辑台上做，句子里不做 */
+.mark-pending-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 7px 5px 9px;border-radius:7px;
+  background:var(--chip-bg);color:var(--chip-ink);box-shadow:inset 0 0 0 1px var(--chip-line);
+  font:400 11.5px/1 var(--num);font-variant-numeric:tabular-nums;transition:background .2s,box-shadow .2s,color .2s}
+.mark-pending-chip:hover{background:rgba(46,211,183,.2);box-shadow:inset 0 0 0 1px var(--teal-soft)}
+.mark-pending-chip svg{opacity:.65;transition:opacity .2s}
+.mark-pending-chip:hover svg{opacity:1}
+.mark-cancel{padding:8px 14px;border-radius:var(--r-pill);font-size:13px;color:var(--ink-1);background:var(--fill)}
+.mark-cancel:hover{background:var(--fill-2)}
+.mark-commit{padding:8px 20px;border-radius:var(--r-pill);font-size:13px;font-weight:600;color:var(--chip-ink);
+  background:rgba(46,211,183,.16);box-shadow:inset 0 0 0 1px var(--teal-ring);transition:background .2s}
+.mark-commit:hover{background:rgba(46,211,183,.26)}
+.mark-commit[aria-disabled=true]{opacity:.5;cursor:not-allowed;background:var(--fill);color:var(--ink-3);
+  box-shadow:inset 0 0 0 1px var(--line)}
+/* 确认层留在弹窗内部：再开一个 Overlay 会落在这个 Overlay 之外，点它反而触发外层关闭 */
+.mark-confirm{position:absolute;inset:-15px -16px -13px;z-index:5;display:grid;place-items:center;padding:24px;
+  border-radius:18px;background:rgba(6,7,7,.72);backdrop-filter:blur(4px)}
+.mark-confirm>div{max-width:344px;padding:18px;border-radius:16px;background:var(--surface-2);
+  border:1px solid var(--line-2)}
+.mark-confirm strong{display:block;font-size:14px;margin-bottom:8px;color:var(--ink-0)}
+.mark-confirm p{margin:0 0 16px;font-size:12.5px;line-height:1.65;color:var(--ink-2)}
+.mark-confirm>div>div{display:flex;justify-content:flex-end;gap:8px}
+.mark-confirm button{padding:6px 14px;border-radius:var(--r-pill);font-size:12.5px;
+  background:var(--fill);color:var(--ink-1)}
+.mark-confirm button:hover{background:var(--fill-2)}
 
 /* ── 延长方向 ── */
-.extend-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:15px}
-.direction-options{position:relative;display:flex;gap:2px;padding:3px;background:var(--fill);
-  border:1px solid var(--line);border-radius:11px}
-.seg-thumb{position:absolute;top:3px;bottom:3px;left:3px;border-radius:9px;background:var(--fill-3);
-  border:1px solid var(--line-2);pointer-events:none;
+/*
+ * 和「标记修改」同一档：28px 的中性描边胶囊，落在句子左下角那一行工具里。
+ * 描边走 inset 阴影而不是 border —— 这样滑块的 left:0 和按钮的 offsetLeft 是同一个原点，
+ * 有 border 的话两套坐标差一个边宽，滑块会整体偏出去一像素。
+ */
+.direction-options{position:relative;display:inline-flex;gap:2px;padding:2px;background:var(--fill);
+  box-shadow:inset 0 0 0 1px var(--line-2);border-radius:var(--r-pill)}
+.seg-thumb{position:absolute;top:2px;bottom:2px;left:0;border-radius:var(--r-pill);background:var(--fill-3);
+  box-shadow:inset 0 0 0 1px var(--line-2);pointer-events:none;
   transition:transform .34s var(--ease),width .34s var(--ease),opacity .2s}
-.direction-options button{position:relative;display:flex;align-items:center;gap:6px;padding:7px 13px;
-  border-radius:9px;font-size:13.5px;font-weight:500;color:var(--ink-2);transition:color .3s}
+.direction-options button{position:relative;display:flex;align-items:center;gap:6px;height:24px;padding:0 11px;
+  border-radius:var(--r-pill);font-size:12.5px;color:var(--ink-2);transition:color .3s}
 .direction-options button:hover{color:var(--ink)}
 .direction-options .selected,.direction-options .selected:hover{color:var(--ink-0);font-weight:600}
 
 /* ── 提示词（无边框） ── */
-.prompt-editor{margin-top:15px;--pline:28px}
-/* 前缀和正文是同一句话：前缀铺在首行，正文用首行缩进接着它写下去 */
-.prompt-field{position:relative}
-.prompt-editor textarea{display:block;width:100%;min-height:calc(var(--pline)*2);max-height:200px;resize:none;
-  overflow-y:auto;background:transparent;border:0;outline:none;font-size:17px;line-height:var(--pline);padding:0;
-  color:var(--ink);caret-color:var(--teal)}
-.prompt-editor textarea::placeholder{color:var(--ink-3)}
-.prompt-context{position:absolute;top:0;left:0;right:0;font-size:17px;line-height:var(--pline);
-  color:var(--ink-3);pointer-events:none}
-.prompt-context button,.prompt-context .reference-chip{pointer-events:auto}
-.prompt-context .reference-chip{display:inline-block;height:24px;line-height:22px;padding:0 9px;
-  font-size:14px;vertical-align:-6px}
-.reference-chip{border-radius:8px;color:var(--chip-ink);background:var(--chip-bg);border:1px solid var(--chip-line);
-  padding:5px 9px;font-size:13.5px;font-weight:600;transition:background .22s,color .22s}
-.reference-chip:hover{background:rgba(46,211,183,.18)}
-.prompt-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-.prompt-tools .reference-chip{font-size:12.5px;padding:4px 8px}
-.prompt-tools .reference-chip.lit{background:rgba(94,234,212,.22);color:#bcfff0}
+/* 上面是一排图，下面是一句话，两件事：留的气口得比一排图里方块之间的缝（12px）明显宽，
+   否则句首的缩略图标签会和上面那排贴成一片，看着像同一排东西被挤成了两行 */
+/*
+ * 这一块一律按最高的那一档留着（--ptools 是工具行连它的上边距）：
+ * 换个 Tab 就整块往上蹿一截，读起来像换了个界面 —— 高度统一，换的只是里面的内容。
+ * 没有工具行的那几个模式，多出来的高度归可编辑区，不是一条空带子：多出来的地方点下去就是打字。
+ */
+.prompt-editor{margin-top:20px;--pline:28px;--ptools:38px;
+  display:flex;flex-direction:column;min-height:calc(var(--pline)*3 + var(--ptools))}
+/*
+ * 光标压在这句话上就得是「能改」的样子。可编辑区不是 input/textarea，浏览器不会替它挑光标，
+ * 而面板整体写着 cursor:default —— 不明写这一条，箭头会一路继承进来，字看着就像不能动。
+ * 空白处也给 text：点那儿本来就会把光标送进句尾。
+ */
+.prompt-field{position:relative;cursor:text;flex:1;display:flex}
+/*
+ * 整句就是一块可编辑区：开头那几个字和用户自己打的字同色同字号、同样能删能改；
+ * 标签作为行内原子混在字里，靠 vertical-align 压到文字中线上 ——
+ * 行高留得比标签高一点，一行里有没有标签，行距都一样。
+ */
+.prompt-input{display:block;width:100%;flex:1;min-height:calc(var(--pline)*3);max-height:260px;overflow-y:auto;
+  outline:none;font-size:17px;line-height:var(--pline);color:var(--ink);caret-color:var(--teal);
+  white-space:pre-wrap;word-break:break-word;cursor:text}
+/* 标签是整枚原子，不是可改的字：I 形光标会骗人说这里能插字 */
+.prompt-input .mark-chip{cursor:default}
+/* 占位文案接在句子后面（而不是压在开头）：起了头也还看得见「接下来该写什么」 */
+.prompt-input[data-empty]::after{content:attr(data-ph);color:var(--ink-3);pointer-events:none}
+/*
+ * 每一枚标签在句子里落在哪条线上，统一交给外面那层 [data-seg] 决定。
+ * 标签本身是 inline-flex，基线取自第一个子项 —— 时间段那一枚的第一个子项是文字，
+ * 其余几枚是缩略图，基线各在各的地方，同一个 vertical-align 摆出来就高低错开一截。
+ * 外面这层是 line-height:0 的 inline-block（overflow 非 visible，基线就是它自己的下边缘），
+ * 于是无论里面装的是哪一种标签，都按同一条线落位。-7px 让标签的中线正好压在汉字的中线上。
+ */
+/* 标签左右那一口气由外边距给，句子里不存空格字符 ——
+   存了的话，删掉一枚标签或者接着往后打字，用户还得自己退一个看不见的空格 */
+.prompt-input [data-seg]{display:inline-block;overflow:hidden;line-height:0;vertical-align:-6px;margin:0 3px}
+.prompt-input [data-seg]>*{vertical-align:top}
+/*
+ * 句子里的标签一律 24px 高，一行标签才是一排而不是高低两档。
+ * 标签里的字跟正文只差一档（15.5px 对 17px）—— 它读起来是这句话的一部分，
+ * 缩略图也就跟着字走，只比一个汉字略大；图大字小会把标签读成一张贴纸，不像话里的一个词。
+ */
+.prompt-input .reference-chip,.prompt-input .mark-chip,.prompt-input .source-chip{height:24px}
+.prompt-input .reference-chip{display:inline-flex;align-items:center;line-height:1;padding:0 9px;font-size:14px}
+.prompt-input .source-chip{font-size:15.5px;padding:0 11px 0 4px;gap:8px}
+.prompt-input .source-chip-shot{width:17px;height:17px;border-radius:4px}
+.prompt-input .mark-chip{padding:0 9px 0 4px}
+.prompt-input .mark-chip-body{gap:8px}
+.prompt-input .mark-chip-body{font-size:14.5px}
+.prompt-input .mark-chip .mark-shot{--shot:17px}
+.prompt-input .mark-chip.range{padding:0 11px 0 9px}
+/*
+ * 延长参数那一枚：和源素材、时间段是同一类东西 —— 都是这句话里的一个词，
+ * 所以走同一套中性底。青色留给「生成」和被改的那段视频，
+ * 一个说明「往哪边延长几秒」的词染上青色，会被读成「这里要出东西」。
+ * 它不可点（.static），所以也不给 hover：变色就是在说「这儿能按」。
+ */
+.reference-chip{border-radius:8px;color:var(--ink-0);background:var(--seg);
+  padding:5px 9px;font-size:13.5px;font-weight:500}
+/*
+ * 句子开头那枚源素材：认它靠的是缩略图，不是那串随机素材名 —— 所以标签里是一块画面加两个字。
+ * 底色和其余几枚同一档：它是这句话的主语，但不必更亮也不必是彩色的，青色留给「生成」。
+ */
+.source-chip{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 9px 0 3px;border-radius:8px;
+  pointer-events:auto;background:var(--seg);
+  color:var(--ink-0);font-size:13.5px;font-weight:500;transition:background .22s}
+.source-chip:hover{background:var(--seg-on)}
+/* 悬浮联动画布连线时，标签这一头也亮起来 —— 亮的是一档灰，不是彩色：
+   这一屏的青色留给「生成」和被改的那段视频，标签抢了这个颜色就读成「这里要出东西」 */
+.source-chip.lit{background:var(--seg-on)}
+.source-chip-shot{position:relative;flex:none;width:20px;height:20px;border-radius:5px;overflow:hidden;background:#000}
+.source-chip-shot img{display:block;width:100%;height:100%;object-fit:cover}
+/* 播放键做小：它只是说明「这是一段视频」，挡住画面就本末倒置了 ——
+   缩略图只有一个汉字那么大，播放键再大一点，这一格就只剩一个图标，认不出是哪一段了 */
+.source-chip-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;
+  align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;
+  background:rgba(10,12,11,.5);box-shadow:0 0 0 1px rgba(255,255,255,.2);backdrop-filter:blur(3px)}
+/*
+ * 工具行一直占着位：有素材可引用时，打一个 @ 不该把整块面板往上顶一截。
+ * 空着也留一行的高度 —— 框的高度是用户正在打字的那块地方，不能跟着内容跳。
+ */
+.prompt-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;min-height:28px}
+/* 引用标签比句子里的那枚小一档：它是句子底下的一行注脚，不跟正文抢；图和字的比例照旧 */
+.prompt-tools .source-chip{height:22px;padding:0 10px 0 4px;font-size:13px;gap:7px}
+.prompt-tools .source-chip-shot{width:15px;height:15px;border-radius:4px}
 
 /* ── 提示与提交 ── */
-.submission-note{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
+/* @ 选单里的空态说明，中性灰；「做不成」的话一律不落在面板上，只挂在置灰控件的悬浮说明里 */
 .helper{font-size:12.5px;color:var(--ink-3);line-height:1.6}
-/* 产出形态常驻在提示词上方：写要求之前就知道会拿到什么 */
-.validation{color:var(--warn);font-size:12.5px;line-height:1.6}
-.source-notice{display:flex;gap:12px;justify-content:space-between;margin-top:12px;padding:10px 13px;
-  border-radius:var(--r-ctl);background:rgba(230,192,138,.1);border:1px solid rgba(230,192,138,.2);
-  color:var(--warn);font-size:12.5px;line-height:1.6}
 
 /* ── 底栏 ── */
 .gp-bot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:44px;font-size:13px;color:var(--ink);
@@ -394,7 +690,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .gp-send{width:40px;height:40px;flex:none;border-radius:var(--r-ctl);border:1px solid rgba(255,255,255,.10);
   background:rgba(255,255,255,.05);display:grid;place-items:center;color:var(--teal);
   transition:background .24s,border-color .24s,transform .24s}
-.gp-send:hover:enabled{background:var(--fill-3);border-color:rgba(255,255,255,.22);transform:translateY(-2px)}
+.gp-send:not([aria-disabled=true]):hover{background:var(--fill-3);border-color:rgba(255,255,255,.22);transform:translateY(-2px)}
 .gp-send-ic{display:grid;place-items:center;animation:gp-float 4.5s ease-in-out infinite}
 .gp-send.busy{cursor:default}
 .spin{width:16px;height:16px;border-radius:50%;border:2px solid rgba(94,234,212,.22);border-top-color:var(--teal);
@@ -421,7 +717,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .vtool button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
 /* 视频节点上的时长角标：走查时一眼看出这段能做哪些任务 */
 .nd-dur{position:absolute;left:8px;bottom:8px;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.55);
-  font:600 11px/1.4 var(--mono);color:#fff;letter-spacing:.02em;pointer-events:none}
+  font:500 11px/1.4 var(--num);font-variant-numeric:tabular-nums;color:#fff;letter-spacing:.03em;pointer-events:none}
 .params-popover{width:326px;padding:14px}
 .params-popover fieldset{border:0;margin:12px 0 18px}
 .params-popover legend{font-size:12px;color:var(--ink-2);margin-bottom:9px}
@@ -453,31 +749,40 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .source-material{padding-right:10px;gap:6px}.source-material>span{display:none}
   .gp-bot{bottom:-14px;gap:8px}.gp-botL{flex:1}.gp-botR{gap:10px}
   .setting-trigger,.gp-model,.gp-chip{padding:9px 12px;font-size:13px}
-  .prompt-editor textarea,.prompt-context{font-size:15.5px}
-  .prompt-context .reference-chip{font-size:13px}
+  .prompt-input{font-size:15.5px}
+  .prompt-input .reference-chip{font-size:13px}
   .tb-right{gap:6px}.tb-right .pay,.tb-people,.tb-sync{display:none}
-  .timeline-actions{gap:10px}.timeline-actions>span{font-size:10px}.segment-selector>video{height:140px}
+  .mark-dialog{padding:12px 13px 11px}.mark-tools{gap:7px}.timeline-track{height:42px}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   .material-wrap:hover .material-tile,.material-wrap:focus-within .material-tile,.material-tile.lit{transform:none}
-  .gp-ind i{display:none}
 }
 @media(max-height:800px){
   .gp{padding:12px 18px}.gp-tab{padding:6px 14px 8px}.material-row{margin-top:11px}
-  .edit-scope{margin-top:11px}.segment-selector{margin-top:8px}.segment-selector>video{height:100px}
-  .timeline-heading{margin:8px 0 6px}.timeline-actions{margin-top:5px}.prompt-editor{margin-top:11px}
-  .prompt-editor{--pline:26px}
-  .prompt-context .reference-chip{height:22px;line-height:20px;vertical-align:-5px}
-  .prompt-tools{margin-top:6px}.submission-note{margin-top:6px}
+  .mark-tools{padding:10px 0 9px}.mark-foot{margin-top:9px;padding-top:9px}
+  .timeline-track{height:42px}.prompt-editor{margin-top:16px}
+  .prompt-editor{--pline:26px;--ptools:34px}
+  /* 行高压到 26px，标签也跟着矮一档，留出上下的余量；图和字的比例不变 */
+  .prompt-input .reference-chip,.prompt-input .mark-chip,.prompt-input .source-chip{height:22px}
+  .prompt-input [data-seg]{vertical-align:-5px}
+  .prompt-input .source-chip{font-size:14.5px}
+  .prompt-input .mark-chip-body{font-size:12.5px}
+  .prompt-input .mark-chip .mark-shot{--shot:15px}
+  .prompt-input .source-chip-shot{width:15px;height:15px;border-radius:4px}
+  .prompt-tools{margin-top:6px}
   .gp-bot{margin-top:10px;padding-top:10px;bottom:-12px;min-height:40px}
 }
 
 /* ---- 置灰与「本次不参与」：灰要能指到具体那一块，并且随时说得出原因 ---- */
-.gp-tab.off { opacity: .38; cursor: not-allowed; text-decoration: line-through; text-decoration-thickness: 1px; }
-.gp-tab.off:hover { background: transparent; }
+.gp-tab.off, .gp-tab.off:hover { color: var(--ink-3); opacity: .55; cursor: not-allowed; }
 
-.edit-scope .segmented button[aria-disabled=true] { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
+.gp-send[aria-disabled=true] { opacity: .42; cursor: not-allowed; }
+.gp-send[aria-disabled=true] .gp-send-ic { animation: none; }
+/* 本次用不上的素材：缩略图灰掉、去饱和，悬浮卡里说清楚为什么 */
+.material-tile.off { filter: grayscale(1); opacity: .42; }
+.material-tile.off .material-play { opacity: .5; }
+/* 悬浮卡里的说明是说明，不是警告：中性灰，和卡片其余文字一个分量 */
 .scope-fix {
   margin-left: auto; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px;
   border: 1px solid var(--line, #3a4442); background: transparent; color: var(--teal, #4fc9be); cursor: pointer;

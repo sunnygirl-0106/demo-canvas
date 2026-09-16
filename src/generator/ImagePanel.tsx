@@ -4,6 +4,7 @@ import { randomPhoto } from '../demo/assets'
 import { fakeGen } from '../demo/fake'
 import BottomBar from './BottomBar'
 import PromptBox from './PromptBox'
+import { docText } from './promptDoc'
 import { IcCamera, IcChev, IcImage } from '../ui/icons'
 
 /** 图片节点面板：无模式 Tab、无素材区 */
@@ -15,10 +16,12 @@ export default function ImagePanel({ nodeId }: { nodeId: string }) {
   return (
     <>
       <PromptBox
-        value={gen?.prompt ?? ''}
-        onChange={(v) => patch(nodeId, { prompt: v })}
-        placeholder={[{ t: '描述你想生成的图片内容，输入 @ 引用素材' }]}
-        lit={-1}
+        /* 这一栏没有标签，整块就是一段文字 —— ver 固定，挂上之后交给用户自己编辑 */
+        doc={[{ t: 'text', v: gen?.prompt ?? '' }]}
+        ver={nodeId}
+        onDoc={(doc) => patch(nodeId, { doc, prompt: docText(doc, {}) })}
+        renderSeg={() => null}
+        placeholder="描述你想生成的图片内容，输入 @ 引用素材"
         mats={[]}
       />
       <BottomBar

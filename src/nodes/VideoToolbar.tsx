@@ -3,7 +3,7 @@ import { IcDownload, IcScissors, IcPlus } from '../ui/icons'
 import { connOf, useCanvas } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { matOf } from '../demo/assets'
-import { MODELS, modeAvailable, sourceEntryReason } from '../generator/materialLayout'
+import { modelForSource, sourceEntryReason } from '../generator/materialLayout'
 import { useTip } from '../generator/useTip'
 /** 为源视频创建独立下游任务，原素材保留。重复进入恢复同一任务草稿。 */
 export default function VideoToolbar({ nodeId, visible, src, name, dur }: { nodeId: string; visible: boolean; src?: string; name: string; dur?: number }) {
@@ -23,14 +23,13 @@ export default function VideoToolbar({ nodeId, visible, src, name, dur }: { node
     gs.setMode(id, mode, get)
     if (!gs.get1(id).slotEdit) gs.applyDrop(id, nodeId, 'edit', null, get)
     /**
-     * 默认型号接不住这段视频（2.5 编辑要 4 秒起）时换一个接得住的，
-     * 否则用户点了「编辑视频」，落地却是一个灰掉的 Tab。
+     * 默认型号接不住「这一段」视频（2.5 编辑要 4 秒起）时换一个接得住的。
+     * 看的是点进来的这段源视频，不是「画布上有没有某段视频合规」——
+     * 否则用户点了「编辑视频」，落地是一个亮着的 Tab 加一段灰掉的源视频。
      */
     const g = gs.get1(id)
-    if (!modeAvailable(mode, g.conn, get, g.model)) {
-      const better = MODELS.find((m) => modeAvailable(mode, g.conn, get, m))
-      if (better) { gs.setModel(id, better, get); gs.setMode(id, mode, get) }
-    }
+    const better = modelForSource(mode, g.conn, get, g.slotEdit ?? nodeId, g.model)
+    if (better !== g.model) { gs.setModel(id, better, get); gs.setMode(id, mode, get) }
   }
   const entry = (mode: 'edit' | 'extend', label: string, icon: React.ReactNode) => {
     const reason = sourceEntryReason(dur, mode)

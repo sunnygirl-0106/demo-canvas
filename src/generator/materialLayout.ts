@@ -1,5 +1,5 @@
 /** 当前任务的素材角色。隐藏资产仅保留连接，不进入有效输入。 */
-export type Mode = 'text' | 'frames' | 'ref' | 'edit' | 'extend'
+export type Mode = 'text' | 'frames' | 'ref' | 'refImage' | 'edit' | 'extend'
 export type Model = 'sd2.5' | 'sd2.0' | 'sd2.0-1080p' | 'sd2.0-4k' | 'sd2.0-fast' | 'sd2.0-mini'
   | 'sd1.5' | 'kling-video-o1' | 'wan2.2' | 'wan2.2-ti2v-5b' | 'wan2.2-i2v-a14b'
 export type Zone = 'edit' | 'first' | 'last' | 'tray' | 'unused'
@@ -44,9 +44,11 @@ export interface ModelCap {
   /** 有没有配音开关。可灵与 Wan 的参数里没有这一项。 */
   hasAudioToggle: boolean
 }
+/**
+ * 「全能参考」和「参考图」是同一层级的两个互斥 Tab：收多模态素材的型号给前者，只收图的给后者，
+ * 一个型号只会拥有其中一个，另一个根本不出现在 Tab 行上（见 tabStates）。
+ */
 const ALL_MODES: Mode[] = ['text', 'frames', 'ref', 'edit', 'extend']
-/** 编辑与延长走 omni_reference_task_type，是 Seedance 2.0 才有的能力，其余型号只能生成。 */
-const GEN_MODES: Mode[] = ['text', 'frames', 'ref']
 const RATIOS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
 /**
  * 2.0 系列共用一套取值域：产出 4–15 秒、9 图 / 3 视频 / 3 音频、不锁定、不响应秒数。
@@ -82,17 +84,26 @@ export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
   'sd2.0-4k': sd20('SD 2.0 4K', ['4K']),
   'sd2.0-fast': sd20('Seedance 2.0 Fast', ['480p', '720p']),
   'sd2.0-mini': sd20('Seedance 2.0 Mini', ['480p', '720p']),
-  'sd1.5': { ...sd20('Seedance 1.5', ['480p', '720p', '1080p']), genModes: GEN_MODES },
+  /** 只收参考图：配额也要跟着把视频与音频归零，否则「参考图」面板上还会显示它能收视频。 */
+  'sd1.5': { ...sd20('Seedance 1.5', ['480p', '720p', '1080p']),
+    genModes: ['text', 'frames', 'refImage'], quota: { image: 9, video: 0, audio: 0, mediaSeconds: 0 } },
   'kling-video-o1': {
     ...sd20('可灵 O1', ['720p', '1080p']),
     durations: [5, 10], durationRange: [5, 10], ratios: ['16:9', '1:1', '9:16'],
-    genModes: GEN_MODES, hasAudioToggle: false,
+    genModes: ['text', 'frames', 'ref'], hasAudioToggle: false,
   },
-  'wan2.2': { ...sd20('Wan 2.2', ['480p', '720p', '1080p']), genModes: GEN_MODES, hasAudioToggle: false },
+  'wan2.2': { ...sd20('Wan 2.2', ['480p', '720p', '1080p']),
+    genModes: ['text', 'frames', 'refImage'], quota: { image: 9, video: 0, audio: 0, mediaSeconds: 0 },
+    hasAudioToggle: false },
   'wan2.2-ti2v-5b': wanVariant('Wan 2.2 文生视频', ['text'], { image: 0, video: 0, audio: 0, mediaSeconds: 0 }),
-  'wan2.2-i2v-a14b': wanVariant('Wan 2.2 图生视频', ['ref'], { image: 1, video: 0, audio: 0, mediaSeconds: 0 }),
+  'wan2.2-i2v-a14b': wanVariant('Wan 2.2 图生视频', ['refImage'], { image: 1, video: 0, audio: 0, mediaSeconds: 0 }),
 }
 export const MODELS = Object.keys(MODEL_CAPABILITIES) as Model[]
+/** 参考类模式（全能参考 / 参考图）。凡是「这是不是参考」的判断都走这一条，不散着比字符串。 */
+export const isRef = (m: Mode) => m === 'ref' || m === 'refImage'
+/** 这个型号的参考 Tab 是哪一个 —— 两个互斥，最多有一个；只做文生视频的型号没有。 */
+export const refModeOf = (model: Model): Mode | null =>
+  MODEL_CAPABILITIES[model].genModes.find(isRef) ?? null
 
 /** 模式规则：锁定项。任务类型由当前 Tab 决定，不再靠提示词里的触发词推断。 */
 export interface ModeRule {
@@ -103,6 +114,7 @@ export const MODE_RULES: Record<Mode, ModeRule> = {
   text: { locks: {} },
   frames: { locks: { ratio: 'adaptive' } },
   ref: { locks: {} },
+  refImage: { locks: {} },
   edit: { locks: { ratio: 'adaptive', duration: 'source' } },
   extend: { locks: { ratio: 'adaptive' } },
 }
@@ -113,7 +125,7 @@ export const locksDuration = (mode: Mode) => MODE_RULES[mode].locks.duration ===
 /** 只有 Seedance 2.5 能把「改这一段 / 从这一段接」表达出去；其余型号拖了也会被忽略。 */
 export const supportsRange = (model: Model) => MODEL_CAPABILITIES[model].timestamp
 export const rangeBlockedReason = (model: Model) =>
-  supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不响应秒数，时间范围会被忽略`
+  supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不响应范围，只能改整条`
 
 /**
  * 这个任务类型收多长的视频 —— 待编辑视频和辅助参考视频共用这一条。
@@ -135,16 +147,50 @@ export function sourceEntryReason(dur: number | undefined, mode: 'edit' | 'exten
   const hi = Math.max(...able.map((m) => sourceBounds(mode, m)[1]))
   return `这段视频 ${fmt(dur)}，${mode === 'edit' ? '编辑' : '延长'}需要 ${lo}–${hi} 秒的视频`
 }
+/**
+ * 这个素材在当前任务里用不上的原因，空串表示能用 —— 界面按这一句把素材置灰并悬浮说明，
+ * 不再等到用户写完提示词、点生成时才用黄字告诉他。
+ * 时长还没读出来的先当能用：读到了自然会再判一次。
+ */
+export function matBlockedReason(m: Mat, mode: Mode, model: Model): string {
+  if (m.error) return m.error
+  if (mode === 'text' || mode === 'frames') return ''
+  const cap = MODEL_CAPABILITIES[model]
+  // 一整类都不收的型号（Wan 图生视频不收视频）：说「不收」，不说「最多使用 0 段」
+  if (!cap.quota[m.kind]) return `${cap.label}不使用${m.kind === 'video' ? '视频' : '图片'}素材`
+  if (m.kind !== 'video') return ''
+  if (m.dur == null || !Number.isFinite(m.dur)) return ''
+  const [lo, hi] = sourceBounds(mode, model)
+  // 说的是这件事的门槛本身，不是「哪个型号的哪条规格」：短了就是短了，用户听得懂的是秒数。
+  // 低于 / 高于所有型号合起来的那条线时，说的是那条线 —— 换型号、换 Tab 都救不回来，
+  // 没必要拿当前型号更严的门槛去唬人。
+  if (m.dur < FLOOR) return `视频时长不能小于${cn(FLOOR)}秒`
+  if (m.dur > CEIL) return `视频时长不能超过${cn(CEIL)}秒`
+  if (m.dur < lo) return `视频时长不能小于${cn(lo)}秒`
+  if (m.dur > hi) return `视频时长不能超过${cn(hi)}秒`
+  return ''
+}
+/** 所有型号合起来的收片区间：2–30 秒。这两条线之外的素材，整个产品都用不了 */
+const FLOOR = Math.min(...MODELS.map((m) => MODEL_CAPABILITIES[m].videoSeconds[0]))
+const CEIL = Math.max(...MODELS.map((m) => MODEL_CAPABILITIES[m].videoSeconds[1]))
+/** 门槛写成中文数字，读起来是一句话，不是一条参数 */
+const CN: Record<number, string> = { 2: '两', 4: '四', 15: '十五', 30: '三十' }
+const cn = (n: number) => CN[n] ?? String(n)
+/**
+ * 面板上该摆哪些参考素材：用不上的那些不摆。
+ * 摆一排灰掉的缩略图再解释「它为什么不参与」，等于把一句失败说明钉在面板上 ——
+ * 这句话挂在 Tab 的悬浮说明里就够了（tabNote），素材本身的归宿是参考那个 Tab。
+ */
+export const visibleRefs = (tray: string[], mode: Mode, model: Model, get: MatGet): string[] =>
+  tray.filter((id) => { const m = get(id); return !!m && !matBlockedReason(m, mode, model) })
 /** 这段视频能不能当这个模式的源。时长还没读出来的先当可以，读到了自然会再判一次。 */
 export function fitsAsSource(m: Mat, mode: Mode, model: Model): boolean {
-  if (m.kind !== 'video') return false
-  if (m.dur == null || !Number.isFinite(m.dur)) return true
-  const [lo, hi] = sourceBounds(mode, model)
-  return m.dur >= lo && m.dur <= hi
+  return m.kind === 'video' && !matBlockedReason(m, mode, model)
 }
 export const TABS: { k: Mode; label: string }[] = [
   { k: 'text', label: '文生视频' }, { k: 'frames', label: '首尾帧' },
-  { k: 'ref', label: '参考素材' }, { k: 'edit', label: '编辑视频' }, { k: 'extend', label: '延长视频' },
+  { k: 'refImage', label: '参考图' }, { k: 'ref', label: '全能参考' },
+  { k: 'edit', label: '编辑视频' }, { k: 'extend', label: '延长视频' },
 ]
 export const fmt = (d: number) => (d % 1 ? d.toFixed(1) : String(d)) + 's'
 
@@ -155,28 +201,50 @@ export function countConn(conn: string[], get: MatGet): Counts {
   return { image, video, total: image + video }
 }
 /** 连了什么 + 用哪个型号。编辑 / 延长能不能进还要看时长，所以素材本身也带上。 */
-export interface ConnInfo extends Counts { mats: Mat[]; model: Model }
-export function connInfo(conn: string[], get: MatGet, model: Model): ConnInfo {
+export interface ConnInfo extends Counts { mats: Mat[]; model: Model; source: Mat | null }
+/**
+ * 编辑 / 延长会用哪一段：已经选定的就是它（从视频节点入口进来时指名的那一段），
+ * 还没选定就是连着的第一段视频。就这一段，不挑、不跳过、不换 ——
+ * 「第一段不合规就顺手用第二段」是替用户做决定，宁可把入口灰掉让他自己选。
+ */
+export function connInfo(conn: string[], get: MatGet, model: Model, sourceId?: string | null): ConnInfo {
   const mats = conn.map(get).filter((m): m is Mat => !!m)
   const image = mats.filter((m) => m.kind === 'image').length
-  return { image, video: mats.length - image, total: mats.length, mats, model }
+  const picked = sourceId ? mats.find((m) => m.id === sourceId) : null
+  const source = picked ?? mats.find((m) => m.kind === 'video') ?? null
+  return { image, video: mats.length - image, total: mats.length, mats, model, source }
 }
 /**
  * 时长不合规不是「进去之后才报的黄字」，是进不进得去本身：
- * 连着的视频没有一段能当源，编辑 / 延长就该在入口处灰掉，并把区间说出来。
+ * 要用的那一段不合规，编辑 / 延长就在入口处灰掉，并把是哪一段、差在哪说出来。
+ * 判的只有那一段 —— 画布上另有一段合规的视频，不代表可以替用户换过去。
  */
 function sourceRequirement(c: ConnInfo, mode: 'edit' | 'extend'): string {
-  if (!c.video) return '需要 1 段视频作为源'
-  if (c.mats.some((m) => fitsAsSource(m, mode, c.model))) return ''
-  const [lo, hi] = sourceBounds(mode, c.model)
-  return `已连接的视频都不在 ${lo}–${hi} 秒内，${mode === 'edit' ? '编辑' : '延长'}用不了`
+  if (!c.source || c.source.kind !== 'video') return NEEDS.video
+  const why = matBlockedReason(c.source, mode, c.model)
+  return why ? `${c.source.name} ${why}` : ''
+}
+/**
+ * 素材还没连够时说的那句话：说的是「去画布上连什么」这个动作，
+ * 不是「本模式需要几个输入」这种规格描述 —— 用户要的是下一步怎么做。
+ */
+const NEEDS = {
+  image: '需要连接图片节点（1–2 个）',
+  video: '需要连接视频节点',
+  any: '需要连接图片或视频节点',
 }
 /** 素材这一半：画布上连了什么决定 Tab 能不能进。模型那一半见 tabStates。 */
 export const TAB_REQUIREMENT: Record<Mode, (c: ConnInfo) => string> = {
   text: (c) => c.total ? '画布上已连接素材。文生视频只接受文本，断开连接后可用' : '',
-  frames: (c) => !c.image ? '需要至少 1 张图片作首帧'
+  frames: (c) => !c.image ? NEEDS.image
     : c.image > 2 ? `已连接 ${c.image} 张图片，首尾帧最多使用 2 张` : '',
-  ref: (c) => c.total ? '' : '需要至少 1 个素材',
+  // 参考是所有 Tab 失效时的落脚点，只要画布上有东西就进得去：
+  // 用不上的那些只是「本次不参与」（缩略图置灰、Tab 悬浮说明），不把整个 Tab 关掉 ——
+  // 否则连一段 1.5 秒的视频会让五个 Tab 全灰，用户无处可去
+  ref: (c) => c.total ? '' : NEEDS.any,
+  // 参考图这一条和全能参考完全一样，不改成「必须有图」：只连了视频的 Wan 用户会六个 Tab 全灰、
+  // 无处可去。连了视频进来照旧是「缩略图置灰 + 悬浮说明 + 生成按钮拦住」。
+  refImage: (c) => c.total ? '' : NEEDS.any,
   edit: (c) => sourceRequirement(c, 'edit'),
   extend: (c) => sourceRequirement(c, 'extend'),
 }
@@ -184,37 +252,64 @@ export const TAB_REQUIREMENT: Record<Mode, (c: ConnInfo) => string> = {
  * 进得去、但有连着的素材用不上：不在面板里摆一排「不参与」的缩略图，
  * 只在这个 Tab 上挂一句悬浮说明 —— 进来之前就知道会忽略什么。
  */
-export function tabNote(mode: Mode, c: Counts, model: Model): string {
+export function tabNote(mode: Mode, c: ConnInfo, model: Model): string {
   if (mode === 'text') return ''
   if (mode === 'frames') return c.video ? '此模式会忽略已连接的视频节点' : ''
   const cap = MODEL_CAPABILITIES[model]
-  // 一个都收不了的那一类：说「忽略」，别说「最多使用 0 段」
+  // 一整类都不收的模式（参考图不收视频）：说的是「这个模式会忽略哪一类」，不逐个点名 ——
+  // 和首尾帧忽略视频是同一件事，就说同一句话；也别说成「最多使用 0 段」
   const ignored = [!cap.quota.video && c.video ? '视频' : '', !cap.quota.image && c.image ? '图片' : ''].filter(Boolean)
-  if (ignored.length) return `此模式会忽略已连接的${ignored.join('与')}节点`
+  // 剩下的才逐个说：时长不合规、读不出来的都不拦着生成，也不静默丢，
+  // 进来之前就在 Tab 上说清楚哪几个不参与，理由相同的并成一句
+  const groups = new Map<string, string[]>()
+  for (const m of c.mats) {
+    if (!cap.quota[m.kind]) continue   // 这一类已经整类说过了
+    const why = matBlockedReason(m, mode, model)
+    if (why) groups.set(why, [...(groups.get(why) ?? []), m.name])
+  }
+  const said = [ignored.length ? `此模式会忽略已连接的${ignored.join('与')}节点` : '',
+    ...[...groups].map(([why, names]) => `${names.join('、')} ${why}`)].filter(Boolean)
+  if (said.length) return said.join('；')
   const over: string[] = []
   if (c.image > cap.quota.image) over.push(`${cap.quota.image} 张图片`)
   if (c.video > cap.quota.video) over.push(`${cap.quota.video} 段视频`)
   return over.length ? `${cap.label} 最多使用 ${over.join('、')}，超出的本次不参与` : ''
 }
 export interface TabState { k: Mode; label: string; enabled: boolean; reason: string; note: string }
-/** Tab 能不能进 = 素材够不够 ∧ 模型有没有这个能力。模型这一半先判，理由更具体。 */
-export function tabStates(conn: string[], get: MatGet, model: Model): TabState[] {
-  const c = connInfo(conn, get, model)
+/**
+ * 这个型号做得了的那几件事，各自能不能进。
+ *
+ * 型号没有的能力不摆一个灰 Tab 在那儿：Tab 行说的是「这个型号能做哪几件事」，
+ * 灰掉说的是「这件事它会做，但画布上的素材还不够」—— 两句话不混在同一个位置上。
+ * 「这个型号做不了我要的事」由模型列表那一头说（modelBlockedReason 会把它那一行灰掉并给理由），
+ * 编辑 / 延长另有视频节点上的入口，从那儿进来会自动换成接得住的型号。
+ */
+export function tabStates(conn: string[], get: MatGet, model: Model, sourceOf?: (mode: Mode) => string | null): TabState[] {
   const cap = MODEL_CAPABILITIES[model]
-  return TABS.map((t) => {
-    let reason = !cap.genModes.includes(t.k)
-      ? `${cap.label} 不支持${t.label}`
-      : TAB_REQUIREMENT[t.k](c)
+  return TABS.filter((t) => cap.genModes.includes(t.k)).map((t) => {
+    // 每个 Tab 问的是「它自己那一份草稿会用哪一段」，不是当前 Tab 手上的那一段
+    const source = sourceOf?.(t.k) ?? null
+    const c = connInfo(conn, get, model, source)
+    let reason = TAB_REQUIREMENT[t.k](c)
     // 进不去但换个型号就进得去时，直接把那个型号说出来 —— 否则用户在灰掉的 Tab 上无路可走
     if (reason && (t.k === 'edit' || t.k === 'extend') && c.video) {
-      const better = MODELS.find((m) => m !== model && modeAvailable(t.k, conn, get, m))
+      const better = MODELS.find((m) => m !== model && modeAvailable(t.k, conn, get, m, source))
       if (better) reason += `，换 ${MODEL_CAPABILITIES[better].label} 可以`
     }
     return { ...t, enabled: !reason, reason, note: reason ? '' : tabNote(t.k, c, model) }
   })
 }
-export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Model) =>
-  MODEL_CAPABILITIES[model].genModes.includes(mode) && !TAB_REQUIREMENT[mode](connInfo(conn, get, model))
+/**
+ * 接得住这段源视频、又做得了这件事的型号。当前型号就行时原样返回，
+ * 换不到就也返回当前型号 —— 由 Tab 与素材缩略图去置灰并说原因。
+ * 时长是异步读出来的，读到的那一刻要靠它把型号收敛过去，而不是把用户丢在一个灰掉的面板里。
+ */
+export function modelForSource(mode: Mode, conn: string[], get: MatGet, sourceId: string | null, current: Model): Model {
+  const ok = (m: Model) => modeAvailable(mode, conn, get, m, sourceId)
+  return ok(current) ? current : MODELS.find(ok) ?? current
+}
+export const modeAvailable = (mode: Mode, conn: string[], get: MatGet, model: Model, sourceId?: string | null) =>
+  MODEL_CAPABILITIES[model].genModes.includes(mode) && !TAB_REQUIREMENT[mode](connInfo(conn, get, model, sourceId))
 /**
  * 这个型号在当前连接下一个模式都进不去 —— 选了它只会落在一个全灰的 Tab 上，
  * 所以在模型列表里就灰掉。典型的是只做文生视频的型号：画布上一连素材它就没得做了。
@@ -223,14 +318,25 @@ export function modelUnusableReason(conn: string[], get: MatGet, model: Model): 
   const cap = MODEL_CAPABILITIES[model]
   if (cap.genModes.some((m) => modeAvailable(m, conn, get, model))) return ''
   const only = cap.genModes.map((m) => TABS.find((t) => t.k === m)!.label).join(' / ')
-  // 型号名就在这行上，理由里不用再念一遍
-  return countConn(conn, get).total ? `只做${only}，画布上已连接素材` : `只做${only}，需要先连接素材`
+  // 型号名就在这行上，理由里不用再念一遍。
+  // 只做一件事的型号，缺素材时把那一件事要连什么直接说出来，和 Tab 上的说法保持同一句。
+  if (countConn(conn, get).total) return `只做${only}，画布上已连接素材`
+  const needs = cap.genModes.length === 1 ? TAB_REQUIREMENT[cap.genModes[0]](connInfo([], get, model)) : ''
+  return `只做${only}，${needs || '需要先连接素材节点'}`
 }
-/** 当前 Tab 失效时落到哪里：还有素材就去参考素材，空画布回文生视频；模型也不支持时继续往下找。 */
+/** 当前 Tab 失效时落到哪里：还有素材就去这个型号的参考 Tab，空画布回文生视频；模型也不支持时继续往下找。 */
 export const fallbackMode = (conn: string[], get: MatGet, model: Model): Mode => {
-  const order: Mode[] = countConn(conn, get).total ? ['ref', 'text'] : ['text', 'ref']
+  const order: Mode[] = countConn(conn, get).total
+    ? ['refImage', 'ref', 'text'] : ['text', 'refImage', 'ref']
   return order.find((m) => modeAvailable(m, conn, get, model)) ?? 'text'
 }
+
+/**
+ * 换成这个型号之后会落在哪个 Tab：当前这个还进得去就不动它，进不去才按 fallback 找。
+ * setModel 与模型列表上的悬浮说明共用这一条 —— 说的和做的必须是同一件事。
+ */
+export const modeAfterModel = (mode: Mode, conn: string[], get: MatGet, model: Model, sourceId?: string | null): Mode =>
+  modeAvailable(mode, conn, get, model, sourceId) ? mode : fallbackMode(conn, get, model)
 
 export function activeIds(s: Slots, mode: Mode): string[] {
   if (mode === 'text') return []
@@ -248,6 +354,8 @@ export function partition(s: Slots, mode: Mode, model: Model, get: MatGet): { ac
   let image = 0, video = 0
   for (const id of activeIds(s, mode)) {
     const m = get(id); if (!m) continue
+    const blocked = matBlockedReason(m, mode, model)
+    if (blocked) { skipped.push({ id, reason: blocked }); continue }
     if (m.kind === 'image' && ++image > cap.quota.image) skipped.push({ id, reason: `${cap.label} 最多使用 ${cap.quota.image} 张图片，超出的本次不参与` })
     else if (m.kind === 'video' && ++video > cap.quota.video) skipped.push({ id, reason: `${cap.label} 最多使用 ${cap.quota.video} 段视频，超出的本次不参与` })
     else active.push(id)
@@ -317,9 +425,11 @@ export function allocate(prev: Slots, conn: string[], mode: Mode, get: MatGet, f
       if (!s.slotFirst) s.slotFirst = id
       else if (!s.slotLast) s.slotLast = id
     } else if (mode === 'edit' || mode === 'extend') {
+      // 连着的第一段视频就是要编辑的那一段。不合规也照样放进槽位，
+      // 由 Tab 那一层拦住入口 —— 悄悄换成第二段等于替用户改了他要编辑的东西
       if (!s.slotEdit && get(id)?.kind === 'video') s.slotEdit = id
       else s.tray.push(id)
-    } else if (mode === 'ref') s.tray.push(id)
+    } else if (isRef(mode)) s.tray.push(id)
   }
   s.unused = valid.filter((id) => !activeIds(s, mode).includes(id))
   return s
@@ -345,7 +455,8 @@ export type PromptSeg = { t: string }
 export function promptHint(mode: Mode, hasLast = false): PromptSeg[] {
   const hints: Record<Mode, string> = {
     text: '描述你想要生成的画面内容', frames: hasLast ? '描述从首帧到尾帧之间发生的变化' : '描述从首帧开始的动作与镜头变化',
-    ref: '描述你想要生成的画面，输入 @ 引用参考素材', edit: '把右侧的黄色椅子改成红色',
+    ref: '描述你想要生成的画面，输入 @ 引用参考素材',
+    refImage: '描述你想要生成的画面，输入 @ 引用参考图', edit: '哪里改成什么样子',
     extend: '描述新接上的这段画面与动作',
   }
   return [{ t: hints[mode] }]
