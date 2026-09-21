@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  BRUSH_WIDTH, RANGE_MIN, adjustRange, appendPoint, clipRegions, commitDraft, defaultSegment, dragRange, dragRect,
-  draftEmpty, dropLastChip, groupReading, invalidMark, markCount, markScope, marksReading,
+  BRUSH_MAX, BRUSH_MIN, BRUSH_WIDTH, RANGE_MIN, adjustRange, appendPoint, brushOf, brushPct, clampBrush,
+  clipRegions, commitDraft, defaultSegment, dragRange, dragRect,
+  draftEmpty, dropLastChip, groupReading, invalidMark, markScope, marksReading,
   outOfSource, rangeHull, regionDetail, regionLabel, strokeBox, tinyRect,
   type MarkGroup, type MarkRegion, type Stroke,
 } from './marks'
@@ -60,14 +61,9 @@ describe('标记怎么读：一处就是一处，各报各的时间', () => {
     expect(regionDetail(box(3))).toBe('⬚ 00:03 框选')
     expect(regionDetail(brush(61, [[[0, 0]], [[1, 1]]]))).toBe('✎ 01:01 画笔 2 笔')
   })
-  it('数的是「处」和「段」，不数「组」', () => {
-    const two = [group([box(1), box(2)]), { ...group([box(3)], { start: 3, end: 5 }), id: 'g2' }]
-    expect(markCount(two)).toEqual({ regions: 3, ranges: 1 })
-    expect(markCount([group([], { start: 1, end: 4 })])).toEqual({ regions: 0, ranges: 1 })
-  })
   it('保存下来的是这次圈的那一套，深拷一份，外面再改不动它', () => {
     const draft = { regions: [box(1), box(3)], range: { start: 1, end: 4 } }
-    const saved = commitDraft(draft, 2)
+    const saved = commitDraft(draft)
     expect(marksReading([saved])).toBe('00:01–00:04 里的 ⬚ 00:01、⬚ 00:03')
     draft.regions[0].rect[0] = 0.9
     expect(saved.regions[0].rect[0]).toBe(0.2)
@@ -115,8 +111,8 @@ describe('作用范围由标记推出来，不再是一个开关', () => {
 describe('提交与失效', () => {
   it('提交出来的是一份深拷贝：之后接着改草稿，已经进句子的那一组不会跟着变', () => {
     const draft = { regions: [brush(2, [[[0.1, 0.2]]])], range: { start: 1, end: 3 } }
-    const g = commitDraft(draft, 4)
-    expect(g.id).toBe('g4')
+    const g = commitDraft(draft)
+    expect(g.id).toBe('g1')
     draft.regions[0].strokes![0].push([0.9, 0.9]); draft.range.end = 9
     expect(g.regions[0].strokes![0]).toHaveLength(1)
     expect(g.range).toEqual({ start: 1, end: 3 })
@@ -173,5 +169,24 @@ describe('时间段的取法', () => {
         expect(next.end - next.start).toBeGreaterThanOrEqual(RANGE_MIN)
       }
     }
+  })
+})
+
+describe('笔刷粗细', () => {
+  it('滑杆两头就是笔刷两头，来回换算不跑偏', () => {
+    expect(brushOf(0)).toBeCloseTo(BRUSH_MIN)
+    expect(brushOf(1)).toBeCloseTo(BRUSH_MAX)
+    for (const w of [BRUSH_MIN, BRUSH_WIDTH, BRUSH_MAX]) expect(brushOf(brushPct(w))).toBeCloseTo(w)
+  })
+  it('越界和读不出来的值都收回区间内，笔永远画得出来', () => {
+    expect(clampBrush(0)).toBe(BRUSH_MIN)
+    expect(clampBrush(9)).toBe(BRUSH_MAX)
+    expect(clampBrush(Number.NaN)).toBe(BRUSH_WIDTH)
+    expect(brushPct(-1)).toBe(0)
+    expect(brushPct(9)).toBe(1)
+  })
+  it('外接框跟着这一处自己那一档粗细留余量，不是都按默认值算', () => {
+    const pts: Stroke[] = [[[0.5, 0.5]]]
+    expect(strokeBox(pts, BRUSH_MAX)[2]).toBeGreaterThan(strokeBox(pts, BRUSH_MIN)[2])
   })
 })

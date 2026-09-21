@@ -1,8 +1,8 @@
-import { useRef, type PointerEvent, type RefObject } from 'react'
+import { useRef, type PointerEvent, type ReactNode, type RefObject } from 'react'
 import type { Mat } from './materialLayout'
 import { IcPlay } from '../ui/icons'
 import MarkArt, { type Handle } from './MarkArt'
-import { BRUSH_WIDTH, appendPoint, dragRect, strokeBox, timecode, tinyRect, type MarkDraft, type MarkRegion, type MarkTool, type Rect } from './marks'
+import { appendPoint, dragRect, strokeBox, timecode, tinyRect, type MarkDraft, type MarkRegion, type MarkTool, type Rect } from './marks'
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 /** 指针捕获失败不该毁掉整个手势：有些环境给不出可捕获的 pointerId，捕不到就当普通拖拽走 */
 const capture = (el: Element | null, id: number) => { try { el?.setPointerCapture(id) } catch { /* 捕不到就算了 */ } }
@@ -15,6 +15,8 @@ interface Props {
   mat: Mat
   video: RefObject<HTMLVideoElement>
   tool: MarkTool
+  /** 画笔粗细，归一化到画面宽度。新涂的那一笔记下当时这个值，改滑杆不会追着改已经涂好的 */
+  brush: number
   draft: MarkDraft
   /** 暂停停在哪一秒：这一秒的标记满亮，别的秒淡着 —— 一眼看得出「现在标的是哪一帧」 */
   second: number
@@ -30,9 +32,13 @@ interface Props {
   onDraft: (d: MarkDraft, active: number) => void
   /** 松手时发现只是误点了一下，退回按下之前 */
   onCancel: () => void
+  /** 压在画面底边的那条浮动工具行：笔刷粗细、撤回、清除。手势不往画面上漏 */
+  tools?: ReactNode
+  /** 素材本来的宽高比（量自它的 poster）。量不到就 null，由这块屏自己退回竖屏 */
+  aspect: number | null
 }
 /** 画面区：真视频打底，标记画在上面。所有手势都在这里，草稿一律整份回传给弹窗。 */
-export default function MarkStage({ mat, video, tool, draft, second, active, paused, playing, veil, loading, onTogglePlay, onBegin, onDraft, onCancel }: Props) {
+export default function MarkStage({ mat, video, tool, brush, draft, second, active, paused, playing, veil, loading, onTogglePlay, onBegin, onDraft, onCancel, tools, aspect }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
   /**
@@ -64,7 +70,9 @@ export default function MarkStage({ mat, video, tool, draft, second, active, pau
       // 同一秒只有一个画笔区域：再涂一笔是往它里面加，不是又开一处 —— 清单和轨道上都只记一条
       const i = d.regions.findIndex((r) => r.tool === 'brush' && r.t === t)
       const strokes = i < 0 ? [[[x, y] as [number, number]]] : [...d.regions[i].strokes!, [[x, y] as [number, number]]]
-      const region: MarkRegion = { t, tool: 'brush', width: BRUSH_WIDTH, strokes, rect: strokeBox(strokes) }
+      // 同一处只有一个粗细：往里续笔沿用它当初那一档，中途改滑杆不会把先前那几笔一起加粗
+      const width = i < 0 ? brush : d.regions[i].width ?? brush
+      const region: MarkRegion = { t, tool: 'brush', width, strokes, rect: strokeBox(strokes, width) }
       const regions = i < 0 ? [...d.regions, region] : d.regions.map((r, j) => j === i ? region : r)
       const idx = i < 0 ? regions.length - 1 : i
       drag.current = { mode: 'brush', i: idx }
@@ -113,12 +121,19 @@ export default function MarkStage({ mat, video, tool, draft, second, active, pau
     const rect = dragRect(d.x0, d.y0, x, y)
     if (tinyRect(rect)) onCancel(); else patch(d.i, { rect })
   }
-  return <div ref={box} className={`mark-stage${veil ? ' off' : ''}`} style={{ cursor: veil ? 'default' : 'crosshair' }}
+  /*
+   * 这块屏按素材本来的比例摆，不套一个固定的 16:9：套死了，一段竖屏进来两边各留一条黑，
+   * 能圈的那块画面只剩中间窄窄一条 —— 而这块屏存在的意义就是「在上面圈准一块地方」。
+   * 量不到（poster 还没加载、或者压根没有）时退回 9:16：这块画布上的视频就是竖屏的。
+   */
+  return <div ref={box} className={`mark-stage${veil ? ' off' : ''}`}
+    style={{ cursor: veil ? 'default' : 'crosshair', aspectRatio: aspect || 9 / 16 }}
     onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
     <video ref={video} src={mat.src} poster={mat.thumb} playsInline muted preload="auto" aria-label={`${mat.name} 标记画面`} />
     <MarkArt regions={draft.regions} at={paused ? second : undefined} active={active} onBoxDown={boxDown} />
     {paused && !veil && <span className="mark-paused">已暂停在 <b>{timecode(second)}</b></span>}
     {!playing && !veil && <button className="mark-play" aria-label="播放" onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onTogglePlay() }}><IcPlay size={22} /></button>}
+    {!veil && tools && <div className="mark-float nodrag" onPointerDown={(e) => e.stopPropagation()}>{tools}</div>}
     {veil && <div className="mark-veil" role="status">
       {loading && <i className="spin" aria-hidden />}
       <strong>{veil}</strong>

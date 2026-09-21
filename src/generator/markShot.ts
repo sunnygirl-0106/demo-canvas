@@ -31,9 +31,10 @@ export function shotPlan(marks: MarkGroup[]): MarkShot[] {
     .map(([t, regions]) => ({ key: sign(t, regions), t, regions }))
 }
 
-const MARK = '#ff4d5a'
-const HALO = 'rgba(255,77,90,.42)'
-/** 画在图上的标记和画面上看到的是同一套：框一条红线压一圈暗边，笔迹一粗一细两条。 */
+/** 和 --mark / --mark-halo 同一对值：canvas 画不了 CSS 变量，只能在这里再写一遍。 */
+const MARK = '#7fe3cb'
+const HALO = 'rgba(127,227,203,.42)'
+/** 画在图上的标记和画面上看到的是同一套：框一条青线压一圈暗边，笔迹一粗一细两条。 */
 function paint(ctx: CanvasRenderingContext2D, w: number, h: number, regions: MarkRegion[]) {
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'

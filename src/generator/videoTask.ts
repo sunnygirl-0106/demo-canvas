@@ -73,7 +73,7 @@ export function taskError(g: GenState, get: MatGet): string | null {
   if (badRef) return badRef
   const warn = mediaSecondsWarning(g, get)
   if (warn) return warn
-  const invalid = Object.entries(g.references).find(([name, id]) => g.prompt.includes(`@${name}`) && !active.includes(id))
+  const invalid = Object.entries(g.references).find(([name, id]) => mentions(g.prompt, name) && !active.includes(id))
   // 连着也可能不参与：不一定是「重新添加素材」能解决的
   if (invalid) return `引用 @${invalid[0]} 未参与本次生成，可移除引用或调整素材`
   // 提示词不设门槛：一句话都不写也让他生成 —— 空句子是他的选择，不是缺一步没做完
@@ -162,6 +162,17 @@ export function marksBlockModel(g: GenState, model: Model): string {
   // 理由和标记入口上挂的是同一句，只多一条解除办法；标了几处不用在这里重复
   return `${rangeBlockedReason(model)}，移除标记后可切换`
 }
+/**
+ * 句子里真的提到了这枚引用。名字带编号（视频节点1、视频节点11），
+ * 直接按字符串包含算，「@视频节点11」会把「视频节点1」也算成提到过 ——
+ * 一条早就从句子里删掉的引用于是又被算进这次任务里。
+ */
+function mentions(prompt: string, name: string) {
+  for (let i = prompt.indexOf(`@${name}`); i >= 0; i = prompt.indexOf(`@${name}`, i + 1)) {
+    if (!/\d/.test(prompt[i + 1 + name.length] ?? '')) return true
+  }
+  return false
+}
 export function taskPayload(g: GenState, get: MatGet) {
   const error = taskError(g, get)
   if (error) throw new Error(error)
@@ -175,7 +186,7 @@ export function taskPayload(g: GenState, get: MatGet) {
     skipped,
     scope: g.mode === 'edit' ? markScope(marks) : g.mode === 'extend' ? 'whole' : null,
     roles: { source: source?.id ?? null, firstFrame: g.mode === 'frames' ? g.slotFirst : null, lastFrame: g.mode === 'frames' ? g.slotLast : null, references: g.mode === 'text' || g.mode === 'frames' ? [] : [...g.tray] },
-    references: Object.fromEntries(Object.entries(g.references).filter(([name, id]) => ids.includes(id) && g.prompt.includes(`@${name}`))),
+    references: Object.fromEntries(Object.entries(g.references).filter(([name, id]) => ids.includes(id) && mentions(g.prompt, name))),
     sourceId: source?.id ?? null, sourceSrc: source?.src ?? null, sourceDuration: source?.dur ?? null,
     /** 摘要用的外包络；逐组的精确范围在 marks 里，只有一组时两者读起来一样 */
     range: rangeHull(marks),

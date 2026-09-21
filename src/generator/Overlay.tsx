@@ -11,11 +11,19 @@ interface Props {
    * 说明盖在上一行头上就成了「挡着我要看的东西」。右边放不下自动翻到左边。
    */
   side?: boolean
+  /**
+   * 贴侧边时怎么对齐：默认 center（在锚点上居中）；top 是顶边对顶边 ——
+   * 浮层从锚点的上沿起，一路往下长。
+   *
+   * 「按浮层自己高度的几分之几去偏」那种写法试过，不成：浮层一高，顶边就被顶到锚点上方去了，
+   * 看着还是绕着锚点中线在摆。顶边对齐是这句话唯一说得死的量 —— 不管浮层多高，起点都在那儿。
+   */
+  sideAlign?: 'center' | 'top'
   /** 只居中，不画尖角：悬浮放大给的就是那张画面本身，尖角是外框的一部分，得一起去掉。 */
   center?: boolean
 }
 /** 所有浮层按视窗避让；交互浮层支持 Escape、焦点圈定及关闭后焦点恢复。 */
-export default function Overlay({ children, onClose, label, anchor, className = '', modal = false, passive = false, tail = false, side = false, center = false, onMouseEnter, onMouseLeave }: Props) {
+export default function Overlay({ children, onClose, label, anchor, className = '', modal = false, passive = false, tail = false, side = false, sideAlign = 'center', center = false, onMouseEnter, onMouseLeave }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef(onClose); close.current = onClose
   const [pos, setPos] = useState({ left: 12, top: 12, above: false })
@@ -39,7 +47,9 @@ export default function Overlay({ children, onClose, label, anchor, className = 
         const fits = right + r.width <= window.innerWidth - 12 || left < 12
         const x = fits ? right : left
         if (x >= 12 && x + r.width <= window.innerWidth - 12) {
-          const top = Math.max(12, Math.min(a.top + a.height / 2 - r.height / 2, window.innerHeight - r.height - 12))
+          // 被视窗上下推开时 top 会被夹住，尖角那一行跟着实际的 top 算，所以推开了也还指着锚点
+        const want = sideAlign === 'top' ? a.top : a.top + a.height / 2 - r.height / 2
+        const top = Math.max(12, Math.min(want, window.innerHeight - r.height - 12))
           setPos({ left: x, top, above: false })
           setArrow({ side: fits ? 'left' : 'right', y: Math.max(18, Math.min(a.top + a.height / 2 - top, r.height - 18)) })
           return
@@ -74,7 +84,7 @@ export default function Overlay({ children, onClose, label, anchor, className = 
       window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true)
       if (!passive && restore?.isConnected) restore.focus({ preventScroll: true })
     }
-  }, [anchor, passive, tail, side, center])
+  }, [anchor, passive, tail, side, sideAlign, center])
   const content = <div ref={ref} role={passive ? undefined : 'dialog'} aria-modal={modal || undefined} aria-label={label} tabIndex={-1}
     // 浮层落在锚点上方还是下方，自己的尖角要跟着换边
     data-above={pos.above || undefined}

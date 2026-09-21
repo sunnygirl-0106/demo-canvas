@@ -78,6 +78,13 @@ export default function Canvas() {
         useCanvas.getState().paste()
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         useCanvas.getState().deleteSelection()
+      } else if (e.key === 'Escape') {
+        // 收起选中节点下方那块面板：它比一行还高，盖住下面那个节点就拖不动也点不着，
+        // 原来只能去空白处点一下 —— 而空白处正好也可能被面板盖着
+        const canvas = useCanvas.getState()
+        if (canvas.nodes.some((n) => n.selected)) {
+          canvas.onNodesChange(canvas.nodes.map((n) => ({ type: 'select' as const, id: n.id, selected: false })))
+        }
       }
     }
     window.addEventListener('keydown', onKey)
@@ -129,7 +136,8 @@ export default function Canvas() {
         onPaneClick={() => { setMenu(null); setAddMenu(null) }}
         connectOnClick={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={45} size={2} color="var(--dot)" bgColor="var(--bg)" />
+        {/* 底色交给 .react-flow 那层径向渐变，这里只画点阵：1px 的点、26px 一格 */}
+        <Background variant={BackgroundVariant.Dots} gap={26} size={1} color="var(--dot)" />
       </ReactFlow>
 
       {/* 连线箭头 */}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CARET, docText, docWritten, insertGroup, marksOf, putAtCaret, seedDoc, segKey, stripMarks, type Seg } from './promptDoc'
+import { CARET, docText, docWritten, marksOf, putAtCaret, replaceGroup, seedDoc, segKey, stripMarks, type Seg } from './promptDoc'
 import type { MarkGroup, MarkRegion } from './marks'
 const box = (t: number): MarkRegion => ({ t, tool: 'box', rect: [0.2, 0.3, 0.2, 0.2] })
 const group = (id: string, regions: MarkRegion[], range: MarkGroup['range'] = null): MarkGroup => ({ id, regions, range })
@@ -11,15 +11,8 @@ describe('提示词框里那句话是一份可编辑的文档', () => {
     expect(read(seedDoc('edit'))).toBe('把 视频 TARL 的')
     expect(read(seedDoc('extend'))).toBe('从 视频 TARL 向后延长 5s，')
   })
-  it('一次圈选插进句子里：第一次用「中」接，再标一次用「和」接', () => {
-    let doc = seedDoc('edit')
-    doc = insertGroup(doc, group('g1', [box(1)], { start: 1, end: 2 }))
-    expect(read(doc)).toBe('把 视频 TARL 中 00:01–00:02 里的 ⬚ 00:01 的')
-    doc = insertGroup(doc, group('g2', [box(4)], { start: 4, end: 5 }))
-    expect(read(doc)).toBe('把 视频 TARL 中 00:01–00:02 里的 ⬚ 00:01 和 00:04–00:05 里的 ⬚ 00:04 的')
-  })
   it('句子就是标记的唯一出处：删掉哪一枚标签，这次任务里就没有它', () => {
-    const doc = insertGroup(seedDoc('edit'), group('g1', [box(1), box(2)], { start: 1, end: 3 }))
+    const doc = replaceGroup(seedDoc('edit'), group('g1', [box(1), box(2)], { start: 1, end: 3 }))
     expect(marksOf(doc)).toEqual([{ id: 'g1', range: { start: 1, end: 3 }, regions: [box(1), box(2)] }])
     // 用户在框里退格删掉了第二枚标记
     const cut = doc.filter((s) => !(s.t === 'mark' && s.region.t === 2))
@@ -28,7 +21,7 @@ describe('提示词框里那句话是一份可编辑的文档', () => {
     expect(marksOf(stripMarks(doc))).toEqual([])
   })
   it('起头那几个字不算用户写过要求，写了才算', () => {
-    const doc = insertGroup(seedDoc('edit'), group('g1', [box(1)], { start: 1, end: 2 }))
+    const doc = replaceGroup(seedDoc('edit'), group('g1', [box(1)], { start: 1, end: 2 }))
     expect(docWritten(doc)).toBe('')
     expect(docWritten([...doc, { t: 'text', v: '把右侧的沙发改成红色' }])).toContain('右侧')
     // 没有句子的那些模式退回去看纯文字

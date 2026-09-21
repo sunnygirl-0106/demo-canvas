@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>视频节点 · 历史版本</title><link rel="stylesheet" href="./style.css"></head>
+<body>
+<header class="explore-bar"><div><span class="experiment">交互探索</span><strong>视频节点与历史版本</strong></div><span class="explore-note">每个节点，只保留直接一层的结果</span><button id="reset">重新体验</button></header>
+<header class="project-bar"><span class="brand">◈</span><span>午后的一通电话</span><span class="muted">/ 创作画布</span><button id="go-root">回到原视频</button><span id="save-state">本机已保存</span></header>
+<main id="viewport" aria-label="视频创作画布"><div id="canvas"><svg id="connections" aria-hidden="true"></svg><div id="nodes"></div><section id="history-panel" aria-label="历史版本" hidden><header class="history-head"><div><span id="history-owner"></span><h2>历史版本 <span id="history-count"></span></h2></div><button id="close-history" class="close" aria-label="关闭历史版本">×</button></header><nav id="history-filters" aria-label="历史分类"><button data-filter="all" aria-pressed="true">全部</button><button data-filter="generate" aria-pressed="false">生成</button><button data-filter="edit" aria-pressed="false">编辑</button><button data-filter="extend" aria-pressed="false">延长</button></nav><div id="history-grid"></div></section></div></main>
+<div class="demo-caption">演示素材 · 模拟生成</div><div id="toast" role="status" aria-live="polite"></div>
+<dialog id="detail-dialog" aria-labelledby="detail-title"><header class="detail-head"><div><span id="detail-owner"></span><h2 id="detail-title"></h2></div><button id="close-detail" class="close" aria-label="关闭视频详情">×</button></header><div id="detail-content"></div></dialog>
+<script src="./app.js"></script>
+</body></html>

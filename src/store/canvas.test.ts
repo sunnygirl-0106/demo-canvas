@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useCanvas } from './canvas'
+import { opName, useCanvas } from './canvas'
 import { matOf } from '../demo/assets'
 
 beforeEach(() => {
@@ -62,5 +62,40 @@ describe('画布交互回归', () => {
     const target = store.addNode('video', { x: 0, y: 0 })
     store.connect('missing', target)
     expect(useCanvas.getState().edges).toHaveLength(0)
+  })
+})
+
+describe('操作节点的名字', () => {
+  const node = (id: string, name: string, renamed?: boolean) =>
+    ({ id, type: 'video', position: { x: 0, y: 0 }, data: { name, renamed } }) as never
+  const on = (...names: string[]) => names.map((n, i) => node(`N${i}`, n))
+
+  it('两件事同名，连着操作时把手数往下数，不把上一次的名字套进来', () => {
+    const src = node('A', '视频节点1')
+    // 编辑和延长长出来的节点叫同一个名字：分它们的是标题栏右边那枚徽章，不是名字
+    expect(opName([src], 'edit', src)).toBe('局部修改视频：视频节点1')
+    expect(opName([src], 'extend', src)).toBe('局部修改视频：视频节点1')
+
+    const second = node('B', '局部修改视频：视频节点1')
+    expect(opName([src, second], 'extend', second)).toBe('局部修改视频：视频节点1 · 2')
+    const third = node('C', '局部修改视频：视频节点1 · 2')
+    expect(opName([src, second, third], 'edit', third)).toBe('局部修改视频：视频节点1 · 3')
+  })
+
+  it('手动改过的名字整串当根，从第一手重新数', () => {
+    const src = node('A', '主角特写', true)
+    expect(opName([src], 'extend', src)).toBe('局部修改视频：主角特写')
+    // 改的名字碰巧长得像自动名也照样当根：他手打的那串就是他要的名字
+    const odd = node('B', '局部修改视频：旧稿', true)
+    expect(opName([odd], 'edit', odd)).toBe('局部修改视频：局部修改视频：旧稿')
+  })
+
+  it('名字被占了接着往下数，改口时不算自己占着的那个', () => {
+    const src = node('A', '视频节点1')
+    const taken = on('局部修改视频：视频节点1')
+    expect(opName([src, ...taken], 'edit', src)).toBe('局部修改视频：视频节点1 · 2')
+    // 同一个还没出结果的节点从编辑改口成延长：它自己现在叫什么不挡自己的路
+    const pending = node('P', '局部修改视频：视频节点1')
+    expect(opName([src, pending], 'extend', src, 'P')).toBe('局部修改视频：视频节点1')
   })
 })

@@ -15,9 +15,9 @@ export type Stroke = [number, number][]
  */
 export interface MarkRegion { t: number; tool: MarkTool; rect: Rect; strokes?: Stroke[]; width?: number }
 /**
- * 一组 = 一次弹窗会话的产物：圈了几处 + 最多一段时间。组只是「这一段时间管着这几处」的容器，
+ * 一组 = 当前这一套标记：圈了几处 + 最多一段时间。组只是「这一段时间管着这几处」的容器，
  * 界面上不露面 —— 露面的是每一处标记自己（带着自己的时间），以及罩着它们的那一段时间。
- * id 只管 React key 不撞，由只增不减的计数器发。
+ * 节点上的控件常驻，一次任务只有这一套，所以长度恒为 0 或 1，id 恒为 'g1'。
  */
 export interface MarkGroup { id: string; regions: MarkRegion[]; range: TimeRange | null }
 export interface MarkDraft { regions: MarkRegion[]; range: TimeRange | null }
@@ -27,6 +27,16 @@ export interface MarkDraft { regions: MarkRegion[]; range: TimeRange | null }
  * 笔迹底下那条半透明粗线只是交代「涂到哪儿」，不该糊成一团 —— 细到刚好能看出范围就够。
  */
 export const BRUSH_WIDTH = 0.026
+/**
+ * 笔刷粗细的两头。归一化到画面宽度，所以同一档在任何分辨率的素材上涂出来一样粗。
+ * 下限刚好还看得出是一条线，上限约等于画面的十二分之一 —— 再粗就不是「涂一块」而是「盖一层」了。
+ */
+export const BRUSH_MIN = 0.012, BRUSH_MAX = 0.084
+export const clampBrush = (w: number) =>
+  Number.isFinite(w) ? Math.max(BRUSH_MIN, Math.min(BRUSH_MAX, w)) : BRUSH_WIDTH
+/** 滑杆上的位置（0..1）与实际线宽互换：滑杆读的是比例，画笔用的是宽度。 */
+export const brushPct = (w: number) => (clampBrush(w) - BRUSH_MIN) / (BRUSH_MAX - BRUSH_MIN)
+export const brushOf = (pct: number) => clampBrush(BRUSH_MIN + (BRUSH_MAX - BRUSH_MIN) * pct)
 /** 松手时小于这个尺寸的框当误触丢掉：横竖分开定，因为画面是 16:9，同样的像素在纵向占比更大。 */
 const RECT_MIN_W = 0.03, RECT_MIN_H = 0.04
 /** 采点阈值（曼哈顿距离）：手抖不记点，否则一笔能攒出几百个点。 */
@@ -82,11 +92,6 @@ export function groupReading(g: MarkGroup): string {
   return g.regions.length ? `${rangeLabel(g.range)} 里的 ${parts}` : rangeLabel(g.range)
 }
 export const marksReading = (marks: MarkGroup[]) => marks.map(groupReading).join('；')
-/** 数的是「处」和「段」。「组」只是弹窗会话的产物，不该要求用户记住它。 */
-export const markCount = (marks: MarkGroup[]) => ({
-  regions: marks.reduce((n, g) => n + g.regions.length, 0),
-  ranges: marks.filter((g) => g.range).length,
-})
 /** 作用范围不再是用户选的开关，而是从标记推出来：有任何一组带时间段，这次就是局部。 */
 export const markScope = (marks: MarkGroup[]): 'whole' | 'segment' =>
   marks.some((g) => g.range) ? 'segment' : 'whole'
@@ -98,8 +103,9 @@ export function rangeHull(marks: MarkGroup[]): TimeRange | null {
   const rs = marks.map((g) => g.range).filter((r): r is TimeRange => !!r)
   return rs.length ? { start: Math.min(...rs.map((r) => r.start)), end: Math.max(...rs.map((r) => r.end)) } : null
 }
-export const commitDraft = (d: MarkDraft, seq: number): MarkGroup => ({
-  id: `g${seq}`,
+/** 节点上的控件是常驻的，用户改的永远是「当前这一套标记」，所以组 id 固定一个。 */
+export const commitDraft = (d: MarkDraft): MarkGroup => ({
+  id: 'g1',
   regions: d.regions.map((r) => ({ ...r, rect: [...r.rect] as Rect, strokes: r.strokes?.map((st) => st.map((p) => [...p] as [number, number])) })),
   range: d.range ? { ...d.range } : null,
 })

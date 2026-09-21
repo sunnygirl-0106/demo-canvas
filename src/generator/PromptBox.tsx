@@ -20,13 +20,18 @@ interface Props {
   mats: Mat[]
   /** 从 @ 面板挑了一段素材：整份句子（标签已经插在光标那一点）连同它一起交出去 */
   onInsert?: (doc: Seg[], mat: Mat) => void
-  /** 工具行左侧的常驻控件（编辑模式的标记入口）。有它时这一行不再跟着 @ 引用一起出现和消失 */
-  tools?: ReactNode
   /**
    * 这个模式上面没有素材行（文生视频）。那一截高度归可编辑区 ——
    * 面板的上下沿不跟着 Tab 变，句子还是从最上面一行起头，只是底下能写的地方更宽裕。
    */
   rowless?: boolean
+  /**
+   * 删不掉的那几枚标签（按 k 点名）。专注态的句首就是这句话的主语，
+   * 删了这句话不成立 —— 退格删掉之后在「读回 DOM」那一步按原位补回来。
+   */
+  locked?: string[]
+  /** 补回来之后内容和 DOM 对不上了，可编辑区得重挂一遍 —— 由外面的 ver 负责。 */
+  onRestore?: () => void
 }
 /**
  * 提示词框。这里不是「灰色模板 + 一个输入框」，而是一整句可以编辑的话：
@@ -36,7 +41,7 @@ interface Props {
  * （children 用 useMemo 锁住引用，React 会整棵跳过）—— 否则每敲一个字光标都会跳回去。
  * 每次输入都把 DOM 读回一份 doc，谁被删了、谁被挪了，读一遍就知道。
  */
-export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, tools, rowless }: Props) {
+export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, rowless, locked, onRestore }: Props) {
   const ed = useRef<HTMLDivElement>(null); const wrap = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState(false)
   /** 呼出时的光标位置。挑完素材要回到这里，把触发菜单的那个 @ 一起换掉。 */
@@ -76,9 +81,27 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
     walk(box)
     return out
   }
+  /**
+   * 锁定的标签被退格删掉了就按原位补回来：位置取它在上一份句子里的下标。
+   * 「删不掉」没法靠 CSS —— contentEditable 里退格已经发生了，只能在读回来这一步还原。
+   */
+  const restore = (next: Seg[]): Seg[] => {
+    if (!locked?.length) return next
+    const has = new Set(next.filter((s) => s.t !== 'text').map((s) => (s as { k: string }).k))
+    const gone = locked.filter((k) => !has.has(k))
+    if (!gone.length) return next
+    const out = [...next]
+    for (const k of gone) {
+      const seg = live.current.find((s) => s.t !== 'text' && (s as { k: string }).k === k)
+      const at = live.current.findIndex((s) => s === seg)
+      if (seg) out.splice(Math.min(at, out.length), 0, seg)
+    }
+    onRestore?.()
+    return out
+  }
   /** 占位文案的显隐直接改 DOM：打字期间这块区域不重新渲染，交给 React 就慢半拍 */
   const sync = () => {
-    const next = read()
+    const next = restore(read())
     ed.current?.toggleAttribute('data-empty', !docWritten(next))
     onDoc(next)
     return next
@@ -161,12 +184,6 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
         {body}
       </div>
     </div>
-{/*
-      * 工具行现在只放常驻入口（编辑模式的「标记修改」）。
-      * @ 引来的素材直接落在句子里当一枚标签 —— 句子里已经有它了，
-      * 底下再列一遍同样的缩略图，只是把同一件事说第二遍。
-      */}
-    {tools && <div className="prompt-tools">{tools}</div>}
     {menu && <Overlay label="引用已连接资产" anchor={wrap} className="asset-picker" onClose={() => setMenu(false)}>
       <div className="asset-search">
         <IcSearch size={14} />

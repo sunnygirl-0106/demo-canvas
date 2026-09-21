@@ -109,16 +109,16 @@ describe('模式能力与有效素材', () => {
     }
     expect(tabStates(['v', 'w'], long, 'sd2.0').find((t) => t.k === 'edit')!.reason)
       .toBe('视频 IJKL 的时长需在 2–15 秒之间；可切换至 Seedance 2.5')
-    // 入口那句话说的是「所有型号合起来」的区间，上限跟着最宽的 2.5 走
+    // 入口那句话说的是「锁死的 2.5 接不接得住」，区间就是 2.5 自己那一条
     expect(sourceEntryReason(20, 'edit', 'IJKL')).toBe('')
-    expect(sourceEntryReason(31, 'edit', 'IJKL')).toBe('视频 IJKL 的时长需在 2–30 秒之间')
+    expect(sourceEntryReason(31, 'edit', 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
   })
-  it('视频节点上的入口：没有型号接得住这段时长就灰掉', () => {
-    // 2.1 秒：2.5 编辑不了，但 2.0 可以，所以入口照常能点，进去时自动换型号
-    expect(sourceEntryReason(2.1, 'edit', 'IJKL')).toBe('')
+  it('视频节点上的入口：锁死的 2.5 接不住这段时长就灰掉', () => {
+    // 2.1 秒：2.5 编辑要 4 秒起，入口直接灰掉；延长 2 秒起，照常能点
+    expect(sourceEntryReason(2.1, 'edit', 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
     expect(sourceEntryReason(2.1, 'extend', 'IJKL')).toBe('')
-    // 1 秒 / 40 秒：谁都接不住，入口处就灰掉并说出区间和是哪一段
-    expect(sourceEntryReason(1, 'edit', 'IJKL')).toBe('视频 IJKL 的时长需在 2–30 秒之间')
+    // 1 秒 / 40 秒：两种任务都接不住，入口处就灰掉并说出区间和是哪一段
+    expect(sourceEntryReason(1, 'edit', 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
     expect(sourceEntryReason(40, 'extend', 'IJKL')).toBe('视频 IJKL 的时长需在 2–30 秒之间')
     // 时长还没读出来，不先拦
     expect(sourceEntryReason(undefined, 'edit', 'IJKL')).toBe('')

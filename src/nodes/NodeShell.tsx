@@ -11,15 +11,19 @@ interface Props {
   kind: NodeKind
   name: string
   selected: boolean
+  /** 专注态：节点体换成一块深底、青边的屏，宽度由节点自己的 style 说了算 */
+  focus?: boolean
   action?: ReactNode        // 标题栏右侧小图标
   children: ReactNode       // 内容区
   foot?: ReactNode
   toolbar?: ReactNode       // 节点上方浮动工具栏
   panel?: ReactNode         // 节点下方生成器面板
+  /** 画面真实宽高比：给了就按它撑出节点体的高，横片是横的、竖片是竖的 */
+  ratio?: number | null
 }
 
 /** 通用节点外壳：外置标题栏、左右 ⊕、选中描边、hover 联动 */
-export default function NodeShell({ id, kind, name, selected, action, children, foot, toolbar, panel }: Props) {
+export default function NodeShell({ id, kind, name, selected, focus, action, children, foot, toolbar, panel, ratio }: Props) {
   const Icon = KIND_ICON[kind]
   const hover = useCanvas((s) => s.hoverMat)
   const setHover = useCanvas((s) => s.setHoverMat)
@@ -37,11 +41,15 @@ export default function NodeShell({ id, kind, name, selected, action, children, 
   const commit = () => {
     setEditing(false)
     const v = draft.trim()
-    if (v && v !== name) { snapshot(); updateNode(id, { name: v }) }
+    // 改的是这个节点的名字，画布上和面板里是同一个：只改一头会让同一段视频有两个称呼。
+    // 记一笔「这是手打的」：自动命名从此不再改口，从它派生出去的节点也以这个名字为根。
+    if (v && v !== name) { snapshot(); updateNode(id, { name: v, assetName: v, renamed: true }) }
   }
 
   return (
-    <div className={'nd' + (selected ? ' sel' : '') + (hl ? ' hl' : '') + (dim ? ' dim' : '')}>
+    /* 类型挂在节点根上：视频节点的画面按 9:16 摆，图片 / 文本不动 —— 这是长相上的分档，不是状态 */
+    <div data-kind={kind}
+      className={'nd' + (selected ? ' sel' : '') + (hl ? ' hl' : '') + (dim ? ' dim' : '') + (focus ? ' focus' : '')}>
       {toolbar}
       <div className="nd-head">
         <span className="ic"><Icon size={13} /></span>
@@ -63,7 +71,7 @@ export default function NodeShell({ id, kind, name, selected, action, children, 
       {/* hover 联动只挂在节点框上：面板是 NodeToolbar portal，在 React 树里仍是本节点的子节点，
           挂在外层会被面板里的鼠标事件抢走 hover id */}
       <div
-        className="nd-body"
+        className="nd-body" style={ratio ? { aspectRatio: ratio } : undefined}
         onMouseEnter={() => { if (kind !== 'text' && !selected) setHover(id) }}
         onMouseLeave={() => { if (hl) setHover(null) }}   // 选中态也要清，否则 hover 会卡住
       >

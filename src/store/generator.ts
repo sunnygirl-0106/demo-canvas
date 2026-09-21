@@ -16,18 +16,14 @@ interface Draft extends Slots {
   /** 已经替用户起过头了。删光了不会再自动送回来 —— 那是开头，不是模板。 */
   seeded: boolean
   /** 标记组取代了原来的 scope + range：作用范围由每一组自己带着，整体范围推得出来 */
-  marks: MarkGroup[]; markSeq: number
+  marks: MarkGroup[]
   direction: 'before' | 'after' | null; sourceSrc: string | null; sourceId: string | null; references: Record<string, string>
 }
 export interface TaskRecord { id: string; status: 'running' | 'complete'; createdAt: number; payload: TaskPayload }
 /** pinned：用户手动选过 Tab。选过之后系统不再自动切走，除非当前 Tab 失效。 */
-export interface GenState extends Draft { mode: Mode; conn: string[]; pinned: boolean; drafts: Partial<Record<Mode, Draft>>; tasks: TaskRecord[] }
-const freshDraft = (): Draft => ({ ...emptySlots(), model: 'sd2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, doc: [], seeded: false, marks: [], markSeq: 0, direction: 'after', sourceSrc: null, sourceId: null, references: {} })
-export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], pinned: false, drafts: {}, tasks: [] })
-function draftOf(g: GenState): Draft {
-  const { mode: _mode, conn: _conn, pinned: _pinned, drafts: _drafts, tasks: _tasks, ...draft } = g
-  return draft
-}
+export interface GenState extends Draft { mode: Mode; conn: string[]; pinned: boolean; tasks: TaskRecord[] }
+const freshDraft = (): Draft => ({ ...emptySlots(), model: 'sd2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, doc: [], seeded: false, marks: [], direction: 'after', sourceSrc: null, sourceId: null, references: {} })
+export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], pinned: false, tasks: [] })
 function sourceSync(d: Draft, get: MatGet): Draft {
   const mat = d.slotEdit ? get(d.slotEdit) : null
   const src = mat?.src ?? null
@@ -50,21 +46,12 @@ function fitParams(model: Model, params: Params): Params {
     ratio: cap.ratios.includes(params.ratio) ? params.ratio : cap.ratios[0] }
 }
 /**
- * 草稿里的模型可能已经支持不了这个 Tab（之前被别的模型挤走过），
- * 直接恢复会把用户送进一个「Tab 亮着、生成按钮报不支持」的死角，所以用当前模型接住。
+ * 换模式：句子 / 模型 / 参数 / 方向是用户写的东西，切 Tab 不该丢，原样留着；
+ * 素材槽位不是他写的，是按模式算出来的，所以按新模式重新落位再跑一遍源同步。
  */
-function fitModel(d: Draft, mode: Mode, model: Model): Draft {
-  if (MODEL_CAPABILITIES[d.model].genModes.includes(mode)) return d
-  if (!MODEL_CAPABILITIES[model].genModes.includes(mode)) return d
-  return { ...d, model, params: fitParams(model, d.params) }
-}
-/** 换模式：存好当前草稿，取回目标模式的草稿（没有就按连接新分配一份）。 */
 function switchMode(g: GenState, mode: Mode, get: MatGet, pinned: boolean): GenState {
   if (mode === g.mode) return g
-  const saved = g.drafts[mode]
-  const next = saved ? fitModel(saved, mode, g.model)
-    : { ...freshDraft(), model: g.model, params: g.params, ...allocate(emptySlots(), g.conn, mode, get) }
-  return { ...g, ...sourceSync(next, get), mode, pinned, drafts: { ...g.drafts, [g.mode]: draftOf(g) } }
+  return { ...g, ...sourceSync({ ...g, ...allocate(emptySlots(), g.conn, mode, get) }, get), mode, pinned }
 }
 interface GenStore {
   map: Record<string, GenState>; get1: (id: string) => GenState
@@ -115,31 +102,12 @@ export const useGenerator = create<GenStore>((set, get) => {
       } else if (!pinned && mode === 'text' && conn.length && refMode) mode = refMode
       if (!conn.length) pinned = false
       const jumped = mode !== g.mode
-      const sync = (d: Draft, key: Mode, fresh = false) =>
-        sourceSync({ ...d, ...allocate(d, conn, key, matGet, fresh, added) }, matGet)
-      const drafts = { ...g.drafts }
-      for (const key of Object.keys(drafts) as Mode[]) drafts[key] = sync(drafts[key]!, key)
-      /**
-       * 被动切走时（素材没了、Tab 失效），当前草稿要存回它自己的 Tab，而不是跟着带进新 Tab：
-       * 否则「断开视频 → 接上新视频 → 回到编辑」会拿到一份空草稿，用户写的修改要求凭空消失。
-       * 存回去的草稿只清选区（源变了），文字、作用范围、参数都留着。
-       */
-      let current: Draft
-      if (jumped && !first) {
-        drafts[g.mode] = sync(draftOf(g), g.mode)
-        const saved = drafts[mode]
-        current = saved ? fitModel(saved, mode, g.model)
-          : sync({ ...freshDraft(), model: g.model, params: g.params }, mode, true)
-      } else current = sync(draftOf(g), mode, first || jumped)
-      return { ...g, ...current, mode, pinned, conn, drafts }
+      const current = sourceSync({ ...g, ...allocate(g, conn, mode, matGet, first || jumped, added) }, matGet)
+      return { ...g, ...current, mode, pinned, conn }
     }),
     syncSources: (id, matGet) => edit(id, (g) => {
       const current = sourceSync(g, matGet)
-      const drafts = { ...g.drafts }; let changed = current !== g
-      for (const key of Object.keys(drafts) as Mode[]) {
-        const old = drafts[key]!; drafts[key] = sourceSync(old, matGet); changed ||= old !== drafts[key]
-      }
-      const next = changed ? { ...g, ...current, drafts } : g
+      const next: GenState = current === g ? g : { ...g, ...current }
       /**
        * 视频时长是异步读出来的，读到的那一刻规则才算数：
        * 先把型号收敛到接得住这段源视频的那个，实在没有就切走 Tab —— 都在用户做选择之前完成，
@@ -165,8 +133,7 @@ export const useGenerator = create<GenStore>((set, get) => {
       const landing = modeAfterModel(g.mode, g.conn, matGet, model, g.slotEdit)
       if (landing === g.mode) return next
       // 停在一个灰掉的 Tab 上会让生成按钮报一个用户改不动的错，所以这里直接换走。
-      // 注意用 g 而不是 next 去切：被挤走的那个 Tab 的草稿要按「原来的模型」存回去，
-      // 否则切回 2.5 再点编辑，恢复出来的还是那个不支持编辑的模型。
+      // 素材按新 Tab 重新落位，句子 / 参数跟着人走，最后才把新型号盖上去。
       const moved = switchMode(g, landing, matGet, false)
       return { ...moved, model, params: fitParams(model, moved.params) }
     }),

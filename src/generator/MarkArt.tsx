@@ -38,7 +38,7 @@ export default function MarkArt({ regions, at, active, onBoxDown }: Props) {
       onPointerDown={onBoxDown && ((e) => onBoxDown(e, i, null))}>
       {onBoxDown && <>
         {/* 贴着画面顶边的框，标号翻到框里面去，否则会被画面边缘切掉 */}
-        <span className={`mark-box-label${r.rect[1] < 0.07 ? ' inside' : ''}`}>{regions.length > 1 ? `${i + 1} · ` : ''}{timecode(r.t)}</span>
+        <span className={`mark-box-label${r.rect[1] < 0.1 ? ' inside' : ''}`}>{regions.length > 1 ? `区域 ${i + 1} · ` : ''}{timecode(r.t)}</span>
         {HANDLES.map((h) => <i key={h} className={`mark-grip ${h}`} onPointerDown={(e) => onBoxDown(e, i, h)} />)}
       </>}
     </div>)}

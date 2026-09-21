@@ -96,32 +96,21 @@ describe('模型置灰', () => {
   })
 })
 describe('模式草稿与源视频', () => {
-  it('切换保留各自文字、参数、角色、标记与方向', () => {
-    gs().patch('target', { prompt: '编辑草稿', marks: marks(3, { start: 3, end: 7 }) })
-    gs().setMode('target', 'extend', get)
-    expect(state().marks).toEqual([]); expect(state().direction).toBe('after')
-    gs().patch('target', { prompt: '续写草稿', direction: 'before', params: { ...state().params, duration: 30 } })
-    gs().setMode('target', 'edit', get)
-    expect(state()).toMatchObject({ prompt: '编辑草稿', marks: marks(3, { start: 3, end: 7 }), params: { duration: 5 } })
-    gs().setMode('target', 'extend', get)
-    expect(state()).toMatchObject({ prompt: '续写草稿', direction: 'before', params: { duration: 30 }, marks: [] })
-  })
   it('更换源视频清除标记且保留文字，旧源不会变成参考素材', () => {
     gs().patch('target', { prompt: '改椅子', marks: marks(3, { start: 3, end: 7 }) })
     gs().applyDrop('target', 'w', 'edit', null, get)
     expect(state()).toMatchObject({ slotEdit: 'w', marks: [], prompt: '改椅子' })
     expect(state().tray).not.toContain('v')
   })
-  it('同一节点上传替换文件，连线不变也清除当前和历史草稿里的标记', () => {
+  it('同一节点上传替换文件，连线不变也清除这一份句子里的标记', () => {
     gs().patch('target', { prompt: '改椅子', marks: marks(3, { start: 3, end: 7 }) })
     gs().setMode('target', 'ref', get)
     mats[0].src = 'new.mp4'; gs().syncSources('target', get)
     gs().setMode('target', 'edit', get)
     expect(state()).toMatchObject({ marks: [], prompt: '改椅子', sourceSrc: 'new.mp4' })
   })
-  it('移除首帧、切换、再次同步均不自动补位，历史连接保留', () => {
+  it('移除首帧、再次同步均不自动补位，历史连接保留', () => {
     gs().setMode('target', 'frames', get); gs().removeMaterial('target', 'a', get)
-    gs().setMode('target', 'ref', get); gs().setMode('target', 'frames', get)
     gs().syncConn('target', ['v', 'w', 'a', 'b'], get)
     expect(state()).toMatchObject({ slotFirst: null, slotLast: 'b' }); expect(state().conn).toHaveLength(4)
   })

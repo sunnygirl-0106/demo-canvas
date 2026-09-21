@@ -68,6 +68,8 @@ export const IcPlay = ({ size = 28 }: P) => (
 )
 
 /** 模型 icon */
+/** 勾：列表里「现在用的就是这一项」 */
+export const IcCheck = (p: P) => <Svg {...p}><path d="M4 12.5l5 5L20 6.5" /></Svg>
 export const IcSeedance = (p: P) => <Svg {...p}><rect x="5" y="10" width="2.5" height="8" rx="1" /><rect x="10.25" y="6" width="2.5" height="12" rx="1" /><rect x="15.5" y="8" width="2.5" height="10" rx="1" /></Svg>
 export const IcWan = (p: P) => <Svg {...p}><path d="M4 12c2-4 4-6 8-6s6 2 8 6-2 6-8 6-6-2-8-6z" /></Svg>
 export const IcKling = (p: P) => <Svg {...p}><circle cx="6" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="18" cy="12" r="2" /><path d="M3 12h4M8 12h4M14 12h4" /></Svg>
@@ -87,3 +89,54 @@ export const IcLasso = ({ size = 14, color = 'currentColor', sw = 1.7, style, cl
 export const IcFrame = (p: P) => <Svg {...p}><path d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3" /></Svg>
 export const IcBrush = (p: P) => <Svg {...p}><path d="M15 4l5 5-9.5 9.5L5 20l1.5-5.5z" /><path d="M13 6l5 5" /></Svg>
 export const IcUndo = (p: P) => <Svg {...p}><path d="M4 10h9.5a4.5 4.5 0 1 1 0 9H8" /><path d="M8 6l-4 4 4 4" /></Svg>
+export const IcTrash = (p: P) => <Svg {...p}><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" /></Svg>
+/** 铅笔：局部修改这件事的图标，节点入口、标题栏的「编辑中」和面板里都用它 */
+/**
+ * 「正在编辑」那枚会写字的笔。和别的图标不同，它不是方的：写字要有一段跑道，
+ * 所以自带一个 26×14 的 viewBox，宽度按它换算。
+ *
+ * 笔和墨是两条动画、同一个节拍：笔从左往右走（一路小幅摇摆，所以写出来是歪的），
+ * 底下那道线用 stroke-dashoffset 跟着笔尖一点点露出来 ——
+ * 看着才是「它写出来的」，而不是「它在一条画好的线上滑」。
+ * 线本身也是波浪的：笔在抖，写出来的字就不该是直的。
+ * 墨线标了 pathLength=1，所以 dasharray 直接用 0–1，不必去量这条曲线到底多长。
+ *
+ * 笔身和墨迹是两个颜色（--pen-body / --pen-ink，由用它的地方给）：
+ * 同一个颜色摆在一起，笔杆和它刚写下的那道线糊成一团，分不清谁是笔、谁是字。
+ * 笔尖那一小截和墨是同一支白（--pen-tip / --pen-ink）—— 它是这支笔正在写的那一笔，
+ * 和地上那道痕本来就是同一样东西；只是笔尖实一些、写下来的那道痕淡一些，
+ * 墨落在纸上总比笔尖里浅，也不至于把一句状态说得比正文还响。
+ *
+ * 笔身按真笔的几节分开画：笔尖、木头那一圈、笔杆、杆上一道箍。
+ * 一块斜着的方板也能读成笔，但读到的是「一个图标」；分了节才读成「一支笔」。
+ * 形状竖着画、整组再转 45°：斜着摆的每一段都要自己算坐标，一处调不好整支笔就歪了。
+ * 转角写在**内层** g 上 —— 动画改的是外层那个 g 的 CSS transform，
+ * 两者落在同一个元素上时 CSS 会把 transform 属性整条顶掉，笔会当场躺平。
+ */
+export const IcWriting = ({ size = 14, color = 'currentColor', sw = 1, style, className }: P) => (
+  <svg width={(size * 26) / 14} height={size} viewBox="0 0 26 14" fill="none"
+    style={style} className={`ic-writing${className ? ` ${className}` : ''}`}>
+    <path className="ic-writing-ink" pathLength={1} fill="none" stroke={`var(--pen-ink, ${color})`}
+      strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
+      d="M3.2 12.7c1.1-1.2 1.9.8 3-.2s1.9-1.2 3-.2 1.9.8 3-.2 1.9-1.2 3-.2" />
+    <g className="ic-writing-pen">
+      <g transform="translate(2.9 12.4) rotate(45)">
+        {/* 笔杆：顶上收成半圆，那是笔的屁股 */}
+        <path fill={`var(--pen-body, ${color})`}
+          d="M-1.25-4.1v-7.8a1.25 1.25 0 0 1 2.5 0v7.8z" />
+        {/* 木头那一圈：比笔杆窄一丝，笔杆到笔尖之间的那一节 */}
+        <path fill={`var(--pen-body, ${color})`} d="M-1.15-4.1h2.3l.1 1.6h-2.5z" opacity=".82" />
+        {/* 笔尖：和墨同一支白，只是实一档 —— 它正在写的那一笔，和地上那道痕是同一样东西 */}
+        <path fill={`var(--pen-tip, var(--pen-ink, ${color}))`} d="M-1.05-2.5h2.1L0 0z" />
+        {/* 杆上那道箍：一根发丝宽，小尺寸下只剩一点质感，不会读成第二支笔 */}
+        <path stroke={`var(--pen-tip, var(--pen-ink, ${color}))`} strokeWidth=".6" opacity=".4" d="M-1.25-9.6h2.5" />
+      </g>
+    </g>
+  </svg>
+)
+/* 版本记录里那三枚：带杆的返回箭头、方框加号（添加到画布）、外指箭头（在画布中查看）——
+   路径照设计稿的 16 viewBox 等比放到 24 上，形状一模一样。 */
+export const IcArrowL = (p: P) => <Svg {...p}><path d="M13.5 5.25L6.75 12l6.75 6.75" /><path d="M6.75 12h12" /></Svg>
+export const IcPlusBox = (p: P) => <Svg {...p}><rect x="3.75" y="3.75" width="16.5" height="16.5" rx="3.75" /><path d="M12 8.25v7.5M8.25 12h7.5" /></Svg>
+export const IcOpenOut = (p: P) => <Svg {...p}><path d="M14.25 3.75h6v6" /><path d="M20.25 3.75l-7.5 7.5" /><path d="M18.75 14.25v4.5a1.5 1.5 0 0 1-1.5 1.5h-12a1.5 1.5 0 0 1-1.5-1.5v-12a1.5 1.5 0 0 1 1.5-1.5h4.5" /></Svg>
+export const IcPencil = (p: P) => <Svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></Svg>

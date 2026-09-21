@@ -13,11 +13,16 @@ input,textarea{font:inherit;color:inherit}
 @keyframes gp-rise{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
 @keyframes gp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @keyframes sp{to{transform:rotate(360deg)}}
+/* 连出来的那块屏是「刚长出来的」，不是「一直在那儿」：落地那一下要看得见 */
+@keyframes nd-popin{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes gp-flow{to{stroke-dashoffset:-80}}
 
 /* ═══ React Flow 覆盖 ══════════════════════════════════════ */
 .react-flow__attribution{background:rgba(0,0,0,.35);color:#5c666d}
 .react-flow__attribution a{color:#5c666d}
+/* 渐变画在画布容器上，点阵那层 svg 不再自带底色，透出来的就是这层 */
+.react-flow{background:radial-gradient(ellipse at 50% 50%,
+  var(--canvas-core) 0%, var(--canvas-mid) 48%, var(--bg) 100%)}
 .react-flow__node{font-family:var(--font)}
 .react-flow__handle{border:0;background:none;width:22px;height:22px;min-width:22px;min-height:22px}
 .react-flow__handle:after{display:none}
@@ -31,6 +36,9 @@ input,textarea{font:inherit;color:inherit}
   transition:background .16s,color .16s,border-color .16s}
 .edge-cut:hover{background:var(--teal-solid);border-color:var(--teal-solid);color:var(--teal-ink)}
 .edge-cut:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px}
+/* 连线自己说出它长出来的是什么事。只是一句说明，不收指针事件 —— 剪刀还归线本身 */
+.edge-op{position:absolute;pointer-events:none;white-space:nowrap;font-size:9.5px;letter-spacing:.1em;
+  color:var(--ink-3)}
 .react-flow__node-toolbar{z-index:20}
 .react-flow__pane{cursor:default}
 
@@ -111,10 +119,15 @@ input,textarea{font:inherit;color:inherit}
 .addm-i.soon .addm-t{color:var(--ink-2)}
 
 /* ═══ 节点 ═════════════════════════════════════════════════ */
-.nd{width:320px;position:relative}
+/* 宽度由节点自己的 style 说了算：专注态要在同一个节点里摆下画面 + 控件，比别的宽一截 */
+.nd{width:100%;position:relative}
 .nd-head{position:absolute;left:2px;right:2px;top:-24px;height:22px;display:flex;align-items:center;gap:6px;
   color:var(--ink-2);font-size:12px}
-.nd-head .ic{color:var(--teal);display:flex}
+/*
+ * 标题栏左边这枚图标只说「这是个视频 / 图片节点」—— 是名字的一部分，跟着名字用白。
+ * 着青就成了一整张画布上十几处闪青点，青色该留给「这儿正在发生什么」。
+ */
+.nd-head .ic{color:var(--ink);display:flex}
 .nd-name{font-weight:600;color:var(--ink);letter-spacing:.04em;max-width:200px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .nd-name input{width:150px;background:var(--fill);border:1px solid var(--teal-soft);border-radius:5px;
@@ -125,15 +138,28 @@ input,textarea{font:inherit;color:inherit}
 .nd-body{height:200px;border-radius:var(--r-node);background:linear-gradient(180deg,#171919,#121414);
   border:1px solid var(--line-2);overflow:hidden;position:relative;display:flex;align-items:center;
   justify-content:center;transition:border-color .22s,box-shadow .22s}
-.nd.sel .nd-body{border-color:var(--teal-soft);box-shadow:0 0 0 1px var(--teal-soft)}
-/* 悬浮只是一声招呼，不是选中：一条细的、淡的青边就够，不再套第二圈实色描边 */
-.nd.hl .nd-body{border-color:var(--teal-ring);box-shadow:0 6px 20px rgba(0,0,0,.45)}
+/*
+ * 选中只是「现在在说的是它」，不是一件正在发生的事：一圈微白的边就够。
+ * 着上青色等于让画布上随手一点就亮起强调色 —— 那一档留给真正在进行的那些（专注态、标记、当前模式）。
+ */
+.nd.sel .nd-body{border-color:rgba(255,255,255,.34);box-shadow:0 0 0 1px rgba(255,255,255,.16)}
+/* 悬浮只是一声招呼，比选中再淡一档：一条细的、淡的白边，不再套第二圈描边 */
+.nd.hl .nd-body{border-color:rgba(255,255,255,.22);box-shadow:0 6px 20px rgba(0,0,0,.45)}
 .nd.dim{opacity:.35}
 .nd-ph{width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:var(--ink-2);
   animation:gp-float 6s ease-in-out infinite}
 .nd-img{width:100%;height:100%;object-fit:cover;display:block}
 .nd-vid{width:100%;height:100%;object-fit:contain;display:block;background:#000}
+/*
+ * 视频节点按素材本来的样子摆：节点体不再是固定高的一块横板，高度由画面自己的比例撑出来 ——
+ * 竖片是竖的、横片是横的，两边都不留黑。比例量自封面，由 VideoNode 内联给到这里（aspect-ratio）；
+ * 还没量出来（空节点、封面没加载）先按 9:16 兜着，这块画布上的视频多数是竖的。
+ * 画面填满（cover）而不是塞进去（contain）：比例对得上时两者一样，对不上那半像素也不该露黑边。
+ * 只管普通态 —— 专注态那块屏有自己的一套（上半截画面、下半截轴），另说。
+ */
+.nd[data-kind=video]:not(.focus) .nd-body{height:auto;aspect-ratio:9/16}
+.nd[data-kind=video]:not(.focus) .nd-vid{object-fit:cover;background:var(--sunk)}
 .nd-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .nd-play span{width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.5);
   border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(2px);
@@ -141,6 +167,94 @@ input,textarea{font:inherit;color:inherit}
 .nd-play:hover span{transform:scale(1.08);background:rgba(0,0,0,.8)}
 .nd-corner{position:absolute;left:8px;top:8px;width:22px;height:22px;border-radius:7px;background:rgba(0,0,0,.6);
   display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
+/* 画面自己占一格：普通节点填满那 200px，专注态按 16:9 摊开，下面留给控件 */
+.nd-shot{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+/* 专注态节点体不再是固定高的一块画面：上半截是画面，下半截是各自的那条轴 */
+.nd-body:has(.nd-board){height:auto;display:block}
+/* 画面那一截的高度由里面那块屏自己的比例撑出来（MarkStage 按素材量），外面不再写死 16:9 */
+.nd-body:has(.nd-board) .nd-shot{height:auto}
+.nd-board{display:flex;flex-direction:column}
+/*
+ * 专注态节点：这段时间里用户唯一在看的那块屏，所以它不套普通节点那层渐变底，
+ * 而是一块纯黑的屏加一圈青边 —— 画面是主角，节点体只是它的边框。
+ */
+.nd.focus .nd-head{top:-30px;height:26px;gap:8px}
+.nd.focus .nd-name{font-weight:500;color:#dce3e2;letter-spacing:0;max-width:340px}
+.nd.focus .nd-body{height:auto;border-radius:14px;background:#0e1010;border-color:rgba(127,227,203,.3);
+  box-shadow:0 26px 64px -32px #000;animation:nd-popin .22s ease-out both}
+.nd.focus.sel .nd-body{border-color:rgba(127,227,203,.3);box-shadow:0 26px 64px -32px #000}
+/*
+ * 正在做的是哪件事，写在标题栏右边 —— 画面上就只剩画面和画在它上面的标记。
+ * 不镶框：一圈描边是给可点的东西用的，这里只是一句状态，框起来反倒像颗按钮。
+ * 浅一档的青说明「这会儿有事正在发生」；那枚图标自己小幅地动，
+ * 一句静止的字说的是「现在是编辑态」，一枚在动的图标说的才是「正在编辑」。
+ */
+.nd-op{display:flex;align-items:center;gap:5px;flex:none;font-size:11px;color:var(--teal-pale);
+  /*
+   * 笔是青的、写出来的那道线是白的：同色摆在一起，笔杆和它刚写下的那道痕会糊成一团。
+   * 那道痕半透明：墨落在纸上总比笔尖里浅；一句「正在编辑」的状态，也不该比旁边的正文还响。
+   * 笔尖是同一支白、实一档，它是笔的一部分，不是已经写下去的那一笔。
+   */
+  --pen-body:var(--teal);  --pen-ink:rgba(244,250,248,.52);  --pen-tip:rgba(244,250,248,.9)}
+/*
+ * 「编辑中」拆成单字才好一个一个弹。顺手把它们收紧半格、斜过来 ——
+ * 和那支 45° 的笔是一套笔迹，读起来像随手写下的，不像印上去的标签。
+ */
+.nd-op b{font-weight:inherit}
+/* 字与字之间空出一个字距：单字弹跳要看得见「一个一个」，挨太紧就读成整块在抖。
+   末字后面那一份要收掉 —— 它落在字外面，撑的是图标和字之间那道缝 */
+.nd-op em{display:inline-block;font-style:italic;letter-spacing:.2em}
+.nd-op em:last-child{letter-spacing:0}
+.nd-op[data-op=extend] svg{transform-origin:50% 50%;animation:nd-grow 2s var(--ease-soft) infinite}
+/* 延长是「往外长」，所以它呼吸，不摇摆 */
+@keyframes nd-grow{0%,100%{transform:scale(1);opacity:.82}50%{transform:scale(1.18);opacity:1}}
+/*
+ * 会写字的那枚笔。笔和墨是两条动画、同一个时长、同一条 linear ——
+ * 差一点就会看出「笔走在墨前面」或者「墨自己在长」。
+ * 笔的支点定在笔尖（fill-box 的左下角），所以它摇摆的时候是笔杆在晃，笔尖还压在纸上。
+ * 一趟写完（80%）抬笔、隐去、退回起点，留一小口气再写下一遍 —— 退回那一下不该被看见。
+ */
+.ic-writing-pen,.ic-writing-ink{transform-box:fill-box}
+.ic-writing-pen{transform-origin:0% 100%;animation:ic-write-pen 2.6s linear infinite}
+/*
+ * 间隔给 2、不是 1：dasharray 是循环的，虚线长 1 间隔 1 摆在一条长 1 的路径上，
+ * 偏移刚过 1 就把「下一段实线」的头推回路径起点 —— 一枚还没开始写的笔，左边先摆着一颗墨点。
+ * 间隔比路径还长，整条路径就只能落在同一个间隔里，收笔时干干净净什么都不剩。
+ */
+.ic-writing-ink{stroke-dasharray:1 2;animation:ic-write-ink 2.6s linear infinite}
+@keyframes ic-write-pen{
+  0%{transform:translate(0,0) rotate(0deg)}
+  10%{transform:translate(1.2px,.45px) rotate(-7deg)}
+  22%{transform:translate(2.9px,-.35px) rotate(5deg)}
+  34%{transform:translate(4.6px,.45px) rotate(-6deg)}
+  46%{transform:translate(6.4px,-.35px) rotate(6deg)}
+  58%{transform:translate(8.2px,.4px) rotate(-5deg)}
+  70%{transform:translate(10.1px,-.3px) rotate(4deg)}
+  80%{transform:translate(12px,0) rotate(0deg);opacity:1}
+  86%{transform:translate(12px,-2.4px) rotate(11deg);opacity:0}
+  87%{transform:translate(0,-2.4px) rotate(-11deg);opacity:0}
+  96%,100%{transform:translate(0,0) rotate(0deg);opacity:1}
+}
+@keyframes ic-write-ink{
+  0%{stroke-dashoffset:1;opacity:1}
+  80%,86%{stroke-dashoffset:0;opacity:1}
+  90%{stroke-dashoffset:0;opacity:0}
+  91%{stroke-dashoffset:1;opacity:0}
+  96%,100%{stroke-dashoffset:1;opacity:1}
+}
+/*
+ * 笔走到最右边那一下，三个字依次轻轻弹一下 —— 差 70ms 起跳，读起来才是「一个一个写出来的」，
+ * 齐刷刷一起跳就成了整块在抖。用 animation-delay 错开：整条循环跟着后移那么多，
+ * 相对笔尖始终慢半拍，正好是「先写到，字才跳」。
+ */
+.nd-op[data-op=edit] em{animation:nd-op-hop 2.6s var(--ease-soft) infinite}
+.nd-op[data-op=edit] em:nth-child(3){animation-delay:.07s}
+.nd-op[data-op=edit] em:nth-child(4){animation-delay:.14s}
+@keyframes nd-op-hop{
+  0%,76%,90%,100%{transform:translateY(0)}
+  83%{transform:translateY(-2.6px)}
+}
+.nd-head .nd-op{margin-left:auto}
 .nd-wm{position:absolute;right:9px;bottom:8px;font-size:11px;color:rgba(255,255,255,.5);letter-spacing:.4px}
 .nd-preview{position:absolute;right:8px;bottom:8px;height:22px;padding:0 9px;border-radius:var(--r-pill);
   background:rgba(0,0,0,.6);color:var(--ink);font-size:11px;display:flex;align-items:center;gap:4px}
@@ -163,19 +277,30 @@ input,textarea{font:inherit;color:inherit}
 .react-flow__handle-left{left:-13px}
 .react-flow__handle-right{right:-13px}
 
-/* 节点上方浮动工具栏 */
-.vtool{display:flex;align-items:center;height:34px;padding:0 4px;border-radius:var(--r-pill);
-  background:var(--surface-3);border:1px solid var(--line-2);box-shadow:0 18px 40px -22px rgba(0,0,0,.9)}
-.vtool button{height:26px;padding:0 11px;border-radius:var(--r-pill);display:flex;align-items:center;gap:5px;
-  font-size:12px;color:var(--ink-2);transition:background .2s,color .2s}
-.vtool button:hover{background:var(--fill-2);color:var(--ink)}
-.vtool .sep{width:1px;height:15px;background:var(--line-2)}
+/*
+ * 节点上方浮动工具栏。四件事一样重、都是未点击态 —— 没有哪一件已经选中，
+ * 一条竖线把「能把人带走的两件」和「顺手的两件」分开，每两个之间都插一条线，那条线就什么都没说了。
+ */
+.vtool{display:flex;align-items:center;gap:4px;padding:5px;border-radius:13px;white-space:nowrap;
+  background:rgba(22,24,24,.92);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(18px);
+  box-shadow:0 18px 40px -18px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
+.vtool button,.vtool a{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:9px;
+  font-size:13.5px;color:#aeb6b5;text-decoration:none;transition:background .2s,color .2s}
+.vtool button:hover,.vtool a:hover{background:rgba(255,255,255,.05);color:#edf1f0}
+/* 版本数是这枚入口带着的一个数，不是它名字的一部分：给它一块自己的底 */
+.vtool button>b{font-size:11px;font-weight:600;color:#8e9797;background:rgba(255,255,255,.07);
+  border-radius:5px;padding:1px 5px}
+.vtool .sep{width:1px;height:20px;background:rgba(255,255,255,.09);margin:0 4px}
 
 
 /* ═══ 生成器面板 ═══════════════════════════════════════════ */
 button:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--teal);outline-offset:3px}
 button:disabled{opacity:.4;cursor:not-allowed}
-.gp{width:min(840px,calc(100vw - 24px));max-height:calc(100dvh - 80px);overflow:auto;scrollbar-width:thin;
+/*
+ * 面板永远长在节点下面，所以它的高度上限要给节点自己留出那一截 ——
+ * 顶到 100dvh 就等于逼着镜头把节点推出画外，而这块面板说的正是那个节点。
+ */
+.gp{width:min(840px,calc(100vw - 24px));max-height:calc(100dvh - 180px);overflow:auto;scrollbar-width:thin;
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);padding:13px 22px 16px;
   display:flex;flex-direction:column;cursor:default;
   box-shadow:0 40px 90px -36px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.04);
@@ -330,8 +455,138 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .media-preview header button:hover{background:var(--fill-2)}
 .media-preview img,.media-preview video{display:block;width:100%;max-height:calc(100dvh - 130px);object-fit:contain;
   background:#0b0c0c;border-radius:12px}
-.popover-heading{font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:space-between;padding:7px 6px 12px}
-.popover-heading button{padding:0 4px;color:var(--ink-2)}
+
+/* ── 版本记录 ──
+ * 布局照「气泡内二级页 · 2a 上下分区」：气泡挂在节点侧边，里头分两页 ——
+ * 先是一屏卡片（这个节点做出过哪几幅画面），点一张才进那一版的细节。
+ * 分页而不是「列表下面接一块详情」，是因为提示词是整段的话：一段话垫在一屏卡片底下，
+ * 卡片被挤到看不全，话也读不完整；一次只说一件事，两边都能摊开。
+ *
+ * 下面每一个数都是设计稿上的原值，再统一乘 --vp-k。稿子是 1000px 示意画布上的一张图，
+ * 按它的绝对像素落到 1920 的真机上偏小了一档；等比放大而不是挨个重调，
+ * 是为了让稿子定下的那套比例关系（标题比版本号小、画面占多宽、参数多不起眼）一个都不走样。
+ * 整块界面的大小就是这一个数说了算，要再大 / 再小一档只改它。
+ *
+ * 色板不照搬稿子。稿子那一套底色带绿味（#111817 / #7d8e89），单看没问题，
+ * 摆进这个画布就成了另一支色 —— 一块浮层比它底下的节点更绿，读到的第一件事是「它跟别处不一样」。
+ * 所以这里只承接稿子的**明度关系**（浮层底 → 卡片底 → 选中档各抬一级，正文 → 注脚 → 描边各降一级），
+ * 色相一律交给 tokens.css 那套中性灰。留着这组变量是为了这层对应关系一眼看得见，
+ * 改色时也只动这一处；青色只剩主操作那一行字，它本来就该是全局强调色。
+ */
+.versions-pop{
+  --vp-k:1.05;
+  --vp-bg:var(--surface-3);      --vp-line:var(--line-2);     --vp-hover:var(--fill-2);
+  --vp-ink:var(--ink-0);         --vp-ink-2:var(--ink-2);     --vp-ink-3:var(--ink-2);
+  --vp-card:var(--surface-2);    --vp-card-line:var(--line);  --vp-card-line-on:var(--line-2);
+  --vp-chip:var(--fill-3);       --vp-chip-ink:var(--ink-0);
+  --vp-value:var(--ink-1);       --vp-hair:var(--line);       --vp-still:var(--sunk);
+  --vp-pill-line:var(--line-2);  --vp-pill-ink:var(--ink-2);
+  --vp-act:var(--teal-pale);     --vp-act-line:var(--teal-dash);
+  --vp-act-on:var(--teal-on);    --vp-act-line-on:var(--teal-ring);
+  width:calc(660px * var(--vp-k));max-width:calc(100vw - 48px);padding:0;overflow:visible;
+  background:var(--vp-bg);border:1px solid var(--vp-line);border-radius:calc(20px * var(--vp-k));
+  box-shadow:0 30px 70px rgba(0,0,0,.6);color:var(--vp-ink);
+  animation:gp-rise .22s var(--ease-soft) both}
+/* 尖角是这只气泡的一部分，底色和描边跟着它走，不跟通用浮层 */
+.versions-pop>.overlay-tail{background:var(--vp-bg);border-color:var(--vp-line)}
+/* 两页共用一副外框：返回时只有内容换掉，框不动 —— 换的是页，不是弹窗 */
+.versions-pop>div{display:flex;flex-direction:column;max-height:calc(100dvh - 48px)}
+.vp-list{padding:calc(22px * var(--vp-k)) calc(24px * var(--vp-k))}
+.vp-detail{padding:calc(18px * var(--vp-k)) calc(24px * var(--vp-k)) calc(24px * var(--vp-k))}
+.versions-pop header{display:flex;justify-content:space-between;align-items:center;
+  gap:calc(16px * var(--vp-k));flex:0 0 auto}
+/* 浮层自己的标题：这一块弹出来说的是「版本记录」，名字和数量退到它旁边当注脚 */
+.vp-list header>div{display:flex;align-items:baseline;gap:calc(10px * var(--vp-k));min-width:0}
+.vp-list header strong{font-size:calc(20px * var(--vp-k));font-weight:600;color:var(--vp-ink)}
+.vp-list header span{font-size:calc(13px * var(--vp-k));color:var(--vp-ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vp-x{flex:0 0 auto;width:calc(28px * var(--vp-k));height:calc(28px * var(--vp-k));
+  border-radius:calc(9px * var(--vp-k));display:grid;place-items:center;
+  color:var(--vp-ink-3);transition:background .2s,color .2s}
+.vp-x:hover{background:var(--vp-hover);color:var(--vp-ink)}
+
+/* 筛选那排是四个并列的词，不是四枚控件：静止态只有字，选中的那一档才落一块底。
+ * 每一档都镶一圈线，四个框并排，先看见的是框，读到哪一档亮着反倒要找。 */
+.vp-filters{display:flex;flex-wrap:wrap;gap:calc(6px * var(--vp-k));flex:0 0 auto;
+  margin:calc(18px * var(--vp-k)) 0 calc(16px * var(--vp-k))}
+.vp-filters button{padding:calc(6px * var(--vp-k)) calc(14px * var(--vp-k));border-radius:999px;
+  font-size:calc(13px * var(--vp-k));color:var(--vp-ink-2);transition:background .2s,color .2s}
+.vp-filters button:hover{color:var(--vp-chip-ink)}
+.vp-filters .selected,.vp-filters .selected:hover{background:var(--vp-chip);color:var(--vp-chip-ink)}
+/* 一条都没有的那一档：点不动，也不假装它有内容 */
+.vp-filters button[aria-disabled=true],.vp-filters button[aria-disabled=true]:hover{opacity:.38;
+  color:var(--vp-ink-2);background:none;cursor:not-allowed}
+
+.vp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(14px * var(--vp-k));
+  overflow:auto;scrollbar-width:thin;padding:1px;margin:-1px}
+/* 卡片自己成一块：画面满铺在上，名字和出身收在下面那条带里，两者同属一张卡，不各自飘着 */
+.vp-card{display:block;text-align:left;background:var(--vp-card);border:1px solid var(--vp-card-line);
+  border-radius:calc(14px * var(--vp-k));overflow:hidden;transition:border-color .2s}
+.vp-card:hover{border-color:var(--vp-card-line-on)}
+.vp-card:focus-visible{border-color:var(--vp-act-line-on)}
+.vp-shot{display:block;position:relative;height:calc(192px * var(--vp-k));overflow:hidden}
+.vp-shot img{display:block;width:100%;height:100%;object-fit:cover}
+/* 时长角标压在画面右下角：左下留给卡片自己那条文字带 */
+.vp-shot em{position:absolute;right:calc(8px * var(--vp-k));bottom:calc(8px * var(--vp-k));
+  padding:calc(3px * var(--vp-k)) calc(7px * var(--vp-k));border-radius:calc(6px * var(--vp-k));
+  background:rgba(0,0,0,.6);font-family:var(--num);font-weight:500;font-style:normal;line-height:1.4;
+  font-size:calc(11px * var(--vp-k));font-variant-numeric:tabular-nums;color:#fff;letter-spacing:.03em}
+.vp-card strong{display:block;font-size:calc(13px * var(--vp-k));font-weight:500;color:var(--vp-ink);
+  margin:calc(10px * var(--vp-k)) calc(11px * var(--vp-k)) 0}
+.vp-card small{display:block;font-size:calc(11px * var(--vp-k));color:var(--vp-ink-2);
+  margin:calc(4px * var(--vp-k)) calc(11px * var(--vp-k)) calc(12px * var(--vp-k));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.vp-detail header{margin-bottom:calc(16px * var(--vp-k))}
+/* 返回处写的是上一页的名字，不是一个光秃秃的「返回」：点下去落到哪儿，字面上就说清 */
+.vp-back{display:inline-flex;align-items:center;gap:calc(7px * var(--vp-k));
+  font-size:calc(13px * var(--vp-k));color:var(--vp-ink-3);transition:color .2s}
+.vp-back:hover{color:var(--vp-ink)}
+.vp-acts{display:flex;align-items:center;gap:calc(16px * var(--vp-k))}
+/* 主操作：一行带下划线的字，不是实心块。这一页真正的主角是那幅画面和那段提示词 */
+.vp-link{display:inline-flex;align-items:center;gap:calc(7px * var(--vp-k));
+  padding-bottom:calc(3px * var(--vp-k));font-size:calc(13.5px * var(--vp-k));font-weight:500;
+  color:var(--vp-act);border-bottom:1px solid var(--vp-act-line);transition:color .2s,border-color .2s}
+.vp-link:hover{color:var(--vp-act-on);border-color:var(--vp-act-line-on)}
+
+.vp-body{display:flex;gap:calc(20px * var(--vp-k));min-height:0;overflow:auto;scrollbar-width:thin}
+.vp-still{flex:0 0 auto;width:calc(200px * var(--vp-k));height:calc(340px * var(--vp-k));
+  border-radius:calc(12px * var(--vp-k));overflow:hidden;background:var(--vp-still)}
+.vp-still img{display:block;width:100%;height:100%;object-fit:cover}
+.vp-info{flex:1;min-width:0;display:flex;flex-direction:column}
+.vp-title{display:flex;align-items:baseline;gap:calc(10px * var(--vp-k))}
+.vp-title strong{font-size:calc(22px * var(--vp-k));font-weight:600;color:var(--vp-ink)}
+/* 分类只镶一圈细线：它是「这一版是哪一档」的注解，着了色就成了这一页最亮的东西 */
+.vp-title em{flex:0 0 auto;padding:calc(2px * var(--vp-k)) calc(9px * var(--vp-k));
+  border:1px solid var(--vp-pill-line);border-radius:999px;
+  font-size:calc(12px * var(--vp-k));font-style:normal;color:var(--vp-pill-ink)}
+.vp-rel{margin-top:calc(7px * var(--vp-k));font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
+.vp-label{margin:calc(20px * var(--vp-k)) 0 calc(8px * var(--vp-k));
+  font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
+/* 提示词是整段的一句话，给足行距摊开读；不再截三行 —— 这一页就是为看全它才分出来的 */
+.vp-prompt{font-size:calc(14px * var(--vp-k));line-height:1.8;color:var(--vp-value);
+  text-wrap:pretty;white-space:pre-wrap}
+.vp-blank{margin-top:calc(20px * var(--vp-k));font-size:calc(13px * var(--vp-k));
+  line-height:1.7;color:var(--vp-ink-2)}
+.vp-grid .vp-blank{grid-column:1/-1;margin:calc(6px * var(--vp-k)) 0 2px}
+.vp-fill{flex:1}
+/* 参数沉在底边、压在一条细线下：查证用的东西，不横在提示词和画面之间 */
+.vp-specs{display:grid;grid-template-columns:1fr 1fr;
+  gap:calc(12px * var(--vp-k)) calc(10px * var(--vp-k));
+  margin-top:calc(20px * var(--vp-k));padding-top:calc(14px * var(--vp-k));
+  border-top:1px solid var(--vp-hair)}
+.vp-specs>div{display:flex;justify-content:space-between;align-items:baseline;
+  gap:calc(10px * var(--vp-k));min-width:0}
+.vp-specs span{flex:0 0 auto;font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
+.vp-specs b{font-family:var(--num);font-weight:400;line-height:1.4;
+  font-size:calc(12px * var(--vp-k));font-variant-numeric:tabular-nums;color:var(--vp-value);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 浮层自己的标题，不是行内小标签：给到和面板 Tab 同一档字号，一眼看出这块弹出来说的是什么 */
+.popover-heading{font-size:15px;font-weight:650;color:var(--ink-0);
+  display:flex;align-items:center;justify-content:space-between;padding:6px 6px 12px}
+.popover-heading button{display:flex;padding:4px;margin:-4px;border-radius:8px;color:var(--ink-2);
+  transition:color .2s,background .2s}
+.popover-heading button:hover{color:var(--ink-0);background:var(--fill-2)}
 /*
  * 打一个 @ 呼出的素材面板：一条竖列，从光标那一点长出来。
  * 每行只有缩略图、名字、时长三样 —— 名字多半是一串读不出东西的 id，
@@ -365,20 +620,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
   transform:rotate(-45deg)}
 
 /* ── 标记式局部编辑 ── */
-/* 入口：中性描边胶囊。青色只留给「生成」和句子里的标记标签，工具行里不该有第二个彩色焦点 */
-.mark-entry{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:var(--r-pill);
-  background:var(--fill);box-shadow:inset 0 0 0 1px var(--line-2);color:var(--ink-1);font-size:12.5px;
-  transition:background .22s,color .22s,box-shadow .22s}
-/* 悬浮才亮青色描边：套索的落点同时向里收一点，像绳子被收紧 */
-.mark-entry:hover{background:var(--teal-wash);box-shadow:inset 0 0 0 1px var(--teal-ring);color:var(--teal-on)}
-.mark-entry svg{transition:transform .22s var(--ease-soft)}
-.mark-entry:hover svg{transform:translate(1px,-1px)}
-/* 弹窗开着：按钮自己就是状态灯，文案换成「正在标记」 */
-.mark-entry.on{background:var(--teal-bg);box-shadow:inset 0 0 0 1px var(--teal-soft);color:var(--teal-on)}
-.mark-entry[aria-disabled=true]{opacity:.45;cursor:not-allowed;box-shadow:inset 0 0 0 1px var(--line)}
-.mark-entry[aria-disabled=true]:hover{background:var(--fill);color:var(--ink-1)}
-.mark-entry[aria-disabled=true]:hover svg{transform:none}
-
 /* 一帧画面 + 画在它上面的标记：句子里的小图块和悬浮放大的大图共用这一份。
    --ar 是素材的真实宽高比，由 JS 量出来传进来；量不到时才当 16:9 */
 .mark-shot{position:relative;display:block;flex:none;width:var(--shot,22px);aspect-ratio:var(--ar,1.7778);
@@ -386,10 +627,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mark-shot-in{position:absolute;left:0;right:0;top:0;bottom:0}
 .mark-shot-in>img{display:block;width:100%;height:100%;object-fit:cover}
 .mark-art{position:absolute;inset:0;pointer-events:none}
-.mark-art .mark-box{position:absolute;border:1px solid var(--mark);
-  box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 18px -8px rgba(255,77,90,.7)}
+.mark-art .mark-box{position:absolute;border:1px solid var(--mark);border-radius:3px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.45)}
 .mark-ink{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.ink-wide{fill:none;stroke:rgba(255,77,90,.42);stroke-linecap:round;stroke-linejoin:round}
+.ink-wide{fill:none;stroke:var(--mark-halo);stroke-linecap:round;stroke-linejoin:round}
 .ink-line{fill:none;stroke:var(--mark);stroke-width:1.5;vector-effect:non-scaling-stroke;
   stroke-linecap:round;stroke-linejoin:round}
 
@@ -444,36 +685,31 @@ button:disabled{opacity:.4;cursor:not-allowed}
   background:rgba(255,255,255,.24)}
 .mark-pop-range i{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--teal)}
 
-/* ── 标记弹窗 ── */
-.mark-dialog{width:min(720px,calc(100vw - 40px));padding:15px 16px 13px;
-  animation:gp-rise .26s var(--ease-soft) both}
-.mark-dialog>div{position:relative;min-width:0}
-.mark-head{display:flex;align-items:flex-start;gap:6px;margin-bottom:12px}
-.mark-head>div{min-width:0;margin-right:auto}
-.mark-head strong{display:block;font-size:14.5px;font-weight:600;color:var(--ink-0)}
-.mark-head span{display:block;margin-top:3px;font:12px/1.4 var(--num);font-variant-numeric:tabular-nums;color:var(--ink-2)}
-.mark-clear-all{font-size:12px;padding:5px 10px;border-radius:8px;color:var(--ink-2);transition:background .2s,color .2s}
-.mark-clear-all:hover{background:var(--fill);color:var(--ink)}
-.mark-clear-all[aria-disabled=true]{opacity:.42;cursor:not-allowed}
-.mark-x{width:28px;height:28px;flex:none;border-radius:9px;display:grid;place-items:center;
-  color:var(--ink-2);background:var(--fill);transition:background .2s,color .2s}
-.mark-x:hover{background:var(--fill-2);color:var(--ink)}
-
-.mark-stage{position:relative;aspect-ratio:16/9;background:#000;border-radius:var(--r-tile);overflow:hidden;
+/* aspect-ratio 由组件按素材内联给出，这里只兜一个底 */
+.mark-stage{position:relative;aspect-ratio:9/16;background:#000;border-radius:var(--r-tile);overflow:hidden;
   touch-action:none;user-select:none}
 .mark-stage>video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
 /* 框要拖要缩，所以框本身收指针事件，覆盖层不收 */
-.mark-stage .mark-box{pointer-events:auto;cursor:move}
-.mark-stage .mark-box.on{box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 26px -4px rgba(255,77,90,.9)}
-.mark-box-label{position:absolute;left:-1px;top:-19px;white-space:nowrap;
-  font:500 11px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--mark);text-shadow:0 1px 3px #000}
+.mark-stage .mark-box{pointer-events:auto;cursor:move;border-color:rgba(127,227,203,.85)}
+/*
+ * 正在改的那一处之外压暗一层：压暗自己就说清楚了「现在改的是这一处」，不必再加一圈光。
+ * 只给正在编辑的那一处：每处都罩一层，叠起来就是整块画面全黑。
+ * 这一条挂在 .mark-stage 下面 —— chip、悬浮卡里的同一份 markup 只会被糊成一块黑。
+ */
+.mark-stage .mark-box.on{box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 0 9999px rgba(0,0,0,.34)}
+/* 标号是一枚实底小牌，不是描边字：底下是活动的画面，只靠文字投影读不稳 */
+.mark-box-label{position:absolute;left:-1px;top:-23px;white-space:nowrap;border-radius:4px;padding:1.5px 6px;
+  font:600 10px/1.6 var(--num);font-variant-numeric:tabular-nums;
+  color:var(--mark-ink);background:var(--mark-chip)}
 .mark-box-label.inside{top:4px;left:4px}
-.mark-grip{position:absolute;width:9px;height:9px;background:#fff;border-radius:2px;
-  box-shadow:0 0 0 1px rgba(0,0,0,.5)}
-.mark-grip.nw{left:-5px;top:-5px;cursor:nwse-resize}
-.mark-grip.ne{right:-5px;top:-5px;cursor:nesw-resize}
-.mark-grip.sw{left:-5px;bottom:-5px;cursor:nesw-resize}
-.mark-grip.se{right:-5px;bottom:-5px;cursor:nwse-resize}
+/* 角上那四粒看上去是 5px 的方点，能抓的有 12px —— 和选区把手同一套办法 */
+.mark-grip{position:absolute;width:12px;height:12px;display:grid;place-items:center}
+.mark-grip::before{content:'';width:5px;height:5px;background:var(--mark-chip);
+  box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.mark-grip.nw{left:-6px;top:-6px;cursor:nwse-resize}
+.mark-grip.ne{right:-6px;top:-6px;cursor:nesw-resize}
+.mark-grip.sw{left:-6px;bottom:-6px;cursor:nesw-resize}
+.mark-grip.se{right:-6px;bottom:-6px;cursor:nwse-resize}
 .mark-paused{position:absolute;left:50%;top:11px;transform:translateX(-50%);pointer-events:none;
   font-size:11.5px;color:var(--ink-1);background:rgba(8,9,9,.72);border-radius:var(--r-pill);padding:4px 11px}
 .mark-paused b{font-family:var(--num);font-variant-numeric:tabular-nums;font-weight:500;color:var(--ink-0)}
@@ -485,102 +721,150 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mark-veil strong{font-size:13.5px;font-weight:500;color:var(--ink-0)}
 .mark-veil small{font-size:12px;color:var(--ink-3)}
 
-.mark-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:13px 0 12px}
-.segmented{display:flex;gap:2px;padding:3px;background:var(--fill);border:1px solid var(--line);
-  border-radius:var(--r-pill)}
-.segmented button{height:26px;padding:0 13px;border-radius:var(--r-pill);font-size:12.5px;font-weight:500;
-  color:var(--ink-2);transition:color .3s,background .3s,box-shadow .3s}
-.segmented button:hover{color:var(--ink)}
-.segmented .selected,.segmented .selected:hover{background:var(--fill-3);color:var(--ink-0);font-weight:600;
-  box-shadow:inset 0 0 0 1px var(--line-2)}
-.mark-sep{width:1px;height:18px;flex:none;background:var(--line)}
-.mark-tools .segmented button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
-.mark-toolpick{display:flex;gap:6px}
-.mark-toolpick button{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:10px;
-  font-size:12.5px;color:var(--ink-2);transition:background .22s,color .22s,box-shadow .22s}
-.mark-toolpick button:hover{color:var(--ink)}
-.mark-toolpick .selected,.mark-toolpick .selected:hover{background:var(--chip-bg);color:var(--chip-ink);
-  box-shadow:inset 0 0 0 1px var(--chip-line)}
-.mark-acts{margin-left:auto;display:flex;gap:6px}
-.mark-round{width:30px;height:30px;border-radius:var(--r-pill);display:grid;place-items:center;color:var(--ink-1);
-  background:var(--fill);box-shadow:inset 0 0 0 1px var(--line-2);transition:background .2s}
-.mark-round:hover{background:var(--fill-2)}
-.mark-round[aria-disabled=true]{opacity:.4;cursor:not-allowed;box-shadow:inset 0 0 0 1px var(--line)}
+/* ── 节点上的编辑台 ── */
+/* 画面顶着节点的上沿（圆角交给节点体裁），下面两截各自缩进来 */
+.mark-board .mark-stage{border-radius:0}
 
-/* ── 时间轴（原来在面板上那条，现在住在弹窗里） ── */
-.mark-track-wrap{min-width:0}
-.mark-track-tag{font:10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3)}
-.timeline-heading{display:flex;justify-content:space-between;gap:12px;font-size:12px;margin:0 0 9px;
-  color:var(--ink-2);font-variant-numeric:tabular-nums}
-.timeline-heading>span:first-child{color:var(--ink-1);font-family:var(--num);font-weight:400}
-.timeline-track{height:50px;position:relative;border-radius:var(--r-tile);background:var(--sunk);touch-action:none;
-  user-select:none;cursor:crosshair;margin:0 7px}
+/*
+ * 压在画面底边的浮动工具行：管的全是「手上这一下」—— 笔刷多粗、上一下不算数、全部重来。
+ * 它浮在画面上而不是排进下面那一行，因为用的时候手正停在画面里，来回跑一趟就断了。
+ */
+.mark-float{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;
+  display:flex;align-items:center;gap:3px;padding:5px;border-radius:15px;white-space:nowrap;touch-action:auto;
+  background:rgba(16,18,18,.84);border:1px solid rgba(255,255,255,.11);backdrop-filter:blur(14px);
+  box-shadow:0 14px 34px -16px #000}
+/* 滑杆自带的那套控件在深色里一律走样，所以整条重画：轨是一条细线，走过的那截亮起来，把手是一粒圆点 */
+.mark-brush{display:flex;align-items:center;gap:7px;padding:0 10px 0 8px;font-size:11px;color:#6e7676}
+.mark-brush input{-webkit-appearance:none;appearance:none;width:52px;height:11px;background:none;cursor:pointer}
+.mark-brush input::-webkit-slider-runnable-track{height:3px;border-radius:2px;
+  background:linear-gradient(90deg,#c6cdcc var(--pct,50%),rgba(255,255,255,.14) var(--pct,50%))}
+.mark-brush input::-moz-range-track{height:3px;border-radius:2px;
+  background:linear-gradient(90deg,#c6cdcc var(--pct,50%),rgba(255,255,255,.14) var(--pct,50%))}
+.mark-brush input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:11px;height:11px;
+  margin-top:-4px;border-radius:50%;background:#edf1f0}
+.mark-brush input::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;background:#edf1f0}
+.mark-brush input:focus-visible{outline:2px solid var(--teal-ring);outline-offset:3px;border-radius:var(--r-pill)}
+.mark-round{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#8b9392;
+  transition:background .2s,color .2s}
+.mark-round:hover{background:rgba(255,255,255,.06);color:#edf1f0}
+.mark-round[aria-disabled=true]{opacity:.38;cursor:not-allowed}
+.mark-round[aria-disabled=true]:hover{background:none;color:#8b9392}
+
+/* 画面下面第一行：拿什么标、标整条还是标一段、现在标的是哪一段 */
+.mark-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;
+  border-top:1px solid rgba(255,255,255,.07)}
+.mark-sep{width:1px;height:20px;flex:none;background:rgba(255,255,255,.08)}
+.mark-float .mark-sep{height:18px;background:rgba(255,255,255,.09);margin:0 4px}
+.mark-toolpick{display:flex;flex:none;padding:3px;border-radius:9px;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07)}
+.mark-toolpick button{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:7px;
+  font-size:12.5px;color:#8b9392;white-space:nowrap;transition:background .22s,color .22s}
+.mark-toolpick button:hover{color:var(--ink)}
+.mark-toolpick .selected,.mark-toolpick .selected:hover{background:rgba(255,255,255,.09);color:#f2f5f4;
+  font-weight:600}
+/*
+ * 「只改指定片段」是开和关两个样子，所以摆成一枚开关 ——
+ * 两个并排的按钮得先读完两条文字才知道现在是哪一档，开关自己就说了。
+ */
+.mark-switch{display:inline-flex;align-items:center;gap:9px;flex:none;font-size:12.5px;color:#edf1f0;
+  white-space:nowrap}
+.mark-switch>i{width:32px;height:19px;flex:none;border-radius:var(--r-pill);position:relative;
+  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);
+  transition:background .22s,border-color .22s}
+.mark-switch>i::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;
+  background:#e8f3f0;transition:transform .22s var(--ease-soft)}
+.mark-switch.on>i{background:rgba(207,246,236,.18);border-color:rgba(207,246,236,.4)}
+.mark-switch.on>i::after{transform:translateX(14px)}
+.mark-switch[aria-disabled=true]{opacity:.4;cursor:not-allowed}
+.mark-switch:focus-visible{outline:2px solid var(--teal-ring);outline-offset:3px;border-radius:var(--r-pill)}
+/*
+ * 当前作用范围：开关说「改不改一段」，这个数说「改的是哪一段」，所以贴在同一行的末尾。
+ * 没选片段时这里什么都不写 —— 开关本身已经说了「改的是整条」，再补一句「整段 00:00–00:10」
+ * 只是把同一件事说第二遍，还得占掉一行里最后那块地方。
+ */
+.mark-range{margin-left:auto;font:11.5px/1 var(--num);font-variant-numeric:tabular-nums;color:#d5dad9;
+  white-space:nowrap}
+
+/* ── 时间轴：专注态节点上、画面下面那一截 ── */
+.mark-track-wrap{min-width:0;padding:8px;border-top:1px solid rgba(255,255,255,.07)}
+/* 轴自己是一张卡片：读数一层、手势一层，拖的时候上面那行数字不跟着缩略图一起晃 */
+.seg-card{background:#101111;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 9px 9px}
+.seg-head{display:flex;align-items:center;gap:8px;padding:0 1px 6px}
+.seg-span{display:flex;align-items:baseline;gap:5px;font-family:var(--num);font-variant-numeric:tabular-nums}
+.seg-span b{font-size:12.5px;font-weight:600;color:#f2f5f4}
+.seg-span i{font-style:normal;color:#4e5555}
+.seg-dur{margin-left:auto;font:11px/1 var(--num);font-variant-numeric:tabular-nums;color:#8b9392;
+  border:1px solid rgba(255,255,255,.09);border-radius:6px;padding:1px 6px}
+/* 尺子：高的那几根对着下面那行数字，矮的是它们中间的半格 */
+.seg-ruler{display:flex;justify-content:space-between;align-items:flex-end;height:10px;
+  border-bottom:1px solid rgba(255,255,255,.07);pointer-events:none}
+.seg-tick{display:contents}
+.seg-tick i{display:block;width:1px}
+.seg-tick i.tall{height:6px;background:rgba(255,255,255,.22)}
+.seg-tick i.half{height:3px;background:rgba(255,255,255,.1)}
+.timeline-ticks{display:flex;justify-content:space-between;padding:3px 0 6px;font-size:9px;color:#545b5b;
+  font-family:var(--num);font-variant-numeric:tabular-nums}
+/* 选区和播放头都探出轨道上下沿，所以这一层只管定位，不加内边距 */
+.seg-body{position:relative}
+.timeline-track{height:34px;position:relative;border-radius:5px;background:var(--sunk);touch-action:none;
+  user-select:none;cursor:crosshair}
 .timeline-track.disabled{opacity:.4;cursor:not-allowed}
-.timeline-frames{height:100%;display:flex;border-radius:var(--r-tile);overflow:hidden;opacity:.55;pointer-events:none}
-.timeline-frames img{height:100%;width:10%;object-fit:cover;background:var(--sunk)}
-.timeline-selection{position:absolute;inset:0 auto 0 0;border-block:2px solid var(--teal);
-  background:rgba(94,234,212,.12);cursor:grab;display:grid;place-items:center;z-index:1}
+.timeline-track:focus-visible{outline:2px solid var(--teal-ring);outline-offset:4px}
+.timeline-frames{height:100%;display:flex;gap:1px;border-radius:5px;overflow:hidden;pointer-events:none}
+.timeline-frames img{height:100%;flex:1;min-width:0;object-fit:cover;background:var(--sunk);
+  transition:opacity .22s}
+/* 选区之外的那几格暗下去：选了哪一段，不用读数字也看得见 */
+.timeline-frames img.dim{opacity:.4}
+.timeline-selection{position:absolute;top:-3px;bottom:-3px;border:1px solid rgba(232,240,238,.55);
+  border-radius:6px;cursor:grab;z-index:1}
 .timeline-selection:active{cursor:grabbing}
-.range-handle{position:absolute;top:-2px;bottom:-2px;width:14px;background:var(--teal);color:var(--teal-ink);
-  cursor:ew-resize;display:grid;place-items:center;font-size:12px;font-weight:700;touch-action:none;z-index:2}
-.range-handle.start{left:-7px;border-radius:6px 0 0 6px}
-.range-handle.end{right:-7px;border-radius:0 6px 6px 0}
-.selection-grip{color:var(--teal-on);font-size:18px;padding:3px 6px;cursor:grab}
-/* 标记落在哪一秒，轨道上就钉一枚；掉在选区外的转琥珀 —— 是提醒，不是错 */
+/* 底边那条青线是「这一段」的签名：选区本身不填色，填了就把缩略图盖住了 */
+.selection-edge{position:absolute;left:0;right:0;bottom:-1px;height:2px;
+  background:linear-gradient(90deg,rgba(127,227,203,0),var(--mark),rgba(127,227,203,0))}
+/* 把手看上去是一粒 4px 的细条，能抓的却有 14px —— 细是给眼睛看的，宽是给手用的 */
+.range-handle{position:absolute;top:50%;transform:translateY(-50%);width:14px;height:24px;
+  display:grid;place-items:center;cursor:ew-resize;touch-action:none;z-index:2;background:none}
+.range-handle::before{content:'';width:4px;height:20px;border-radius:20px;background:#dde4e3;
+  box-shadow:0 2px 8px rgba(0,0,0,.6)}
+.range-handle::after{content:'';position:absolute;width:1px;height:8px;background:#5a6161}
+.range-handle.start{left:-8px}
+.range-handle.end{right:-9px}
+.range-handle:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px;border-radius:var(--r-pill)}
+/* 平移整段选区：平时只是选区中间一小片可抓的地方，聚焦时才亮出来给键盘用户看 */
+.selection-grip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;
+  border-radius:8px;cursor:grab}
+.selection-grip:focus-visible{outline:2px solid var(--teal-ring);outline-offset:0}
+/* 标记落在哪一秒，轨道上就钉一枚 */
 .mark-pin{position:absolute;top:0;bottom:0;width:2px;border-radius:2px;background:var(--mark);
   pointer-events:none;z-index:2}
 .mark-pin::after{content:'';position:absolute;left:-4px;top:-3px;width:10px;height:10px;border-radius:50%;
   background:inherit;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
-.timeline-playhead{position:absolute;top:-5px;bottom:-5px;width:2px;background:#fff;pointer-events:none;
-  box-shadow:0 0 2px #000;z-index:3}
-.timeline-ticks{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin:6px 5px 0;
-  font-family:var(--num);font-variant-numeric:tabular-nums}
+.timeline-playhead{position:absolute;top:-11px;bottom:-6px;width:1px;background:#f2f5f4;pointer-events:none;
+  z-index:3}
+.timeline-playhead>i{position:absolute;top:-1px;left:-3px;width:6px;height:7px;background:#f2f5f4}
 
-.mark-foot{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px;padding-top:12px;
-  border-top:1px solid var(--line)}
-.mark-pending{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-right:auto;
-  font-size:12px;color:var(--ink-3)}
-/* 待保存的清单：每一枚都能就地摘掉 —— 逐处的删除只在这个编辑台上做，句子里不做 */
-.mark-pending-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 7px 5px 9px;border-radius:7px;
-  background:var(--chip-bg);color:var(--chip-ink);box-shadow:inset 0 0 0 1px var(--chip-line);
-  font:400 11.5px/1 var(--num);font-variant-numeric:tabular-nums;transition:background .2s,box-shadow .2s,color .2s}
-.mark-pending-chip:hover{background:rgba(46,211,183,.2);box-shadow:inset 0 0 0 1px var(--teal-soft)}
-.mark-pending-chip svg{opacity:.65;transition:opacity .2s}
-.mark-pending-chip:hover svg{opacity:1}
-.mark-cancel{padding:8px 14px;border-radius:var(--r-pill);font-size:13px;color:var(--ink-1);background:var(--fill)}
-.mark-cancel:hover{background:var(--fill-2)}
-.mark-commit{padding:8px 20px;border-radius:var(--r-pill);font-size:13px;font-weight:600;color:var(--chip-ink);
-  background:rgba(46,211,183,.16);box-shadow:inset 0 0 0 1px var(--teal-ring);transition:background .2s}
-.mark-commit:hover{background:rgba(46,211,183,.26)}
-.mark-commit[aria-disabled=true]{opacity:.5;cursor:not-allowed;background:var(--fill);color:var(--ink-3);
-  box-shadow:inset 0 0 0 1px var(--line)}
-/* 确认层留在弹窗内部：再开一个 Overlay 会落在这个 Overlay 之外，点它反而触发外层关闭 */
-.mark-confirm{position:absolute;inset:-15px -16px -13px;z-index:5;display:grid;place-items:center;padding:24px;
-  border-radius:18px;background:rgba(6,7,7,.72);backdrop-filter:blur(4px)}
-.mark-confirm>div{max-width:344px;padding:18px;border-radius:16px;background:var(--surface-2);
-  border:1px solid var(--line-2)}
-.mark-confirm strong{display:block;font-size:14px;margin-bottom:8px;color:var(--ink-0)}
-.mark-confirm p{margin:0 0 16px;font-size:12.5px;line-height:1.65;color:var(--ink-2)}
-.mark-confirm>div>div{display:flex;justify-content:flex-end;gap:8px}
-.mark-confirm button{padding:6px 14px;border-radius:var(--r-pill);font-size:12.5px;
-  background:var(--fill);color:var(--ink-1)}
-.mark-confirm button:hover{background:var(--fill-2)}
-
-/* ── 延长方向 ── */
-/*
- * 和「标记修改」同一档：28px 的中性描边胶囊，落在句子左下角那一行工具里。
- * 描边走 inset 阴影而不是 border —— 这样滑块的 left:0 和按钮的 offsetLeft 是同一个原点，
- * 有 border 的话两套坐标差一个边宽，滑块会整体偏出去一像素。
- */
-.direction-options{position:relative;display:inline-flex;gap:2px;padding:2px;background:var(--fill);
-  box-shadow:inset 0 0 0 1px var(--line-2);border-radius:var(--r-pill)}
-.seg-thumb{position:absolute;top:2px;bottom:2px;left:0;border-radius:var(--r-pill);background:var(--fill-3);
-  box-shadow:inset 0 0 0 1px var(--line-2);pointer-events:none;
-  transition:transform .34s var(--ease),width .34s var(--ease),opacity .2s}
-.direction-options button{position:relative;display:flex;align-items:center;gap:6px;height:24px;padding:0 11px;
-  border-radius:var(--r-pill);font-size:12.5px;color:var(--ink-2);transition:color .3s}
-.direction-options button:hover{color:var(--ink)}
-.direction-options .selected,.direction-options .selected:hover{color:var(--ink-0);font-weight:600}
+/* ── 节点上的延长轴 ── */
+/* 中间是原片，左右两头是定宽的延长口：选中的那头描实、宽一点摆得下「+5s」，
+   没选中的那头用虚线 —— 它还不是一截片子，只是「也可以往这头接」。
+   两头都不跟着秒数摊开：轴上大半的地方留给原片那几格缩略图 */
+.ext-board{padding:10px}
+.ext-axis{display:flex;align-items:stretch;gap:6px;height:52px}
+.ext-side{flex:none;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:0 8px;border-radius:var(--r-tile);border:1px dashed var(--line-dash);background:transparent;
+  font-size:11.5px;white-space:nowrap;color:var(--ink-2);
+  transition:flex-basis .3s var(--ease),background .22s,color .22s,border-color .22s}
+.ext-side:hover{color:var(--ink);background:var(--fill)}
+.ext-side.on{border-style:solid;border-color:var(--line-2);background:var(--fill);color:var(--ink-2)}
+.ext-side.on b{font:600 13px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--ink-0)}
+/* 原片摊成一条胶片：几格缩略图各取自己那一段的中点，它是一段有长度的片子，不是一块写着秒数的牌子 */
+.ext-clip{position:relative;min-width:0;overflow:hidden;border-radius:var(--r-tile);background:var(--sunk)}
+.ext-frames{position:absolute;inset:0;display:flex;gap:2px}
+.ext-frames img{flex:1;min-width:0;height:100%;object-fit:cover;background:#1a1d1d;opacity:.78}
+/* 「原片」和时长压在胶片上，各自带一层底：底下那几格是活动的画面，光靠字色压不住 */
+.ext-clip i{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-style:normal;font-size:11.5px;
+  color:var(--ink-0);text-shadow:0 1px 3px rgba(0,0,0,.75)}
+.ext-clip b{position:absolute;right:8px;top:50%;transform:translateY(-50%);padding:4px 7px;border-radius:7px;
+  background:rgba(0,0,0,.62);font:12px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--ink-0)}
 
 /* ── 提示词（无边框） ── */
 /* 上面是一排图，下面是一句话，两件事：留的气口得比一排图里方块之间的缝（12px）明显宽，
@@ -630,6 +914,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 标签左右那一口气由外边距给，句子里不存空格字符 ——
    存了的话，删掉一枚标签或者接着往后打字，用户还得自己退一个看不见的空格 */
 .prompt-input [data-seg]{display:inline-block;overflow:hidden;line-height:0;vertical-align:-6px;margin:0 3px}
+/* 这一枚这会儿只是几个字：外面那层按标签调的行高和基线得让开，否则字会被压扁、也会多出两侧的缝 */
+.prompt-input [data-seg]:has(.prompt-flat){overflow:visible;line-height:inherit;vertical-align:baseline;margin:0}
 .prompt-input [data-seg]>*{vertical-align:top}
 /*
  * 句子里的标签一律 24px 高，一行标签才是一排而不是高低两档。
@@ -725,47 +1011,81 @@ button:disabled{opacity:.4;cursor:not-allowed}
   animation:sp .8s linear infinite}
 
 /* ── 模型与参数浮层 ── */
-.model-popover{width:290px;padding:8px}
-/* 行高固定：说明文字常驻占位（绝对定位不撑高），悬浮时模型名上移、说明淡入 */
-.model-option{position:relative;display:flex;flex-direction:column;justify-content:center;width:100%;height:58px;
-  text-align:left;padding:0 10px;border-radius:11px;overflow:hidden;transition:background .2s}
-.model-option span{display:flex;align-items:center;gap:8px;transition:transform .24s var(--ease)}
-.model-icon{display:flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;color:var(--ink-2)}
+/*
+ * 模型列表。一行三件事：左边一枚方牌认出这是谁家的型号，中间是名字和它的取值域，
+ * 行末一枚勾说明「现在用的就是这一个」。
+ * 取值域常驻，不再等悬浮才淡进来 —— 挑型号时要比的正是这行小字，
+ * 把它藏起来等于逼着人把十一个型号逐个悬浮一遍。
+ */
+.model-popover{width:376px;padding:10px}
+.model-option{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:9px 12px;border-radius:14px;transition:background .2s,box-shadow .2s}
+.model-icon{display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex:none;
+  border-radius:10px;background:var(--fill-2);color:var(--ink-2);transition:color .2s}
 .model-option:hover .model-icon,.model-option.selected .model-icon{color:var(--ink)}
-.model-option small{position:absolute;left:10px;right:10px;top:27px;display:-webkit-box;-webkit-box-orient:vertical;
-  -webkit-line-clamp:2;line-clamp:2;overflow:hidden;line-height:15px;max-height:30px;font-size:11px;color:var(--ink-3);
-  opacity:0;transform:translateY(3px);pointer-events:none;transition:opacity .2s,transform .24s var(--ease)}
-.model-option:hover span,.model-option:focus-visible span,.model-option.selected span{transform:translateY(-13px)}
-.model-option:hover small,.model-option:focus-visible small,.model-option.selected small{opacity:1;transform:translateY(0)}
+.model-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.model-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--ink)}
+/* 新一代的那枚小牌：实心青底、近黑的字，一眼是个标签，不是名字的一部分 */
+.model-new{flex:none;font:700 10px/1 var(--num);letter-spacing:.06em;font-style:normal;
+  padding:3px 6px;border-radius:6px;background:var(--teal-solid);color:var(--teal-ink)}
+.model-option small{font-size:12px;line-height:1.45;color:var(--ink-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.model-check{flex:none;color:var(--teal)}
 .model-option:hover{background:var(--fill-2)}
-.model-option.selected{background:var(--teal-bg);color:var(--teal-on);box-shadow:inset 0 0 0 1px var(--teal-ring)}
-.model-option[aria-disabled=true]{opacity:.5;cursor:not-allowed}
+/*
+ * 选中不着青底：这一列里着青的只有行末那枚勾。一行青底再加一枚青勾是把同一件事说两遍，
+ * 整块色还会压过名字本身 —— 中性的一块底 + 一圈细边，说的就是「停在这一行」。
+ */
+.model-option.selected{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--line-2)}
+.model-option[aria-disabled=true]{opacity:.45;cursor:not-allowed}
 .model-option[aria-disabled=true]:hover{background:transparent}
+/* Seedance 是自家的一串型号，排在最前；一条细线之后才是别家的 */
+.model-split{display:block;height:1px;margin:9px 12px;background:var(--line)}
 /* 视频节点上的入口：接不了这段视频时灰掉，理由挂在悬浮说明上 */
 .vtool button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
 /* 视频节点上的时长角标：走查时一眼看出这段能做哪些任务 */
 .nd-dur{position:absolute;left:8px;bottom:8px;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.55);
   font:500 11px/1.4 var(--num);font-variant-numeric:tabular-nums;color:#fff;letter-spacing:.03em;pointer-events:none}
-.params-popover{width:326px;padding:14px}
-.params-popover fieldset{border:0;margin:12px 0 18px}
-.params-popover legend{font-size:12px;color:var(--ink-2);margin-bottom:9px}
-.option-row{display:flex;flex-wrap:wrap;gap:6px}
-.option-row button{min-width:42px;padding:7px 12px;background:var(--fill);border:1px solid var(--line);
-  border-radius:var(--r-pill);font-size:12.5px;color:var(--ink-2);transition:all .22s}
-.option-row button:hover{color:var(--ink-0);border-color:var(--line-dash)}
-.option-row .selected,.option-row .selected:hover{background:var(--teal-bg);border-color:var(--teal-ring);color:var(--teal-on)}
-.readonly-value{color:var(--ink-1);font-size:13px}
+.params-popover{width:376px;padding:16px 18px 14px}
+/*
+ * 一节参数 = 一行标题 + 一排选项。标题行左边是这一节的名字、右边是此刻的取值 ——
+ * 三节读下来就是「720p / 5s / 16:9」，不必先在下面那排里认出哪一枚是亮的。
+ */
+.param-sec{margin:14px 0 20px}
+.param-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.param-head span{font-size:13px;color:var(--ink-2)}
+.param-head b{font-size:13px;font-weight:500;color:var(--ink-1)}
+/* 清晰度：一条连着的分段控件。这几档是同一把刻度上的位置，散成几枚标签就看不出先后 */
+.seg-row{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--fill)}
+.seg-row button{flex:1;min-width:0;height:32px;border-radius:10px;font-size:13.5px;color:var(--ink-2);
+  transition:background .2s,color .2s,box-shadow .2s}
+.seg-row button:hover{color:var(--ink-0)}
+.seg-row .selected,.seg-row .selected:hover{background:var(--fill-3);color:var(--ink-0);font-weight:600;
+  box-shadow:inset 0 0 0 1px var(--line-2)}
+/* 时长与比例：一枚一枚分开的选项，数目不定、要换行，所以不连成一条 */
+.chip-row{display:flex;flex-wrap:wrap;gap:8px}
+.chip-row button{display:flex;align-items:center;justify-content:center;gap:7px;min-width:48px;height:34px;
+  padding:0 13px;border-radius:12px;border:1px solid var(--line-2);background:transparent;
+  font-size:13.5px;color:var(--ink-2);transition:background .2s,border-color .2s,color .2s}
+.chip-row button:hover{color:var(--ink-0);border-color:var(--line-dash)}
+.chip-row .selected,.chip-row .selected:hover{background:var(--fill-3);border-color:var(--line-dash);
+  color:var(--ink-0);font-weight:600}
 .sound-setting{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);
-  padding-top:14px;margin-bottom:12px}
-.sound-switch{width:34px;height:20px;border-radius:20px;background:rgba(255,255,255,.14);padding:3px;
-  display:flex;align-items:center;transition:background .22s}
-.sound-switch span{width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .22s var(--ease)}
-.sound-switch.on{background:var(--teal-solid)}
-.sound-switch.on span{transform:translateX(14px);background:var(--teal-ink)}
-
-/* ── 任务记录 ── */
-.vtool a{display:flex;align-items:center;gap:5px;padding:0 11px;font-size:12px;color:var(--ink-2);
-  text-decoration:none;white-space:nowrap}
+  padding-top:16px;margin-bottom:6px}
+.sound-setting>span{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink)}
+.sound-setting>span>svg{color:var(--ink-2)}
+/*
+ * 开着的样子量自设计稿：底不是满色青，是 --teal 压到两成的一层薄底，外面描一圈 --teal-ring ——
+ * 它常驻在面板底下，一枚满色的滑块在余光里会一直喊。滑块是带一点青的白，不是纯白：
+ * 落在那层绿底上，纯白像是另外贴上去的一块。关着时描一圈透明的边，两个状态才不会差一圈尺寸。
+ */
+.sound-switch{width:40px;height:24px;border-radius:var(--r-pill);background:rgba(255,255,255,.14);
+  border:1px solid transparent;padding:3px;display:flex;align-items:center;
+  transition:background .22s,border-color .22s}
+.sound-switch span{width:16px;height:16px;border-radius:50%;background:#fff;
+  transition:transform .22s var(--ease),background .22s}
+.sound-switch.on{background:rgba(94,234,212,.2);border-color:var(--teal-ring)}
+.sound-switch.on span{transform:translateX(16px);background:#e5fbf4}
 
 @media(max-width:700px){
   .gp{padding:14px 16px}.gp-tab{padding:8px 10px 10px;font-size:13.5px}.material-row{gap:10px}
@@ -775,7 +1095,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .prompt-input{font-size:15.5px}
   .prompt-input .reference-chip{font-size:13px}
   .tb-right{gap:6px}.tb-right .pay,.tb-people,.tb-sync{display:none}
-  .mark-dialog{padding:12px 13px 11px}.mark-tools{gap:7px}.timeline-track{height:42px}
+  .mark-tools{gap:7px}.timeline-track{height:30px}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
@@ -783,8 +1103,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 }
 @media(max-height:800px){
   .gp{padding:12px 18px}.gp-tab{padding:6px 14px 8px}.material-row{margin-top:11px}
-  .mark-tools{padding:10px 0 9px}.mark-foot{margin-top:9px;padding-top:9px}
-  .timeline-track{height:42px}.prompt-editor{margin-top:16px}
+  .mark-tools{padding:10px 0 9px}
+  .timeline-track{height:30px}.prompt-editor{margin-top:16px}
   .prompt-editor{--pline:26px;--ptools:34px}
   /* 行高压到 26px，标签也跟着矮一档，留出上下的余量；图和字的比例不变 */
   .prompt-input .reference-chip,.prompt-input .mark-chip,.prompt-input .source-chip{height:22px}

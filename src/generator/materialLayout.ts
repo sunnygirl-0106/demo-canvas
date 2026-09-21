@@ -43,6 +43,8 @@ export interface ModelCap {
   genModes: Mode[]
   /** 有没有配音开关。可灵与 Wan 的参数里没有这一项。 */
   hasAudioToggle: boolean
+  /** 列表里挂一枚 NEW 牌子。只给最新那一代，同时挂两个就等于谁都不新。 */
+  isNew?: boolean
 }
 /**
  * 「全能参考」和「参考图」是同一层级的两个互斥 Tab：收多模态素材的型号给前者，只收图的给后者，
@@ -76,7 +78,7 @@ export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
     ratios: RATIOS, formats: ['mp4', 'mov'],
     durationRange: [4, 30], quota: { image: 30, video: 10, audio: 10, mediaSeconds: 30 },
     timestamp: true, audioAlone: true, locking: true, videoSeconds: [2, 30], editSourceMin: 4,
-    genModes: ALL_MODES, hasAudioToggle: true,
+    genModes: ALL_MODES, hasAudioToggle: true, isNew: true,
   },
   'sd2.0': sd20('Seedance 2.0', ['480p', '720p', '1080p', '4K']),
   /** 平台把高价档位拆成独立模型条目承载定价，所以分辨率只有一档。 */
@@ -99,6 +101,8 @@ export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
   'wan2.2-i2v-a14b': wanVariant('Wan 2.2 图生视频', ['refImage'], { image: 1, video: 0, audio: 0, mediaSeconds: 0 }),
 }
 export const MODELS = Object.keys(MODEL_CAPABILITIES) as Model[]
+/** 编辑 / 延长是 2.5 的活：从视频入口进来的节点锁死这个型号，模型列表点不开。 */
+export const FOCUS_MODEL: Model = 'sd2.5'
 /** 参考类模式（全能参考 / 参考图）。凡是「这是不是参考」的判断都走这一条，不散着比字符串。 */
 export const isRef = (m: Mode) => m === 'ref' || m === 'refImage'
 /** 这个型号的参考 Tab 是哪一个 —— 两个互斥，最多有一个；只做文生视频的型号没有。 */
@@ -136,17 +140,14 @@ export const sourceBounds = (mode: Mode, model: Model): [number, number] => {
   return [mode === 'edit' ? Math.max(cap.editSourceMin, cap.videoSeconds[0]) : cap.videoSeconds[0], cap.videoSeconds[1]]
 }
 /**
- * 视频节点上的「编辑视频 / 延长视频」入口能不能点：这段时长有没有任何型号接得住。
- * 一段都接不住就在入口处灰掉并说清楚区间，不要放人进去再用黄字告诉他不行。
+ * 视频节点上的「局部修改 / 延长视频」入口能不能点：进去之后锁死的那个型号接不接得住这段时长。
+ * 放行和进来之后用哪个型号必须是同一条规则，否则会落进「入口亮着、生成按钮灰着」的死角。
+ * 接不住就在入口处灰掉并说清楚区间，不要放人进去再用黄字告诉他不行。
  */
 export function sourceEntryReason(dur: number | undefined, mode: 'edit' | 'extend', name = ''): string {
   if (dur == null || !Number.isFinite(dur)) return ''   // 还在读时长，先不拦
-  const able = MODELS.filter((m) => MODEL_CAPABILITIES[m].genModes.includes(mode))
-  if (able.some((m) => { const [lo, hi] = sourceBounds(mode, m); return dur >= lo && dur <= hi })) return ''
-  const lo = Math.min(...able.map((m) => sourceBounds(mode, m)[0]))
-  const hi = Math.max(...able.map((m) => sourceBounds(mode, m)[1]))
-  // 区间按这个入口自己的规则填，不为了和别处说一样的话改数值
-  return durRange(lo, hi, name)
+  const [lo, hi] = sourceBounds(mode, FOCUS_MODEL)
+  return dur >= lo && dur <= hi ? '' : durRange(lo, hi, name)
 }
 /**
  * 提示里的素材描述：「视频 ABCD 」这种「类型或角色 + 名称」的说法。
@@ -483,7 +484,7 @@ export function promptHint(mode: Mode, hasLast = false): PromptSeg[] {
   const hints: Record<Mode, string> = {
     text: '描述你想要生成的画面内容', frames: hasLast ? '描述从首帧到尾帧之间发生的变化' : '描述从首帧开始的动作与镜头变化',
     ref: '描述你想要生成的画面，输入 @ 引用参考素材',
-    refImage: '描述你想要生成的画面，输入 @ 引用参考图', edit: '某一处调整为目标效果',
+    refImage: '描述你想要生成的画面，输入 @ 引用参考图', edit: '输入你要修改的内容',
     extend: '描述新接上的这段画面与动作',
   }
   return [{ t: hints[mode] }]

@@ -67,19 +67,37 @@ export function groupSegs(g: MarkGroup): Seg[] {
   return out
 }
 /**
- * 把这一次的标签插进句子里：接在最后一枚标签后面（用「和」连起来），
+ * 把当前这一套标记写回句子里。节点上的控件是常驻的，用户改的永远是同一组，
+ * 所以这里是「换」不是「追加」：句子里已有的那几枚整段换掉（连中间那个「里的」一起），
  * 一枚都还没有就接在素材标签后面（用「中」连）—— 素材标签也被删掉了，就补在句尾。
  * 插完之后用户照样可以把这些字改掉，这里只负责给一个读得通的起点。
  */
-export function insertGroup(doc: Seg[], g: MarkGroup): Seg[] {
-  const segs = groupSegs(g)
+export function replaceGroup(doc: Seg[], g: MarkGroup): Seg[] {
+  const own = (s: Seg) => (s.t === 'mark' || s.t === 'range') && s.g === g.id
+  const flags = doc.map(own)
+  /**
+   * 沿用原来那几枚标签的身份证。圈好的框拖着改大小时，句子里的标签念出来还是同一句 ——
+   * 身份证不变，可编辑区就不必重挂，光标也不会被打回句尾。
+   */
+  const reuse = doc.filter(own).map((s) => (s as { k: string }).k)
+  let n = 0
+  const segs: Seg[] = groupSegs(g).map((s) => {
+    if (s.t === 'text') return s
+    const k = reuse[n++]
+    return k ? { ...s, k } : s
+  })
+  const first = flags.indexOf(true)
+  if (first >= 0) {
+    const head = doc.slice(0, first)
+    // 整组摘光了（切回「整段视频」）：把当初为它补的那个「中」一起带走，句子不留一个悬着的连接词
+    const prev = head[head.length - 1]
+    if (!segs.length && prev?.t === 'text' && prev.v.endsWith('中')) head[head.length - 1] = { t: 'text', v: prev.v.slice(0, -1) }
+    return [...head, ...segs, ...doc.slice(flags.lastIndexOf(true) + 1)]
+  }
   if (!segs.length) return doc
-  const last = doc.map((s) => s.t === 'mark' || s.t === 'range').lastIndexOf(true)
   const mat = doc.map((s) => s.t === 'mat').lastIndexOf(true)
-  const at = last >= 0 ? last : mat
-  if (at < 0) return [...doc, ...segs]
-  const join: Seg = { t: 'text', v: last >= 0 ? '和' : '中' }
-  return [...doc.slice(0, at + 1), join, ...segs, ...doc.slice(at + 1)]
+  if (mat < 0) return [...doc, ...segs]
+  return [...doc.slice(0, mat + 1), { t: 'text', v: '中' }, ...segs, ...doc.slice(mat + 1)]
 }
 
 /**
@@ -111,7 +129,8 @@ export function segText(s: Seg, ctx: Ctx): string {
   switch (s.t) {
     case 'text': return s.v
     case 'mat': return `视频 ${ctx.name ?? ''}`.trim()
-    case 'dur': return `${ctx.direction === 'before' ? '向前延长' : '向后延长'} ${ctx.duration ?? 0}s`
+    // 方向还没选的时候不替用户说「向后」：句子不能白纸黑字写着一个他没点过的选择
+    case 'dur': return `${ctx.direction === 'before' ? '向前延长' : ctx.direction === 'after' ? '向后延长' : '延长'} ${ctx.duration ?? 0}s`
     case 'range': return rangeLabel(s.range)
     case 'mark': return regionLabel(s.region)
     // 标签上不写 @（那是「怎么把它选进来的」，不是它是什么），念出来要写：
