@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { NodeToolbar, Position } from '@xyflow/react'
 import { IcDownload, IcHistory, IcPencil, IcPlus } from '../ui/icons'
 import { connOf, focusWidthFor, isFocusNode, opName, useCanvas } from '../store/canvas'
@@ -18,11 +18,14 @@ import VersionsDialog from './VersionsDialog'
 const HEAD_CLEAR = 24 + 8
 
 /** 为源视频创建独立下游任务，原素材保留。已经出过结果的那个节点不再复用，再进一次就长一个新的。 */
-export default function VideoToolbar({ nodeId, visible, src, name, dur }: { nodeId: string; visible: boolean; src?: string; name: string; dur?: number }) {
+export default function VideoToolbar({ nodeId, visible, src, name, dur, versions, setVersions }: {
+  nodeId: string; visible: boolean; src?: string; name: string; dur?: number
+  /** 「全部版本」那只气泡开着没有。状态存在节点身上 —— 它还管着底下那块面板收不收（见 VideoNode） */
+  versions: boolean; setVersions: (open: boolean) => void
+}) {
   /** 接不住这段视频的入口直接灰掉，理由挂在悬浮说明上 */
   const { tip, node: tipNode } = useTip()
   const records = useVersions((s) => s.records)
-  const [versions, setVersions] = useState(false)
   /**
    * 全部版本挂在**节点**身上，不是挂在这枚按钮上：气泡有半屏高，贴着工具栏那枚小按钮居中摆，
    * 一半会被视窗顶出去。指着节点说「这段视频有这些版本」，尖角落在画面中间，也是它本来的意思。

@@ -99,7 +99,7 @@ export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen:
         {f.id ? tile(f.id, f.role, 'frame', f.mark)
           : <EmptySlot role={f.role} size="frame" kind="图片" required={i === 0} />}
       </div>)}
-      {/* 连接区整体可悬停：线上跑光点、交换键转 180°、顶上弹「互换一下」 */}
+      {/* 连接区整体可悬停：交换键转 180°、顶上弹一只写着「交换首尾帧」的气泡 */}
       <div className={`frame-link${gen.slotFirst && gen.slotLast ? ' on' : ''}`} data-tip="交换首尾帧">
         <span className="frame-line" aria-hidden />
         {gen.slotFirst && gen.slotLast && <button className="frame-swap" aria-label="交换首尾帧"

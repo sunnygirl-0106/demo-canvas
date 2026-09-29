@@ -27,15 +27,23 @@ input,textarea{font:inherit;color:inherit}
 /*
  * handle 本体是**连线的锚点**，不是那枚能点的圆（见 .h-plus）—— 把它的框**摆成和那枚圆一样**
  * （26×26、离节点边 6px；left/right:-19px 是被 react-flow 的 translate(±50%) 拉回半格后的写法）。
- * react-flow 的左右 handle 取的是框的左 / 右沿当端点，于是连线正好停在圆的外沿上：
- * 箭头尖顶着圆、不被圆拦腰切掉，出去的那条也是从圆的边上起笔，而不是从圆肚子里钻出来。
- * 圆没画出来时（节点未选中）线也停在同一处 —— 端点不跟着选中态跳。
+ * react-flow 的左右 handle 取的是框的左 / 右沿当端点 —— 也就是说端点落在离节点 32px 的地方。
+ * 线不照这个点画：⊕ 只在选中时才出现，平时那儿什么也没有，线停在那儿就成了一条没接上的线。
+ * 这一截由 DashedEdge 自己补回去（见那儿的 pad），线一路走到节点边，⊕ 出现时压在它上面。
+ *
+ * 这三个数都乘 --zk：⊕ 和节点名、工具栏走同一条跟随规矩（见 tokens.css 的那一段）——
+ * 画布放大到 200%，节点长到两倍，这枚圆只长 1.41 倍；不乘的话它跟着翻倍，
+ * 一枚 52px 的圆压在节点边上，比它指着的那件事还响。离节点边那 6px 也一起收，
+ * 不然圆小了、缝还是原来那么宽，读起来是「掉在旁边」而不是「挂在这条边上」。
+ * 框一改尺寸，连线的端点就得跟着重量一次 —— react-flow 只在节点自己改尺寸时量，
+ * 缩放它不看，所以那一下由 Canvas 里的 ZoomVar 推（见那儿的 updateNodeInternals）。
  *
  * pointer-events 全让给圆：看得见的只有那枚圆，
  * 不能让节点边上一道看不见的带子把点击吃掉（节点就选不中了）。
  */
-.react-flow__handle{border:0;background:none;width:26px;height:26px;min-width:26px;min-height:26px;
-  pointer-events:none}
+.react-flow__handle{border:0;background:none;pointer-events:none;
+  width:calc(26px * var(--zk));height:calc(26px * var(--zk));
+  min-width:calc(26px * var(--zk));min-height:calc(26px * var(--zk))}
 .react-flow__handle:after{display:none}
 .rf-edgepath{animation:gp-flow 3.4s linear infinite}
 .react-flow__edge.selected .rf-edgepath{stroke-width:2.4}
@@ -183,10 +191,12 @@ input,textarea{font:inherit;color:inherit}
  * 选中只是「现在在说的是它」，不是一件正在发生的事：一圈白边就够。
  * 着上青色等于让画布上随手一点就亮起强调色 —— 那一档留给真正在进行的那些（专注态、标记、当前模式）。
  *
- * 但这圈边得**明显**：左右两枚 ⊕ 只在选中时出现，边不亮，那两枚圆就成了凭空飘在旁边的东西。
- * 一道到位的白边（.55）比原先「淡边 + 再套一圈」更干净 —— 两圈描边读起来是个厚壳，不是「被选中」。
+ * 亮度收在 .34：这一圈是画面的镶边，画面本身才是要看的东西。
+ * 早先给到 .55，一屏深色里那是一道发光的白线，比它框住的画面还先被看见 ——
+ * 「被选中」不该比「选中的是什么」更响。收到这一档仍旧一眼分得出（悬浮是 .22），
+ * 而且左右两枚 ⊕ 这会儿是压在连线上的，不再靠这圈边把它们托住。
  */
-.nd.sel .nd-body{border-color:rgba(255,255,255,.55)}
+.nd.sel .nd-body{border-color:rgba(255,255,255,.34)}
 /* 悬浮只是一声招呼，比选中再淡一档：一条细的、淡的白边，不再套第二圈描边。
    :not(.sel) 是必须的 —— 选中的节点被鼠标扫过时还带着 hl，这条写在后面会把它那圈亮边压回去 */
 .nd.hl:not(.sel) .nd-body{border-color:rgba(255,255,255,.22)}
@@ -409,19 +419,22 @@ input,textarea{font:inherit;color:inherit}
  */
 .h-plus{position:absolute;inset:0;pointer-events:auto;cursor:pointer;animation:plus-in .25s ease-out}
 .h-plus-wave{position:absolute;inset:0;border-radius:50%;pointer-events:none;
-  border:1px solid rgba(255,255,255,.45);animation:plus-ripple 3.6s ease-out infinite}
-.h-plus-btn{position:absolute;inset:0;border-radius:50%;background:rgba(22,23,25,.8);
-  border:1px solid rgba(255,255,255,.16);color:rgba(255,255,255,.72);
+  border:calc(1px * var(--zk)) solid rgba(255,255,255,.45);animation:plus-ripple 3.6s ease-out infinite}
+/* 底色不透明：线从它身子底下穿过去，半透的话线会在圆里印出一道，读着像圆被划了一刀 */
+.h-plus-btn{position:absolute;inset:0;border-radius:50%;background:rgb(22,23,25);
+  border:calc(1px * var(--zk)) solid rgba(255,255,255,.16);color:rgba(255,255,255,.72);
   display:flex;align-items:center;justify-content:center;transition:border-color .25s,color .25s}
+/* 十字按圆的比例走（14/26），圆一收它跟着收 —— 写死 14px 的话，圆小下来它就顶满整个圆 */
+.h-plus-btn>svg{width:54%;height:54%}
 .h-plus:hover .h-plus-btn{border-color:rgba(255,255,255,.4);color:#fff}
 /*
- * 这一侧真接着一条线时，圆就穿上那条线的颜色 —— 不然是一根青线顶着一枚发白的灰圆，
- * 两种材质撞在一起。取 --teal-pale / --teal-dash 这一档（同色相、压掉三成饱和）：
- * 它是「这条线停在这儿」，不是「这儿正在出东西」，不该和满色的 --teal 一样响。
+ * 接没接着线，圆都是白的。
+ *
+ * 这一侧有线时它曾经穿上线的青色，撤掉了：线现在是从圆身子底下穿过去落到节点边上的，
+ * 「这儿接着一条线」眼睛直接看得见，不必再让圆复述一遍；
+ * 而一枚青圆压在青线上，两块同色的东西叠在一起，反倒把圆的边界糊掉了。
+ * 白的圆压在青的线上，是一枚按钮压在一条线上 —— 两件事各自清楚。
  */
-.h-plus.linked .h-plus-btn{border-color:var(--teal-dash);color:var(--teal-pale)}
-.h-plus.linked .h-plus-wave{border-color:var(--teal-ring)}
-.h-plus.linked:hover .h-plus-btn{border-color:var(--teal-soft);color:var(--teal)}
 @keyframes plus-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 @keyframes plus-ripple{0%{transform:scale(1);opacity:.28}100%{transform:scale(1.6);opacity:0}}
 /* 一圈不停荡的波纹正是这档设置要关掉的东西：留下那枚圆，去掉动 */
@@ -429,8 +442,8 @@ input,textarea{font:inherit;color:inherit}
   .h-plus{animation:none}
   .h-plus-wave{display:none}
 }
-.react-flow__handle-left{left:-19px}
-.react-flow__handle-right{right:-19px}
+.react-flow__handle-left{left:calc(-19px * var(--zk))}
+.react-flow__handle-right{right:calc(-19px * var(--zk))}
 
 /*
  * 节点上方浮动工具栏。四件事一样重、都是未点击态 —— 没有哪一件已经选中，
@@ -682,21 +695,23 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .gp-tabs:not(.open) .gp-orb:not([aria-selected=true]) .gp-orb-ic{transition:transform .3s ease-out}
 .gp-orb-ic>svg{width:100%;height:100%}
 /*
- * 收起态整条只剩这一枚，它就是那句话本身：近白的一档，不着色。
- * 转青要跟着整条一起到位（--wait），不然托盘还没长开它先绿了 —— 那点青是「一排里的这一枚」，
- * 排还没排开的时候它没有意思。收回去时不等：一收就该变回那句话本身。
+ * 当前这一枚：近白的一档，不着色。
+ *
+ * 展开后它曾经转青，撤掉了 —— 这一排是鼠标扫过去就展开的，那点青于是变成了
+ * 「手一碰就有东西绿起来」，读着像点亮了一个开关，可什么都还没发生。
+ * 青在这一屏上留给「这里要出东西」（生成键、被改的那段视频）；
+ * 「现在在哪个模式」是一句陈述，白就够了，底下那颗点负责钉死是哪一枚。
  */
 .gp-orb.on .gp-orb-ic{color:var(--ink);
   transition:transform .5s var(--ease-bounce) var(--wait),color .25s var(--wait)}
-/* 展开后才转青：那时一排等大的图标摆开了，青色回答的是「哪一枚是现在这枚」 */
-.gp-tabs.open .gp-orb.on .gp-orb-ic{color:var(--teal-on)}
+.gp-tabs.open .gp-orb.on .gp-orb-ic{color:var(--ink-0)}
 .gp-orb.hot:not(.on):not(.off) .gp-orb-ic{color:var(--ink-0)}
 /*
- * 当前那枚底下一点青，贴在坞沿外。颜色在一排等大的图标里还不够钉死「是这一枚」——
- * 它只在展开的时候出现：收起时整条就剩这一枚，不必再指认。
+ * 当前那枚底下一点白，贴在坞沿外。一排等大的图标里，光靠亮一档还分不出「是这一枚」——
+ * 悬浮的那一枚也是这个亮度；这颗点才是那句确认。只在展开时出现：收起时整条就剩这一枚，不必再指认。
  */
 .gp-orb-dot{position:absolute;left:50%;bottom:-5px;width:4px;height:4px;margin-left:-2px;
-  border-radius:50%;background:var(--teal-deep);pointer-events:none;opacity:0;transform:scale(0);
+  border-radius:50%;background:var(--ink);pointer-events:none;opacity:0;transform:scale(0);
   transition:opacity .25s var(--wait),transform .4s var(--ease-bounce) var(--wait)}
 .gp-tabs.open .gp-orb.on .gp-orb-dot{opacity:1;transform:scale(1)}
 /*
@@ -790,17 +805,19 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .frame-link{position:absolute;left:var(--tile);top:50%;margin-top:-14px;width:52px;height:28px;z-index:4}
 .frame-line{position:absolute;left:0;right:0;top:50%;margin-top:-1px;height:2px;border-radius:2px;
   background:rgba(255,255,255,.12)}
-/* 悬停时一颗光点沿线跑一趟，暗示两端可以对调 */
-.frame-line::after{content:'';position:absolute;top:-1px;left:0;width:24px;margin-left:-12px;height:4px;
-  border-radius:2px;background:linear-gradient(90deg,transparent,var(--teal),transparent);opacity:0}
-.frame-link.on:hover .frame-line::after{animation:gp-dot 1.5s cubic-bezier(.45,0,.55,1) infinite}
-@keyframes gp-dot{0%{left:0;opacity:0}14%{opacity:1}86%{opacity:1}100%{left:100%;opacity:0}}
+/*
+ * 线上不跑那颗青色的光点了。
+ *
+ * 它本意是「这两端可以对调」，可一道从左跑到右的光说的是「有东西正朝那边去」——
+ * 是传输，不是互换；而且这会儿鼠标底下正有一枚会转 180° 的交换键、一只写着「交换首尾帧」的气泡，
+ * 三样一起动，最轻的那件事被说了三遍。留下静的那根线就够：它只负责把两端连起来。
+ */
 .frame-swap{position:absolute;left:50%;top:50%;margin:-12px 0 0 -12px;width:24px;height:24px;
   border-radius:var(--r-pill);display:grid;place-items:center;background:var(--surface-3);
   border:1px solid var(--line-dash);color:var(--teal);
   transition:transform .34s cubic-bezier(.22,1.4,.36,1),border-color .25s}
 .frame-link.on:hover .frame-swap{transform:rotate(180deg);border-color:var(--teal-soft)}
-/* 「互换一下」浅色气泡，挂在连接区上（不跟着交换键转） */
+/* 「交换首尾帧」浅色气泡，挂在连接区上（不跟着交换键转） */
 .frame-link::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 9px);left:50%;margin-left:-40px;
   width:80px;text-align:center;font:500 12px/1 var(--font);padding:7px 0;border-radius:8px;
   background:#f0fbf8;color:#0a1513;white-space:nowrap;opacity:0;pointer-events:none;
@@ -1072,8 +1089,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
   border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
   transition:box-shadow .3s ease}
 /* 亮边只在鼠标压上来时出现 —— 静止态一屏卡片扫过去是一屏画面，不是一屏镶了边的框。
-   「画布上在用的是哪一幅」由左上角那枚便签说，不必再多描一圈 */
-.vp-card:hover::after{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.5)}
+   「画布上在用的是哪一幅」由左上角那枚便签说，不必再多描一圈。
+   亮度和节点那圈边同一档（.3）：白到发光就成了一道压在画面上的框，
+   而这一下要说的只是「鼠标在这一幅上」—— 底下那张画面还是主角 */
+.vp-card:hover::after{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3)}
 .vp-card:hover{box-shadow:0 18px 36px -14px rgba(0,0,0,.85)}
 .vp-card:has(:focus-visible)::after{box-shadow:inset 0 0 0 2px var(--vp-act-line-on)}
 .vp-open{display:block;width:100%;height:100%;text-align:left}
@@ -1617,15 +1636,18 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .prompt-editor{--pgap:20px;--pline:28px;--prow:calc(var(--tile) + 11px);
   margin-top:var(--pgap);display:flex;flex-direction:column;min-height:calc(var(--pline)*3 + var(--prow))}
 /*
- * 文生视频这一档：球浮起来之后这一句自己顶到面板最上面，往下让 6px 透口气。
+ * 文生视频这一档：球浮起来之后这一句自己顶到面板最上面，往下让一截，和那颗球排在同一条线上 ——
+ * 这一簇钉在 top:24px、高 48px（药丸 40px 在里头居中），中线落在 48px；
+ * 面板 13px 的内边距之外再让 21px，28px 行高的一半正好压上去。
+ * 原先只让 6px，第一行的字比那颗球高出一截，两样东西离得又近，读起来像各自为政。
  * 右边那 76px 是给球留的巷子，整块可编辑区都让着它 ——
  * 球钉在素材行那一档的高度上（见 .gp-tabrow），压着的是第一、二行的行末，不是只有第一行。
  *
- * 高度仍然钉在「有素材行」那一档上 —— 少掉的素材行、少掉的气口，连同自己让出去的那 6px，
+ * 高度仍然钉在「有素材行」那一档上 —— 少掉的素材行、少掉的气口，连同自己让出去的那 21px，
  * 一起加回可编辑区：切模式时面板上下沿一动不动，那块地方也不是空带子，点下去就是打字。
  */
-.gp-tabrow:not(:has(.material-row)) + .prompt-editor{margin-top:6px;padding-right:172px;
-  min-height:calc(var(--mrow) + var(--pgap) - 6px + var(--pline)*3 + var(--prow))}
+.gp-tabrow:not(:has(.material-row)) + .prompt-editor{margin-top:21px;padding-right:172px;
+  min-height:calc(var(--mrow) + var(--pgap) - 21px + var(--pline)*3 + var(--prow))}
 /*
  * 光标压在这句话上就得是「能改」的样子。可编辑区不是 input/textarea，浏览器不会替它挑光标，
  * 而面板整体写着 cursor:default —— 不明写这一条，箭头会一路继承进来，字看着就像不能动。
@@ -1753,7 +1775,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
  * 所以形状也收成整圆（参数那三格是方角）—— 看不清字的距离上就已经认得出「最左边那枚是模型」。
  * 和参数之间空出 10px：它们不是同一类东西，靠间距断句，不靠一根竖线。
  */
-.gp-mdl{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 4px;margin-right:10px;
+.gp-mdl{display:flex;align-items:center;gap:7px;height:34px;padding:0 10px 0 7px;margin-right:10px;
   border-radius:var(--r-pill);background:transparent;color:var(--ink);white-space:nowrap;
   cursor:pointer;transition:background .2s}
 .gp-mdl-name{font-size:14px;font-weight:500}
@@ -1790,17 +1812,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 锁死时形状还没定：实线框会读成「就是这个比例」，虚的才是「等原片说了算」 */
 .ratio-box[data-loose]{border-style:dashed}
 /*
- * 等级环：一圈等级色描边围着一块暗底，中间一枚实心徽记。
- * 不发光、也不做成一块实心色牌 —— 这枚东西常驻在面板底下，满色的牌子会一直和「生成」抢视线。
+ * 型号徽章：一圈银边围着一块暗底，中间一枚白色的徽记。
+ * 不着等级色 —— 会员由名字后那枚金胶囊一个人说（见 tokens.css 那一段）；
+ * 环要说的只是「这是哪家的型号」，那是一件和贵不贵无关的事。
  * 圆心用比面板更暗的那一格（--sunk）：亮边围暗底读起来才是「镶了一道边」，
- * 整枚都着色的话，抽屉里十一行就是十一颗彩色圆点，谁也不比谁要紧。
+ * 整枚都着色的话，抽屉里十一行就是十一颗亮圆点，谁也不比谁要紧。
  */
 .mdl-ring{flex:none;display:block;box-sizing:border-box;width:var(--d);height:var(--d);
-  border-radius:50%;padding:1.5px;background:var(--ring-free)}
-.mdl-ring[data-tier=vip]{background:var(--ring-vip)}
+  border-radius:50%;padding:calc(var(--d) / 18);background:var(--ring-metal)}
 .mdl-ring-in{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;
-  background:var(--sunk);color:var(--tier-free)}
-.mdl-ring[data-tier=vip] .mdl-ring-in{color:var(--tier-vip)}
+  background:var(--sunk);color:var(--ink)}
 /*
  * 身份胶囊：会员。免费档不挂 —— 一列里人人一枚牌子，等于一枚也没有。
  * 顶上补一道白：这一小块是有厚度的一枚牌，不是印在纸上的一块色。
@@ -1870,21 +1891,36 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 行末那枚勾是这一列里唯一着青的东西：它说的是「现在用的就是这一个」 */
 .gp-drop button>svg{flex:none;color:var(--teal)}
 /*
- * 模型抽屉。一行四件事：等级徽章、型号名 + 身份胶囊、这个型号的取值域、行末一枚勾。
- * 取值域常驻，不再等悬浮才淡进来 —— 挑型号时要比的正是这行小字，
- * 把它藏起来等于逼着人把十一个型号逐个悬浮一遍。
+ * 模型抽屉。一列十一行，一行一个型号：等级徽章、型号名 + 身份胶囊，行末一枚勾。
+ * 不按厂牌切段 —— 十一行里插一根线，读出来是「线上面那几个是一类」，
+ * 可挑型号时真正要比的是「谁收得下我这段素材、出多长」，不是它出自谁家；
+ * 徽记已经把出身说完了，那根线只是把一列均匀的名字截成两截。
+ *
+ * 取值域（出多长 / 多清楚 / 收几段）不常驻，悬浮到哪一行才浮出哪一行：
+ * 十一行小字一起摊开，每行都在说话，等于每行都没在说话，名字反倒被压住了；
+ * 一列干净的名字先让人找到「是哪一个」，停在谁身上再回答「它是什么样」。
+ * 行高是定死的，小字占的那一格一直空在那儿：浮出来时只有字在动，底下十行一动不动 ——
+ * 一行一撑高，整张抽屉（它是从底栏往上长的）会跟着往上蹿，鼠标底下的行就换了一个。
  */
 .mdl-drop{width:344px;padding:7px;border-radius:16px}
-.mdl-row{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
-  padding:7px 9px;border-radius:11px;cursor:pointer;transition:background .18s,box-shadow .18s}
-.mdl-row-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.mdl-row{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;text-align:left;
+  padding:0 10px;border-radius:12px;cursor:pointer;transition:background .18s,box-shadow .18s}
+/* 名字这一块整体往上让 9px，把下半格空出来给小字；它自己是不是在动，看的是行的状态 */
+.mdl-row-main{position:relative;min-width:0;flex:1;transition:transform .22s var(--ease-soft)}
 .mdl-row-name{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:550;color:var(--ink)}
-.mdl-row small{font-size:11.5px;line-height:1.45;color:var(--ink-3);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mdl-row:hover{background:var(--fill-2)}
+/* 脱离文档流挂在名字底下：它出现与否不该改变任何一行的高度 */
+.mdl-row small{position:absolute;top:100%;left:0;right:0;margin-top:3px;
+  font-size:11.5px;line-height:1.4;color:var(--ink-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;pointer-events:none;opacity:0;transform:translateY(-3px);
+  transition:opacity .16s,transform .22s var(--ease-soft)}
+.mdl-row:hover,.mdl-row:focus-visible{background:var(--fill-2)}
+.mdl-row:hover .mdl-row-main,.mdl-row:focus-visible .mdl-row-main,
+.mdl-row.on .mdl-row-main{transform:translateY(-8px)}
+.mdl-row:hover small,.mdl-row:focus-visible small,.mdl-row.on small{opacity:1;transform:none}
 /*
  * 选中不着青底：这一列里着青的只有行末那枚勾。一行青底再加一枚青勾是把同一件事说两遍，
  * 整块色还会压过名字本身 —— 中性的一块底 + 一圈细边，说的就是「停在这一行」。
+ * 它的小字也一直摊着：这一行是此刻的基准，别的行浮出来都是拿它作比。
  */
 .mdl-row.on{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--line-2)}
 .mdl-row[aria-disabled=true]{opacity:.45;cursor:not-allowed}
@@ -1893,8 +1929,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 新一代的那枚小牌：实心青底、近黑的字，一眼是个标签，不是名字的一部分 */
 .mdl-new{flex:none;font:700 9.5px/1 var(--num);letter-spacing:.06em;font-style:normal;
   padding:3px 5px;border-radius:5px;background:var(--teal-solid);color:var(--teal-ink)}
-/* Seedance 是自家的一串型号，排在最前；一条细线之后才是别家的 */
-.mdl-split{display:block;height:1px;margin:7px 10px;background:var(--line)}
 /* 视频节点上的入口：接不了这段视频时灰掉，理由挂在悬浮说明上 */
 .vtool button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
 
@@ -1926,6 +1960,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .prompt-input .mark-chip .mark-shot{--shot:15px}
   .prompt-input .source-chip-shot{width:15px;height:15px;border-radius:4px}
   .gp-bot{margin-top:10px;padding-top:10px;bottom:-12px;min-height:40px}
+  /* 十一行的模型抽屉在矮屏上最容易顶到天花板：行高收一档，小字让开的距离跟着收 */
+  .mdl-row{min-height:42px}
+  .mdl-row:hover .mdl-row-main,.mdl-row:focus-visible .mdl-row-main,
+  .mdl-row.on .mdl-row-main{transform:translateY(-7px)}
 }
 
 /* ---- 置灰与「本次不参与」：灰要能指到具体那一块，并且随时说得出原因 ---- */

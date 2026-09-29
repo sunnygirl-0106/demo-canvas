@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@xyflow/react'
+import { EdgeLabelRenderer, getBezierPath, Position, type EdgeProps } from '@xyflow/react'
+import { PLUS_SPAN, useZk } from '../hooks'
 import { isFocusNode, OP_NAME, useCanvas } from '../../store/canvas'
 import { useGenerator } from '../../store/generator'
 import { activeIds } from '../../generator/materialLayout'
@@ -7,7 +8,23 @@ import { IcScissors } from '../../ui/icons'
 export default function DashedEdge(p: EdgeProps) {
   const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition } = p
   const hover = useCanvas((s) => s.hoverMat)
-  const [d, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
+  /*
+   * 线的两端直接落在节点边上，不给 ⊕ 空位。
+   *
+   * react-flow 给的端点是 handle 方框的外沿，而那个方框是照着 ⊕ 摆的（见 app.css 的 .react-flow__handle）——
+   * 照它画，线会停在离节点 32px 的地方，中间空出一段「留给加号的位置」；
+   * 可加号只在节点选中时才出现，平时那儿什么也没有，就成了一条没接上的线。
+   * 所以把这一截（32 × 跟随系数，和方框同一个算法）补回去：线一路走到节点边，
+   * ⊕ 出现时压在它上面，像一枚按钮压在线上，而不是线绕着它让路。
+   */
+  const pad = PLUS_SPAN * useZk()
+  const at = (x: number, pos: Position) => pos === Position.Left ? x + pad : pos === Position.Right ? x - pad : x
+  const sx = at(sourceX, sourcePosition), tx = at(targetX, targetPosition)
+  const [d, labelX, labelY] = getBezierPath({
+    sourceX: sx, sourceY, targetX: tx, targetY, sourcePosition, targetPosition,
+  })
+  /** 渐变得贴着这条线自己的走向，所以用 userSpaceOnUse 直接给两端的坐标 */
+  const gid = `eg-${id}`
 
   const gen = useGenerator((s) => s.map[p.target])
   /**
@@ -36,11 +53,28 @@ export default function DashedEdge(p: EdgeProps) {
 
   return (
     <>
+      {/*
+        * 方向不靠箭头说。
+        *
+        * 箭头是钉在线尾的一枚实心三角，比线本身重得多：一屏几条线，先看见的是几枚三角。
+        * 这儿换成两件一直在说、又都很轻的事 —— 亮度和动。
+        * 亮度：从起点那头的两成亮一路涨到落点的满亮，像一道尾巴亮到头的光，
+        *      暗的那头是「从这儿出来的」，亮的那头是「落在这儿」，静止的一帧里就读得出来。
+        * 动：虚线一直朝落点走（.rf-edgepath 那条动画），3.4s 一轮，慢到不抢眼睛。
+        * 悬浮时线变成实线，那一下只剩亮度在说方向 —— 够了，那会儿人正盯着这一条。
+        */}
+      <defs>
+        <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sx} y1={sourceY} x2={tx} y2={targetY}>
+          <stop offset="0" style={{ stopColor: 'var(--teal)', stopOpacity: .2 }} />
+          <stop offset=".5" style={{ stopColor: 'var(--teal)', stopOpacity: .62 }} />
+          <stop offset="1" style={{ stopColor: 'var(--teal)', stopOpacity: 1 }} />
+        </linearGradient>
+      </defs>
       <path
         id={id} className="rf-edgepath" d={d} fill="none"
-        stroke="var(--teal)" strokeWidth={lit || armed ? 2.2 : 1.5} strokeDasharray={lit ? undefined : '4 4'}
+        stroke={`url(#${gid})`} strokeWidth={lit || armed ? 2.2 : 1.5} strokeLinecap="round"
+        strokeDasharray={lit ? undefined : '4 4'}
         opacity={armed ? 0.9 : !active ? 0.1 : dimmed ? 0.12 : lit ? 1 : 0.55}
-        markerEnd="url(#arrow-teal)"
       />
       {/* 加宽的透明命中区，方便点选删除、也方便悬浮出剪刀 */}
       <path d={d} fill="none" stroke="transparent" strokeWidth={14} className="react-flow__edge-interaction"

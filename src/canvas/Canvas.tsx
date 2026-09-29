@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Background, BackgroundVariant, ReactFlow, useNodesInitialized, useReactFlow, useStore,
+  useUpdateNodeInternals,
   type Connection, type Edge, type NodeTypes, type EdgeTypes,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
 import { isValidConnection, useCanvas, type NodeKind } from '../store/canvas'
+import { zkOf } from './hooks'
 import TextNode from '../nodes/TextNode'
 import ImageNode from '../nodes/ImageNode'
 import VideoNode from '../nodes/VideoNode'
@@ -22,19 +24,28 @@ import { sceneShowcase, sceneWired, sceneWorkflow } from '../demo/scenes'
  * 把画布缩放比（--z）和标签系数（--zk）写进 CSS。单拎成一个不渲染任何东西的小组件 ——
  * 缩放是每帧都在变的量，让它只惊动这一个组件，摆在 Canvas 里会把整棵节点树一起重画。
  *
- * --zk 就是下面这一行：缩小时恒为 1（标签跟着画面缩），放大过 100% 之后按 1/√z 跟随 ——
- * 画面翻一倍，名字和那几枚开关在屏幕上长大 1.41 倍而不是原地不动。理由见 tokens.css 的那一段。
- * 想调跟随的松紧只动 FOLLOW：0 是一路封死（放大时标签在屏幕上恒定），1 是完全不封（标签跟画面等比长大）。
+ * --zk 是跟随系数（见 hooks.ts 的 zkOf）：缩小时恒为 1（标签跟着画面缩），
+ * 放大过 100% 之后按 1/√z 跟随 —— 画面翻一倍，名字和那几枚开关在屏幕上长大 1.41 倍而不是原地不动。
  */
-const FOLLOW = 0.5
-
 function ZoomVar() {
   const zoom = useStore((s) => s.transform[2])
+  const { getNodes } = useReactFlow()
+  const updateNodeInternals = useUpdateNodeInternals()
   useEffect(() => {
     const css = document.documentElement.style
     css.setProperty('--z', String(zoom))
-    css.setProperty('--zk', String(Math.max(1, zoom) ** (FOLLOW - 1)))
-  }, [zoom])
+    css.setProperty('--zk', String(zkOf(zoom)))
+    /*
+     * 节点左右那两枚 ⊕ 的方框也跟着 --zk 改尺寸（见 app.css 的 .react-flow__handle），
+     * 而连线的端点取的正是这个方框的外沿 —— react-flow 只在节点自己改尺寸时重量一次 handle，
+     * 画布缩放它不看，不推这一把，圆缩小了线还停在原来那个位置，箭头和圆之间就空出一截。
+     *
+     * 等一拍再推：滚轮缩放一帧一个值，每帧把所有节点重量一遍纯属白费 ——
+     * 而且那半秒里画面本来就在动，端点晚 90ms 归位没人看得出来。
+     */
+    const t = setTimeout(() => updateNodeInternals(getNodes().map((n) => n.id)), 90)
+    return () => clearTimeout(t)
+  }, [zoom, getNodes, updateNodeInternals])
   return null
 }
 
@@ -160,15 +171,6 @@ export default function Canvas() {
         {/* 底色交给 .react-flow 那层径向渐变，这里只画点阵：1px 的点、26px 一格 */}
         <Background variant={BackgroundVariant.Dots} gap={45} size={2} color="var(--dot)" />
       </ReactFlow>
-
-      {/* 连线箭头 */}
-      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-        <defs>
-          <marker id="arrow-teal" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
-            <path d="M0 1.2 L7.5 4.5 L0 7.8 z" fill="var(--teal)" />
-          </marker>
-        </defs>
-      </svg>
 
       <TopBar onShowcase={() => showScene(sceneShowcase)}
         onWired={(key) => showScene(() => sceneWired(key))}

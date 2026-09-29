@@ -25,8 +25,8 @@ describe('模式能力与有效素材', () => {
     expect(why(['a'], 'edit')).toBe('连接视频后可用')
     expect(why(['a'], 'extend')).toBe('连接视频后可用')
     expect(off(['v'])).toEqual(['text', 'frames'])
-    // 连了视频，首尾帧也跟着进不去（第 2 节）；两段视频再把编辑的那一个席位撑满
-    expect(off(conn)).toEqual(['text', 'frames', 'edit'])
+    // 连了视频，首尾帧也跟着进不去（第 2 节）；编辑 / 延长容得下多段视频，第二段不关它们的门
+    expect(off(conn)).toEqual(['text', 'frames'])
     expect(tabStates(conn, get, 'sd2.5').find((t) => t.k === 'text')!.reason).toContain('仅使用文本')
     expect(fallbackMode([], get, 'sd2.5')).toBe('text')
     expect(fallbackMode(['v'], get, 'sd2.5')).toBe('ref')
@@ -94,15 +94,15 @@ describe('模式能力与有效素材', () => {
     const loading: MatGet = (id) => { const m = get(id); return m ? { ...m, dur: undefined } : null }
     expect(modeAvailable('edit', ['v'], loading, 'sd2.5')).toBe(true)
   })
-  it('编辑只承载一段视频：第二段一接上就容纳不下，延长不受这一条约束', () => {
+  it('第二段视频不关掉编辑 / 延长的入口：转去全能参考是落位规则，不是容纳不下', () => {
     expect(modeAvailable('edit', ['v'], get, 'sd2.5')).toBe(true)
-    expect(modeAvailable('edit', ['v', 'w'], get, 'sd2.5')).toBe(false)
-    expect(tabStates(['v', 'w'], get, 'sd2.5').find((t) => t.k === 'edit')!.reason)
-      .toBe('编辑视频最多支持 1 段视频，当前已连接 2 段')
-    // 落位因此把人送去全能参考：两段同为参考视频
-    expect(fallbackMode(['v', 'w'], get, 'sd2.5')).toBe('ref')
-    // 延长仍然收得下辅助参考视频
+    // 编辑和延长都容得下多段视频：第一段作源视频，其余照旧是参考素材，与源视频共用视频额度
+    expect(modeAvailable('edit', ['v', 'w'], get, 'sd2.5')).toBe(true)
     expect(modeAvailable('extend', ['v', 'w'], get, 'sd2.5')).toBe(true)
+    expect(tabStates(['v', 'w'], get, 'sd2.5').find((t) => t.k === 'edit')!.reason).toBe('')
+    // 「再接一段视频就转去全能参考」由落位说（generator 的 leaveSource），
+    // 入口不跟着灰 —— 用户手动切回编辑仍然进得去
+    expect(fallbackMode(['v', 'w'], get, 'sd2.5')).toBe('ref')
   })
   it('输入视频的上限也按型号分：2.0 系列只收到 15 秒 —— 那是闸门的事，不是入口', () => {
     // 20 秒的视频 2.0 系列一段都接不住，可它仍然是一段视频：Tab 照进，生成拦住

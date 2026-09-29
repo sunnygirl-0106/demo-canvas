@@ -9,6 +9,7 @@ import VideoHud from './VideoHud'
 import GeneratorPanel from '../generator/GeneratorPanel'
 import VideoPanel from '../generator/VideoPanel'
 import MarkBoard from '../generator/MarkBoard'
+import MediaPreview from '../generator/MediaPreview'
 import ExtendTrack from '../generator/ExtendTrack'
 import { IcExpand, IcPlus, IcVideo, IcWriting } from '../ui/icons'
 import { MEDIA_FAIL } from '../generator/materialLayout'
@@ -111,7 +112,31 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
    * 徽章从画面右上角搬到这里，画面上就只剩画面和画在它上面的标记，一个字都不压着。
    * 左边那枚图标不跟着换：它说的始终是「这是个视频节点」，和别的节点读法一致。
    */
-  const opIcon = mode === 'extend' ? <IcPlus size={14} sw={1.7} /> : <IcWriting size={15} />
+  /**
+   * 「全部版本」那只气泡开着的时候，底下那块生成面板收起来。
+   *
+   * 气泡说的是「这段视频有过哪些版本」，面板说的是「接下来要生成什么」——
+   * 一上一下同时摊开，屏幕上就有两件事同时在等回答，而这会儿人正在翻旧版本，
+   * 那块还空着的提示词框只是在占地方。关掉气泡它就回来，中间什么也没丢。
+   *
+   * 状态摆在节点这一层、不放在工具栏里：工具栏在节点不选中时整个卸掉，状态跟着丢，
+   * 而「面板收不收」是节点自己的事。节点一旦不选中，气泡也跟着工具栏走了，所以这儿也一并复位。
+   */
+  const [versions, setVersions] = useState(false)
+  useEffect(() => { if (!selected) setVersions(false) }, [selected])
+
+  /**
+   * 画面右上角那枚放大：开一张居中的大图，不再把浏览器推进全屏。
+   *
+   * 全屏是「离开这个页面去看一段片子」——整块画布连同它周围的上下文一起没了，
+   * 退出还得再按一次 Esc；而这一下人想的只是「这一格太小，看清楚点」。
+   * 一张压着暗底的大图答的正是这句话：画布还在底下，关掉就回到原来的位置。
+   * 复用素材预览那张（MediaPreview）：同一件事在这个产品里只该有一种长相。
+   */
+  const [preview, setPreview] = useState(false)
+  const selfMat = matOf(focus ? origin ?? undefined : self ?? undefined)
+
+  const opIcon = mode === 'extend' ? <IcPlus size={14} sw={1.7} /> : <IcWriting size={22} />
   const opLabel = mode === 'extend' ? '延长中' : '编辑中'
   return (
     <NodeShell
@@ -126,9 +151,11 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
             // 被那条 gap:5px 一个个撑开 —— 字距该由字距说了算，不该由图标和字之间那道缝说了算
             : <b>{[...opLabel].map((ch, i) => <em key={i}>{ch}</em>)}</b>}</span>
         : undefined}
-      toolbar={<VideoToolbar nodeId={id} visible={!!selected && has && !focus} src={data.src} name={data.name} dur={data.dur} />}
-      panel={<GeneratorPanel visible={!!selected}><VideoPanel nodeId={id} docVer={docVer} onBump={bump} /></GeneratorPanel>}
+      toolbar={<VideoToolbar nodeId={id} visible={!!selected && has && !focus} src={data.src} name={data.name} dur={data.dur}
+        versions={versions} setVersions={setVersions} />}
+      panel={<GeneratorPanel visible={!!selected && !versions}><VideoPanel nodeId={id} docVer={docVer} onBump={bump} /></GeneratorPanel>}
     >
+      {preview && selfMat && <MediaPreview mat={selfMat} onClose={() => setPreview(false)} />}
       {source ? <MarkBoard nodeId={id} mat={source} onBump={bump} /> : <>
         {has ? (
           <div className="nd-shot" onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
@@ -141,7 +168,9 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
                 if (!focus && Number.isFinite(duration)) useCanvas.getState().updateNode(id, { dur: duration, mediaReady: true, mediaError: undefined }) }}
               onError={failed}
             />
-            <button className="nd-corner nodrag" title="全屏" onClick={(e) => { e.stopPropagation(); void vid.current?.requestFullscreen?.().catch(() => {}) }}><IcExpand size={11} /></button>
+            {/* 放大时把节点上这一格停掉：两处同一段画面各放各的，声音和进度都对不上 */}
+            <button className="nd-corner nodrag" title="放大" aria-label="放大查看"
+              onClick={(e) => { e.stopPropagation(); vid.current?.pause(); setPreview(true) }}><IcExpand size={11} /></button>
             {/* 鼠标一进来这段就开始放，那就得有一条轴说清「放到哪儿了、还有多长」——
                 以及对这条片子还能做什么。它只管这一段视频本身，生成那几件归上方工具栏。
                 专注态不摆：那块屏放的是父节点那一段，时间由它自己那条轴（延长轴 / 标记轴）说了算 */}

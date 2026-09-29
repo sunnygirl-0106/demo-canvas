@@ -44,9 +44,12 @@ export interface ModelCap {
   /** 列表里挂一枚 NEW 牌子。只给最新那一代，同时挂两个就等于谁都不新。 */
   isNew?: boolean
   /**
-   * 计费档位。只决定这个型号长什么样（等级环的颜色 + 名字后那枚胶囊），不决定它能不能选 ——
+   * 计费档位。只决定名字后头挂不挂那枚 VIP 胶囊，不决定它能不能选 ——
    * 能不能选一律由 modelBlockedReason 按「这个模式 / 这些素材接不接得住」判，
    * 两套规矩混在一起的话，同一个灰掉的型号会有两个互相打架的理由。
+   *
+   * 会员档只出现在自家的 Seedance 里：别家的型号按调用价直接算在星钻上，
+   * 没有「开了会员才给用」这一层，挂一枚 VIP 是在说一件不存在的事。
    */
   tier: Tier
 }
@@ -73,7 +76,7 @@ const sd20 = (label: string, resolutions: string[], tier: Tier = 'vip'): ModelCa
  * 同时表达分辨率和画幅，这里拆成 720p + 两档比例呈现。
  */
 const wanVariant = (label: string, genModes: Mode[], quota: ModelCap['quota']): ModelCap => ({
-  ...sd20(label, ['720p']),
+  ...sd20(label, ['720p'], 'free'),
   durations: [5], durationRange: [5, 5], ratios: ['16:9', '9:16'],
   quota, genModes, hasAudioToggle: false,
 })
@@ -96,11 +99,11 @@ export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
   'sd1.5': { ...sd20('Seedance 1.5', ['480p', '720p', '1080p'], 'free'),
     genModes: ['text', 'frames', 'refImage'], quota: { image: 9, video: 0, audio: 0, mediaSeconds: 0 } },
   'kling-video-o1': {
-    ...sd20('可灵 O1', ['720p', '1080p']),
+    ...sd20('可灵 O1', ['720p', '1080p'], 'free'),
     durations: [5, 10], durationRange: [5, 10], ratios: ['16:9', '1:1', '9:16'],
     genModes: ['text', 'frames', 'ref'], hasAudioToggle: false,
   },
-  'wan2.2': { ...sd20('Wan 2.2', ['480p', '720p', '1080p']),
+  'wan2.2': { ...sd20('Wan 2.2', ['480p', '720p', '1080p'], 'free'),
     genModes: ['text', 'frames', 'refImage'], quota: { image: 9, video: 0, audio: 0, mediaSeconds: 0 },
     hasAudioToggle: false },
   'wan2.2-ti2v-5b': wanVariant('Wan 2.2 文生视频', ['text'], { image: 0, video: 0, audio: 0, mediaSeconds: 0 }),

@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useGenerator, type GenState } from '../store/generator'
 import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type MatGet, type Model, type ModelCap, type Tier } from './materialLayout'
 import { modelBlockedReason } from './videoTask'
@@ -14,19 +14,13 @@ import { docText } from './promptDoc'
  */
 const intake = (c: ModelCap) => c.quota.video ? `最多 ${c.quota.video} 段视频` : c.quota.image ? '仅支持图片' : '不支持素材'
 /**
- * 这个型号的取值域，列表里常驻的那行小字：出多长、多清楚、收几段。三样占一行，不折行。
+ * 这一行小字：出多长、多清楚、收几段。三样占一行，不折行。
  * 「不支持编辑与延长 / 不支持局部编辑」这两句缺陷不进这一行 —— 它们让一半型号的小字长到要折两行，
- * 一列十一行高低不齐，反倒谁都看不清；改挂在悬浮说明上（limitNote），真要选到它时才说。
+ * 一行装不下就得折成两行，这一格的高又是定死的。也不挂到悬浮说明上：
+ * 说明气泡只说置灰原因，而这两件事真挡住换型号时，本来就会由那句置灰原因说出来。
  */
 const specLine = (c: ModelCap) =>
   `${c.durationRange[0]}–${c.durationRange[1]}s · ${c.resolutions.join('/')} · ${intake(c)}`
-/** 这个型号做不了的事。列表里不占位置，悬浮到它身上才说。 */
-const limitNote = (c: ModelCap) => [
-  c.genModes.includes('edit') ? '' : '不支持编辑与延长',
-  c.timestamp ? '' : '不支持局部编辑',
-].filter(Boolean).join(' · ')
-/** Seedance 是自家的一串型号，排在最前；一条细线之后才是别家的。 */
-const isSeedance = (model: Model) => model.startsWith('sd')
 
 /** 名字后头那枚身份胶囊。免费档不挂 —— 「不是会员专属」这件事不值得占一枚牌子。 */
 const TIER_PILL: Record<Tier, string> = { free: '', vip: 'VIP' }
@@ -36,17 +30,20 @@ const TierPill = ({ tier }: { tier: Tier }) =>
 const glyphOf = (model: Model) =>
   model.startsWith('kling') ? IcKlingS : model.startsWith('wan') ? IcWanS : IcSeedanceS
 /**
- * 型号徽章：深色圆心 + 一圈等级色的描边环。
+ * 型号徽章：深色圆心 + 一圈银边，中间一枚白徽记。
  *
- * 环不发光、也不是一块实心色牌：这枚东西常驻在面板底下，一块满色的牌子会一直和「生成」抢视线；
- * 而一圈细环只在挨着看的时候才说出等级，远看它就只是「哪家的型号」那个徽记。
- * 圆心是暗的、徽记跟着环取同一个等级色：一圈亮边围着一块暗底，读起来才是「镶了一道边」，
- * 而不是「一枚亮片」—— 整枚都着色的话，十一行排下来就是十一颗彩色圆点，谁也不比谁要紧。
+ * 不是一块实心色牌：这枚东西常驻在面板底下，一块满色的牌子会一直和「生成」抢视线；
+ * 一圈细环 + 暗圆心读起来是「镶了一道边」，而不是「一枚亮片」。
+ * 也不跟着等级换色 —— 会员由名字后那枚金胶囊说，环只说「这是哪家的型号」。
+ *
+ * 直径压到和旁边那行字一般高（列表 22 / 底栏 20）：它是名字的前缀，不是名字的插图。
+ * 早先的 30 比字高出一圈，一列看下去先看见十一颗圆、再看见十一个名字 ——
+ * 收到同一个高度上，这一列就只剩一件事在说话，徽章退回成句首的那一点。
  */
 const ModelRing = ({ model, d }: { model: Model; d: number }) => {
   const G = glyphOf(model)
-  return <i className="mdl-ring" data-tier={MODEL_CAPABILITIES[model].tier} style={{ '--d': `${d}px` } as CSSProperties}>
-    <i className="mdl-ring-in"><G size={Math.round(d * 0.5)} /></i>
+  return <i className="mdl-ring" style={{ '--d': `${d}px` } as CSSProperties}>
+    <i className="mdl-ring-in"><G size={Math.round(d * 0.56)} /></i>
   </i>
 }
 /** 清晰度在这把刻度上的位置：图标里三根柱子亮几根。4K 和 1080p 同顶格，刻度只有三档。 */
@@ -103,7 +100,7 @@ const FOCUS_MODEL_TIP = '编辑 / 延长固定使用 Seedance 2.5'
 export default function VideoSettings({ nodeId, gen, source, get, focus }: { nodeId: string; gen: GenState; source: Mat | null; get: MatGet; focus: boolean }) {
   const modelButton = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState<string | null>(null)
-  /** 灰掉的型号为什么选不了、选得了的换过去会变什么样，悬浮 / 聚焦就说，不用用户自己猜 */
+  /** 灰掉的型号为什么选不了，悬浮 / 聚焦就说，不用用户自己猜；没灰的那几行不弹说明，鼠标扫过去不该一路跟着冒气泡 */
   const { tip: rowTip, node: rowTipNode } = useTip(true)
   /** 底栏这一排本身的说明：贴着它上方说，不挤到旁边那几格头上 */
   const { tip, node: tipNode } = useTip()
@@ -133,7 +130,7 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
     <button ref={modelButton} className={`gp-mdl${open === 'model' ? ' on' : ''}`} aria-disabled={focus || undefined}
       aria-label={focus ? `${cap.label}：${FOCUS_MODEL_TIP}` : `模型：${cap.label}`} {...rowTip(focus ? FOCUS_MODEL_TIP : undefined)}
       onClick={() => { if (!focus) setOpen(open === 'model' ? null : 'model') }} aria-expanded={open === 'model'}>
-      <ModelRing model={gen.model} d={26} />
+      <ModelRing model={gen.model} d={20} />
       <span className="gp-mdl-name">{cap.label}</span>
       <TierPill tier={cap.tier} />
     </button>
@@ -152,24 +149,20 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
       onClick={() => patch({ sound: !gen.params.sound })}>
       {gen.params.sound ? <IcSpeaker size={15} sw={1.9} /> : <IcMute size={15} sw={1.9} />}</button>}
     {open === 'model' && <Overlay anchor={modelButton} label="选择模型" className="mdl-drop" onClose={() => setOpen(null)}>
-      {MODELS.map((model, i) => {
+      {MODELS.map((model) => {
         const c = MODEL_CAPABILITIES[model]
         const blocked = modelBlockedReason(gen, model, get)
-        const why = blocked || limitNote(c)
         const on = gen.model === model
-        return <Fragment key={model}>
-          {i > 0 && isSeedance(MODELS[i - 1]) && !isSeedance(model) && <i className="mdl-split" />}
-          <button className={`mdl-row${on ? ' on' : ''}`} aria-disabled={!!blocked}
-            aria-label={why ? `${c.label}：${why}` : c.label} {...rowTip(why)}
-            onClick={() => { if (blocked) return; useGenerator.getState().setModel(nodeId, model, get); setOpen(null) }}>
-            <ModelRing model={model} d={30} />
-            <span className="mdl-row-main">
-              <span className="mdl-row-name">{c.label}<TierPill tier={c.tier} />{c.isNew && <em className="mdl-new">NEW</em>}</span>
-              <small>{specLine(c)}</small>
-            </span>
-            {on && <IcCheck size={15} sw={2.6} className="mdl-tick" />}
-          </button>
-        </Fragment>
+        return <button key={model} className={`mdl-row${on ? ' on' : ''}`} aria-disabled={!!blocked}
+          aria-label={`${c.label}，${specLine(c)}${blocked ? `。${blocked}` : ''}`} {...rowTip(blocked || undefined)}
+          onClick={() => { if (blocked) return; useGenerator.getState().setModel(nodeId, model, get); setOpen(null) }}>
+          <ModelRing model={model} d={22} />
+          <span className="mdl-row-main">
+            <span className="mdl-row-name">{c.label}<TierPill tier={c.tier} />{c.isNew && <em className="mdl-new">NEW</em>}</span>
+            <small>{specLine(c)}</small>
+          </span>
+          {on && <IcCheck size={15} sw={2.6} className="mdl-tick" />}
+        </button>
       })}
     </Overlay>}
   </div>

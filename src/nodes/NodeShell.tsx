@@ -8,12 +8,10 @@ const KIND_ICON = { text: IcText, image: IcImage, video: IcVideo }
 
 /**
  * 节点左右那枚 ⊕：一层向外荡的波纹 + 一枚圆。波纹不接事件，事件全落在外层，好往 handle 冒泡。
- * linked = 这一侧真有一条线接着 —— 圆于是穿上线的颜色，见 .h-plus.linked。
+ * 接没接着线都是同一枚白圆 —— 线是从它底下穿过去的，有没有线眼睛直接看得见（见 .h-plus）。
  */
-const Plus = ({ linked, ...p }: {
-  linked?: boolean; onPointerDown?: PointerEventHandler; onClick?: MouseEventHandler
-}) => (
-  <div className={'h-plus' + (linked ? ' linked' : '')} {...p}>
+const Plus = (p: { onPointerDown?: PointerEventHandler; onClick?: MouseEventHandler }) => (
+  <div className="h-plus" {...p}>
     <i className="h-plus-wave" />
     <span className="h-plus-btn"><IcPlus size={14} sw={1.9} /></span>
   </div>
@@ -44,8 +42,6 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
   const snapshot = useCanvas((s) => s.snapshot)
   const conn = useActiveConn()
   const spawn = useCanvas((s) => s.spawnDownstream)
-  // 只有选中的节点才画 ⊕，所以这两个也只在那一个节点上真的用得上
-  const edges = useCanvas((s) => s.edges)
   const down = useRef({ x: 0, y: 0 })
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(name)
@@ -103,17 +99,18 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
         * 加号本身用 24 格的图标凑设计稿里 16 格那一枚的观感：
         * 那枚是 11px 画 10/16 的十字、线宽 1.6，落到屏上是 6.9px 的十字 / 1.1px 的线；
         * 这边 14px 画 12/24，十字 7px、线宽 1.9 折出来也是 1.1px。
+        * 真正落地的边长由 CSS 按圆的比例给（.h-plus-btn>svg 的 54%）——
+        * 圆会随画布缩放收放，写死 14px 的话，圆一收十字就顶满整个圆。
         */}
       {kind !== 'text' && (
         <Handle type="target" position={Position.Left} id="in" isConnectableStart={false}>
-          {selected && <Plus linked={edges.some((e) => e.target === id)} />}
+          {selected && <Plus />}
         </Handle>
       )}
       {/* 拖出去 = 连线；原地点一下 = 右侧 360px 直接新建一个空视频节点并连上 */}
       <Handle type="source" position={Position.Right} id="out">
         {selected && (
           <Plus
-            linked={edges.some((e) => e.source === id)}
             onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
             onClick={(e) => {
               if (Math.abs(e.clientX - down.current.x) + Math.abs(e.clientY - down.current.y) > 6) return
