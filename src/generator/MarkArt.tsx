@@ -1,5 +1,5 @@
 import type { PointerEvent } from 'react'
-import { BRUSH_WIDTH, timecode, type MarkRegion } from './marks'
+import { BRUSH_WIDTH, type MarkRegion } from './marks'
 /** 画面一律 16:9，viewBox 用 160×90 而不是 0..1：等比缩放，笔迹的圆头才不会被压扁。 */
 const VW = 160, VH = 90
 const HANDLES = ['nw', 'ne', 'sw', 'se'] as const
@@ -37,8 +37,15 @@ export default function MarkArt({ regions, at, active, onBoxDown }: Props) {
       style={{ left: `${r.rect[0] * 100}%`, top: `${r.rect[1] * 100}%`, width: `${r.rect[2] * 100}%`, height: `${r.rect[3] * 100}%`, opacity: lit(r) ? 1 : 0.34 }}
       onPointerDown={onBoxDown && ((e) => onBoxDown(e, i, null))}>
       {onBoxDown && <>
-        {/* 贴着画面顶边的框，标号翻到框里面去，否则会被画面边缘切掉 */}
-        <span className={`mark-box-label${r.rect[1] < 0.1 ? ' inside' : ''}`}>{regions.length > 1 ? `区域 ${i + 1} · ` : ''}{timecode(r.t)}</span>
+        {/*
+          * 贴着画面顶边的框，标号翻到框里面去，否则会被画面边缘切掉。
+          * 标上只写「区域 n」，不再挂那一秒的时间码：画面此刻停在哪一秒，
+          * 屏幕左下角那句「已暂停在 00:03」正说着，轨道上也标着 ——
+          * 每个框再各自重复一遍，框一多就成了满屏乱飞的时间数字。
+          * 框上真正要认的只是「这是第几处」—— 编号按 draft.regions 的次序数，
+          * 跨秒也连着数下去，所以拖时间轴时同一块地方始终是同一个号。
+          */}
+        <span className={`mark-box-label${r.rect[1] < 0.1 ? ' inside' : ''}`}>区域 {i + 1}</span>
         {HANDLES.map((h) => <i key={h} className={`mark-grip ${h}`} onPointerDown={(e) => onBoxDown(e, i, h)} />)}
       </>}
     </div>)}

@@ -19,7 +19,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   ratio?: number     // 画面真实宽高比，量自封面；节点按它摆成横的还是竖的
   busy?: boolean     // 假生成中
   operationSource?: string  // 这个节点是从哪个视频节点的「编辑 / 延长」长出来的
-  renamed?: boolean  // 名字是用户手打的：自动命名不再改口，往下派生也以它为根
+  renamed?: boolean  // 名字是用户手打的：自动命名不再改口
 }
 
 export type CNode = Node<CanvasNodeData>
@@ -53,39 +53,28 @@ export function nextName(nodes: CNode[], kind: NodeKind) {
   return `${KIND_NAME[kind]}${max + 1}`
 }
 
-/**
- * 两件事长出来的节点叫同一个名字：它们是同一个功能「局部修改视频」的两条路，
- * 名字说的是「这个节点是拿谁改出来的」，至于改的是画面里一块地方还是片尾接一段，
- * 标题栏右边那枚「编辑中 / 延长中」徽章说得比名字清楚。
- */
-export const OP_NAME: Record<'edit' | 'extend', string> = { edit: '局部修改视频', extend: '局部修改视频' }
-const OP_RE = new RegExp(`^(?:${[...new Set(Object.values(OP_NAME))].join('|')})：(.+?)(?: · (\\d+))?$`)
+export const OP_NAME: Record<'edit' | 'extend', string> = { edit: '编辑视频', extend: '延长视频' }
 
-/**
- * 从一个自动名里读出「它其实是谁的第几手」：
- * 「局部修改视频：视频节点1」是视频节点1 的第 1 手，「局部修改视频：视频节点1 · 2」是第 2 手。
- * 读不出这个格式的（本来的编号名、用户手打的名字）就是根本身，从第 0 手算起。
- */
-export function traceName(name: string) {
-  const hit = OP_RE.exec(name)
-  return hit ? { root: hit[1], step: Number(hit[2] ?? 1) } : { root: name, step: 0 }
+/** 编辑 / 延长出来的视频按各自的顺序编号，和从谁改出来的无关。取现有最大号 + 1，selfId 不算占号。 */
+export function opName(nodes: CNode[], mode: 'edit' | 'extend', selfId?: string) {
+  const re = new RegExp(`^${OP_NAME[mode]}(\\d+)$`)
+  const max = nodes.reduce((m, n) => {
+    const hit = n.id !== selfId ? re.exec(String(n.data.name ?? '')) : null
+    return hit ? Math.max(m, Number(hit[1])) : m
+  }, 0)
+  return `${OP_NAME[mode]}${max + 1}`
 }
 
 /**
- * 「局部修改 / 延长视频」长出来的那个节点叫什么：「局部修改视频：视频节点1」。
- * 连着操作时只把手数往下数 —— 「局部修改视频：局部修改视频：视频节点1」念到第三层就读不下去了，
- * 所以写成「局部修改视频：视频节点1 · 2」，具体引用的是哪一条视频，连线和面板里的来源信息比名字说得准。
- * 根取源节点当下显示的名字：用户手动改过名字，新节点就跟着改后的那个走，从第一手重新数。
- * 名字被占了接着往下数：同一条视频编辑两次，两个节点不能同名。
+ * 从一段视频截出来的那张图叫什么：「首帧：视频节点1」—— 说清它是谁的哪一帧。
+ * 同一段视频截第二张就往下数「· 2」，和操作节点那套（opName）是同一个规矩：
+ * 名字里带着来源，画布上隔着几步也看得出这张图是从哪儿来的。
  */
-export function opName(nodes: CNode[], mode: 'edit' | 'extend', source: CNode, selfId?: string) {
-  const shown = String(source.data.name ?? '')
-  const { root, step } = source.data.renamed ? { root: shown, step: 0 } : traceName(shown)
-  const head = `${OP_NAME[mode]}：${root}`
-  const taken = (name: string) => nodes.some((n) => n.id !== selfId && String(n.data.name ?? '') === name)
-  for (let n = step + 1; ; n++) {
+export function shotName(nodes: CNode[], label: string, source: CNode) {
+  const head = `${label}：${String(source.data.name ?? '')}`
+  for (let n = 1; ; n++) {
     const name = n > 1 ? `${head} · ${n}` : head
-    if (!taken(name)) return name
+    if (!nodes.some((x) => String(x.data.name ?? '') === name)) return name
   }
 }
 
@@ -99,12 +88,25 @@ const NODE_W = 320
  */
 const NODE_AREA = 200 * 356
 export const VIDEO_NODE_W = 200
-/** 比例还没量出来之前先按竖屏摆：这块画布上的视频多数是竖的，猜错也只是短暂地窄一下 */
-export const widthOf = (kind: NodeKind) => (kind === 'video' ? VIDEO_NODE_W : NODE_W)
 export const boxFor = (ratio: number) => ({
   width: Math.round(Math.sqrt(NODE_AREA * ratio)),
   height: Math.round(Math.sqrt(NODE_AREA / ratio)),
 })
+/**
+ * 空视频节点的形状：横屏。
+ * 它没有素材可量，所以没人会来替它改形状 —— 这个比例就是它最终的样子，
+ * 不是一个等着被纠正的猜测。摆成竖的等于替将来那段视频先认了个朝向；
+ * 一个还没有画面的框子，横着更像「一块还没放东西的屏」，也和它右边那排图片节点同一个走向。
+ */
+export const EMPTY_VIDEO_RATIO = 16 / 9
+const EMPTY_VIDEO_W = boxFor(EMPTY_VIDEO_RATIO).width
+/**
+ * 新节点先按多宽摆。视频分两档：
+ * 有素材的按竖屏猜（这块画布上的视频多数是竖的，猜错也只是短暂地窄一下，封面一量就改过来）；
+ * 空的按横屏，理由见 EMPTY_VIDEO_RATIO —— 那不是猜测，是它就长那样。
+ */
+export const widthOf = (kind: NodeKind, empty = false) =>
+  kind === 'video' ? (empty ? EMPTY_VIDEO_W : VIDEO_NODE_W) : NODE_W
 /**
  * 专注态节点比普通节点大一大截：它不是画布上的又一枚缩略图，
  * 而是这段时间里用户唯一在看的那块屏 —— 要在上面看清画面、圈准一块地方、再拖一段时间。
@@ -118,6 +120,32 @@ export const boxFor = (ratio: number) => ({
  * 出片之后缩回 VIDEO_NODE_W —— 产出的视频和画布上别的视频节点长得一样。
  */
 export const FOCUS_NODE_W = 420
+/**
+ * 专注态那块屏具体多宽，看源片是横是竖 —— 和普通节点同一条规矩（见 boxFor：面积恒定），
+ * 只是面积大一档。横竖都写死 420 会把横片亏掉一大截：
+ * 一段 9:16 的竖片在 420 宽上是 420×747、31 万像素的一块画布，
+ * 同一个 420 摆一段 16:9 的横片只剩 420×236、9.9 万 —— 同样是「在画面上圈准一小块」，
+ * 横片上难了三倍，而横片本来就是横着看的，不该在这块屏上被竖着的那一档框住。
+ *
+ * 面积就取竖片那一档（420×747）：竖片一个像素都不动，横片长成 747×420。
+ * 下限还是 420 —— 比 9:16 更窄的片子按面积算会瘦到 400 以下，那是往回走；
+ * 上限 760 —— 再宽的超宽片（21:9 往上）会把整个节点连同它下面那块面板顶出一屏，
+ * 那时宁可让它矮一点。缺比例（封面还没量出来）就按竖片算，和从前一样。
+ */
+const FOCUS_AREA = (FOCUS_NODE_W * FOCUS_NODE_W) / (9 / 16)
+const FOCUS_MAX_W = 760
+export const focusWidthFor = (ratio?: number) =>
+  Math.min(FOCUS_MAX_W, Math.max(FOCUS_NODE_W,
+    Math.round(Math.sqrt(FOCUS_AREA * (ratio && ratio > 0 ? ratio : 9 / 16)))))
+/** 连着截好几帧时，下一张落在上一张下面多远：一个图片节点（200 高 + 标题栏）再留一道缝 */
+const SHOT_GAP = 250
+/**
+ * 派生出来的节点落在源节点右边多远：从源节点的**右边**起算，留这么一道缝。
+ * 不能写成「源节点 x + 360」那样的一个数 —— 视频节点的宽度由素材比例定（200 到 356 都有），
+ * 按左边界算，源是横片时那道缝只剩几个像素，新节点直接压在隔壁身上。
+ */
+const NEXT_GAP = 160
+const rightOf = (n: CNode) => n.position.x + (Number(n.style?.width) || VIDEO_NODE_W) + NEXT_GAP
 
 interface Snap { nodes: CNode[]; edges: Edge[] }
 
@@ -146,8 +174,10 @@ interface CanvasStore {
   connect: (source: string, target: string) => void
   /** 断开一条连线（悬浮到线上的小剪刀） */
   disconnect: (edgeId: string) => void
-  /** 点右 ⊕（不拖）：右侧 360px 直接新建空视频节点并连上 */
+  /** 点右 ⊕（不拖）：紧挨着源节点右边新建一个空视频节点并连上 */
   spawnDownstream: (source: string, name?: string, width?: number) => string | null
+  /** 截一帧：右侧长出一个图片节点，画面就是那一帧，并连回源视频 */
+  spawnShot: (source: string, name: string, shot: string) => string | null
   /** 量出素材真实比例后把节点摆成那个形状（不进撤销栈） */
   shape: (id: string, ratio: number) => void
   setHoverMat: (id: string | null) => void
@@ -245,7 +275,7 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
     const name = nextName(get().nodes, kind)
     const node: CNode = {
       id, type: kind, position: pos, selected: true,
-      style: { width: widthOf(kind) },
+      style: { width: widthOf(kind, !data?.src) },
       data: { name, assetName: name, ...data },
     }
     set((s) => ({ nodes: [...s.nodes.map((n) => ({ ...n, selected: false })), node] }))
@@ -262,7 +292,8 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
          * 当初为它们多要的那一截宽度也一起还回去：产出的视频和画布上别的视频节点长得一样，
          * 同一段画面不会因为它是从哪个入口长出来的而显示成另一个比例。
          */
-        return isFocusNode(n) && !isFocusNode(next) ? { ...next, style: { ...n.style, width: VIDEO_NODE_W } } : next
+        return isFocusNode(n) && !isFocusNode(next)
+          ? { ...next, style: { ...n.style, width: widthOf('video', !next.data.src) } } : next
       }),
     })),
 
@@ -306,8 +337,33 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
     const name = named ?? nextName(get().nodes, 'video')
     set((s) => ({
       nodes: [...s.nodes.map((n) => ({ ...n, selected: false })), {
-        id, type: 'video', position: { x: src.position.x + 360, y: src.position.y },
-        selected: true, style: { width: width ?? VIDEO_NODE_W }, data: { name, assetName: name },
+        id, type: 'video', position: { x: rightOf(src), y: src.position.y },
+        selected: true, style: { width: width ?? widthOf('video', true) }, data: { name, assetName: name },
+      }],
+      edges: addEdge({ id: `e-${source}-${id}`, source, target: id, type: 'dashed' }, s.edges),
+    }))
+    return id
+  },
+
+  /**
+   * 截帧：在源视频右边长出一个图片节点，画面就是刚截下的那一帧，并连回源视频 ——
+   * 连线是这张图的来历，往后它当素材用时，「它是从哪段视频上取的」不用另记一笔。
+   * 同一段视频连着截几张不叠在一起：已经截过的那些往下排，新的落在最下面那张之下。
+   * 和 ⊕ 派生走同一条撤销栈：截错了一张，⌘Z 就能收回去。
+   */
+  spawnShot: (source, name, shot) => {
+    const { nodes, edges } = get()
+    const src = nodes.find((n) => n.id === source)
+    if (!src) return null
+    get().snapshot()
+    const id = newId()
+    const taken = new Set(edges.filter((e) => e.source === source).map((e) => e.target))
+    const y = nodes.reduce((m, n) => (taken.has(n.id) ? Math.max(m, n.position.y + SHOT_GAP) : m), src.position.y)
+    set((s) => ({
+      nodes: [...s.nodes.map((n) => ({ ...n, selected: false })), {
+        id, type: 'image', position: { x: rightOf(src), y },
+        selected: true, style: { width: widthOf('image') },
+        data: { name, assetName: name, src: shot, mediaReady: true },
       }],
       edges: addEdge({ id: `e-${source}-${id}`, source, target: id, type: 'dashed' }, s.edges),
     }))

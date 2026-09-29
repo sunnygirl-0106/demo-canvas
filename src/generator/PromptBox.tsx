@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Mat } from './materialLayout'
-import { fmt } from './materialLayout'
+import { DUR_READING, fmt } from './materialLayout'
 import { CARET, docWritten, putAtCaret, segKey, type Seg } from './promptDoc'
 import Overlay from './Overlay'
 import { useCanvas } from '../store/canvas'
@@ -21,17 +21,14 @@ interface Props {
   /** 从 @ 面板挑了一段素材：整份句子（标签已经插在光标那一点）连同它一起交出去 */
   onInsert?: (doc: Seg[], mat: Mat) => void
   /**
-   * 这个模式上面没有素材行（文生视频）。那一截高度归可编辑区 ——
-   * 面板的上下沿不跟着 Tab 变，句子还是从最上面一行起头，只是底下能写的地方更宽裕。
-   */
-  rowless?: boolean
-  /**
    * 删不掉的那几枚标签（按 k 点名）。专注态的句首就是这句话的主语，
    * 删了这句话不成立 —— 退格删掉之后在「读回 DOM」那一步按原位补回来。
    */
   locked?: string[]
   /** 补回来之后内容和 DOM 对不上了，可编辑区得重挂一遍 —— 由外面的 ver 负责。 */
   onRestore?: () => void
+  /** 撑大：可编辑区从三行长到九行。长句子、贴进来一整段脚本的时候，不必在三行的窗口里滚。 */
+  big?: boolean
 }
 /**
  * 提示词框。这里不是「灰色模板 + 一个输入框」，而是一整句可以编辑的话：
@@ -41,7 +38,7 @@ interface Props {
  * （children 用 useMemo 锁住引用，React 会整棵跳过）—— 否则每敲一个字光标都会跳回去。
  * 每次输入都把 DOM 读回一份 doc，谁被删了、谁被挪了，读一遍就知道。
  */
-export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, rowless, locked, onRestore }: Props) {
+export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, locked, onRestore, big }: Props) {
   const ed = useRef<HTMLDivElement>(null); const wrap = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState(false)
   /** 呼出时的光标位置。挑完素材要回到这里，把触发菜单的那个 @ 一起换掉。 */
@@ -163,7 +160,7 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ver])
 
-  return <div className={`prompt-editor nodrag nowheel${rowless ? ' rowless' : ''}`} ref={wrap}>
+  return <div className={'prompt-editor nodrag nowheel' + (big ? ' big' : '')} ref={wrap}>
     <div className="prompt-field" onPointerDown={(e) => { if (e.target === e.currentTarget) ed.current?.focus() }}>
       <div key={ver} ref={ed} className="prompt-input" contentEditable suppressContentEditableWarning
         role="textbox" aria-multiline aria-label="修改或生成要求"
@@ -198,9 +195,9 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
           {/* 一行只留三样：一张认得出的正方形缩略图、名字、行末的时长。素材名是随机 id 的时候，认的是图 */}
           <span className="asset-shot">{m.thumb && <img src={m.thumb} alt="" />}</span>
           <span className="asset-name">{m.name}</span>
-          <span className="asset-dur">{m.kind === 'video' ? (m.dur != null ? fmt(m.dur) : '读取中') : ''}</span>
+          <span className="asset-dur">{m.kind === 'video' ? (m.dur != null ? fmt(m.dur) : DUR_READING) : ''}</span>
         </button>)}
-        {!hits.length && <p className="helper">{mats.length ? '没有匹配的素材' : '当前模式没有可引用的素材'}</p>}
+        {!hits.length && <p className="helper">{mats.length ? '暂无匹配的素材' : '当前模式暂无可引用的素材'}</p>}
       </div>
     </Overlay>}
   </div>

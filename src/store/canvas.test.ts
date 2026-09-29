@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { opName, useCanvas } from './canvas'
+import { focusWidthFor, opName, shotName, useCanvas } from './canvas'
 import { matOf } from '../demo/assets'
 
 beforeEach(() => {
@@ -57,6 +57,33 @@ describe('画布交互回归', () => {
     expect(useCanvas.getState().edges.map((e) => e.id)).toEqual([edge])
   })
 
+  it('截帧长出图片节点并连回源视频，连着截几张不叠在一起，一次撤销收回一张', () => {
+    const store = useCanvas.getState()
+    const src = store.addNode('video', { x: 0, y: 0 }, { src: 'blob:v', dur: 8 })
+    const source = () => useCanvas.getState().nodes.find((n) => n.id === src)!
+    const first = store.spawnShot(src, shotName(useCanvas.getState().nodes, '首帧', source()), 'data:first')!
+    const last = store.spawnShot(src, shotName(useCanvas.getState().nodes, '尾帧', source()), 'data:last')!
+    const shots = () => useCanvas.getState().nodes.filter((n) => n.type === 'image')
+    expect(shots().map((n) => n.data.name)).toEqual(['首帧：视频节点1', '尾帧：视频节点1'])
+    expect(shots().map((n) => n.data.src)).toEqual(['data:first', 'data:last'])
+    // 两张都连回源视频，第二张落在第一张下面而不是叠在同一处
+    expect(useCanvas.getState().edges.map((e) => [e.source, e.target])).toEqual([[src, first], [src, last]])
+    expect(shots()[1].position.y).toBeGreaterThan(shots()[0].position.y)
+    store.undo()
+    expect(shots().map((n) => n.id)).toEqual([first])
+    expect(useCanvas.getState().edges).toHaveLength(1)
+  })
+
+  it('同一段视频截第二张同名的帧，名字往下数而不是撞名', () => {
+    const store = useCanvas.getState()
+    const src = store.addNode('video', { x: 0, y: 0 }, { src: 'blob:v' })
+    const source = () => useCanvas.getState().nodes.find((n) => n.id === src)!
+    store.spawnShot(src, shotName(useCanvas.getState().nodes, '当前帧', source()), 'data:a')
+    store.spawnShot(src, shotName(useCanvas.getState().nodes, '当前帧', source()), 'data:b')
+    expect(useCanvas.getState().nodes.filter((n) => n.type === 'image').map((n) => n.data.name))
+      .toEqual(['当前帧：视频节点1', '当前帧：视频节点1 · 2'])
+  })
+
   it('不存在的来源不产生悬空连线', () => {
     const store = useCanvas.getState()
     const target = store.addNode('video', { x: 0, y: 0 })
@@ -65,37 +92,44 @@ describe('画布交互回归', () => {
   })
 })
 
-describe('操作节点的名字', () => {
-  const node = (id: string, name: string, renamed?: boolean) =>
-    ({ id, type: 'video', position: { x: 0, y: 0 }, data: { name, renamed } }) as never
-  const on = (...names: string[]) => names.map((n, i) => node(`N${i}`, n))
+describe('编辑 / 延长视频的名字', () => {
+  const node = (id: string, name: string) => ({ id, type: 'video', position: { x: 0, y: 0 }, data: { name } }) as never
 
-  it('两件事同名，连着操作时把手数往下数，不把上一次的名字套进来', () => {
+  it('两类各自数号，取最大号 + 1，改口时不算自己占着的那个', () => {
     const src = node('A', '视频节点1')
-    // 编辑和延长长出来的节点叫同一个名字：分它们的是标题栏右边那枚徽章，不是名字
-    expect(opName([src], 'edit', src)).toBe('局部修改视频：视频节点1')
-    expect(opName([src], 'extend', src)).toBe('局部修改视频：视频节点1')
-
-    const second = node('B', '局部修改视频：视频节点1')
-    expect(opName([src, second], 'extend', second)).toBe('局部修改视频：视频节点1 · 2')
-    const third = node('C', '局部修改视频：视频节点1 · 2')
-    expect(opName([src, second, third], 'edit', third)).toBe('局部修改视频：视频节点1 · 3')
-  })
-
-  it('手动改过的名字整串当根，从第一手重新数', () => {
-    const src = node('A', '主角特写', true)
-    expect(opName([src], 'extend', src)).toBe('局部修改视频：主角特写')
-    // 改的名字碰巧长得像自动名也照样当根：他手打的那串就是他要的名字
-    const odd = node('B', '局部修改视频：旧稿', true)
-    expect(opName([odd], 'edit', odd)).toBe('局部修改视频：局部修改视频：旧稿')
-  })
-
-  it('名字被占了接着往下数，改口时不算自己占着的那个', () => {
-    const src = node('A', '视频节点1')
-    const taken = on('局部修改视频：视频节点1')
-    expect(opName([src, ...taken], 'edit', src)).toBe('局部修改视频：视频节点1 · 2')
+    expect(opName([src], 'edit')).toBe('编辑视频1')
+    expect(opName([src, node('B', '编辑视频1')], 'edit')).toBe('编辑视频2')
+    // 编辑和延长各有一本账：已经有一个编辑视频1，延长出来的仍然从延长视频1 数起
+    expect(opName([src, node('B', '编辑视频1')], 'extend')).toBe('延长视频1')
+    // 取最大号 + 1 而不是个数 + 1：删掉中间那个再新建，不会撞上还在的那个
+    expect(opName([node('B', '编辑视频1'), node('C', '编辑视频3')], 'edit')).toBe('编辑视频4')
     // 同一个还没出结果的节点从编辑改口成延长：它自己现在叫什么不挡自己的路
-    const pending = node('P', '局部修改视频：视频节点1')
-    expect(opName([src, pending], 'extend', src, 'P')).toBe('局部修改视频：视频节点1')
+    expect(opName([src, node('P', '延长视频1')], 'extend', 'P')).toBe('延长视频1')
+  })
+})
+
+describe('专注态那块屏的大小', () => {
+  /** 一块屏占多少地方 = 宽 × 高，高由宽和比例推出来 */
+  const area = (ratio: number) => { const w = focusWidthFor(ratio); return w * (w / ratio) }
+
+  it('横片和竖片占的地方一样大，竖片那一档一个像素都没动', () => {
+    expect(focusWidthFor(9 / 16)).toBe(420)
+    expect(focusWidthFor(16 / 9)).toBe(747)
+    // 同一块面积摆成两个朝向，差的那点只是取整
+    expect(Math.abs(area(16 / 9) - area(9 / 16))).toBeLessThan(1500)
+  })
+
+  it('方片落在两者之间，比例越横越宽', () => {
+    expect(focusWidthFor(1)).toBe(560)
+    expect(focusWidthFor(4 / 3)).toBeGreaterThan(focusWidthFor(1))
+    expect(focusWidthFor(4 / 3)).toBeLessThan(focusWidthFor(16 / 9))
+  })
+
+  it('两头都收住：更窄的片子不比竖片再瘦，超宽片不许把一屏顶穿', () => {
+    expect(focusWidthFor(0.4)).toBe(420)
+    expect(focusWidthFor(21 / 9)).toBe(760)
+    // 封面还没量出来就按竖片算，和从前一样
+    expect(focusWidthFor(undefined)).toBe(420)
+    expect(focusWidthFor(0)).toBe(420)
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@xyflow/react'
-import { isFocusNode, useCanvas } from '../../store/canvas'
+import { isFocusNode, OP_NAME, useCanvas } from '../../store/canvas'
 import { useGenerator } from '../../store/generator'
 import { activeIds } from '../../generator/materialLayout'
 import { IcScissors } from '../../ui/icons'
@@ -14,11 +14,12 @@ export default function DashedEdge(p: EdgeProps) {
    * 从视频上方入口长出来的那一条线，就地说出它长出来的是什么事 ——
    * 这条线两头的名字都是「视频节点」，不说这一句，连出来的那个节点为什么在那儿就只能靠猜。
    * 只有专注态（还没出片）才挂：出片之后它就是普通的一条来源线了。
+   * 说的就是 OP_NAME 那两个词：出片之后节点会叫「编辑视频1」，线上不该先用另一套叫法。
    */
   const nodes = useCanvas((s) => s.nodes)
   const to = nodes.find((n) => n.id === target)
   const op = to && isFocusNode(to) && to.data.operationSource === source
-    ? (useGenerator.getState().map[target]?.mode === 'extend' ? '延长续写' : '局部重绘') : null
+    ? OP_NAME[useGenerator.getState().map[target]?.mode === 'extend' ? 'extend' : 'edit'] : null
   const active = !gen || activeIds(gen, gen.mode).includes(source)
   const lit = active && hover === source
   const dimmed = !!hover && !lit

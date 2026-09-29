@@ -47,7 +47,13 @@ function Chip({ cls, body, aria, pop }: {
   const hover = useHover()
   return <span ref={ref} className={`mark-chip${cls ? ` ${cls}` : ''}`} {...(pop ? hover.bind : {})}>
     <span className="mark-chip-body" role="img" aria-label={aria}>{body}</span>
-    {pop && hover.on && <Overlay passive center label={aria} anchor={ref} className="mark-pop shot-pop" onClose={hover.close}>{pop}</Overlay>}
+    {/*
+      卡自己也接住鼠标（stay）：手从标签往卡上抬的这一路，那 180ms 的关闭计时正走着 ——
+      不接就会在半路收掉，而这张卡正是用来凑近看清标的是哪一块的。
+      这一枚不像素材标签那样还能再点开：放大出来的就是那一帧本身，没有「更全」的一层可去。
+    */}
+    {pop && hover.on && <Overlay passive center label={aria} anchor={ref} className="mark-pop shot-pop"
+      onClose={hover.close} {...hover.stay}>{pop}</Overlay>}
   </span>
 }
 /**
@@ -66,6 +72,6 @@ export function RegionChip({ mat, ratio, r }: { mat: Mat; ratio: number | null; 
  * 读屏看不见图标，所以 aria 里把「时间段」补回去。
  */
 export function RangeChip({ range, n }: { range: TimeRange; n: number }) {
-  return <Chip cls="range" aria={`${rangeLabel(range)} 时间段${n ? `，里面有 ${n} 处标记` : ''}`}
+  return <Chip cls="range" aria={`${rangeLabel(range)} 时间段${n ? `，含 ${n} 处标记` : ''}`}
     body={<><IcVideo size={16} /><b>{timecode(range.start)}<i>–</i>{timecode(range.end)}</b></>} />
 }

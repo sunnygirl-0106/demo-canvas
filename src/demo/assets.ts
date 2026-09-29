@@ -28,19 +28,61 @@ export const MEDIA = {
   gh77: { src: mediaUrl('GH77.mp4'), poster: mediaUrl('poster-GH77.jpg'), dur: 10.1 },
 }
 
-/**
- * 走查用的长短片段：全部从上面四段原片裁出来，不是新生成的素材。
- * 时长有意铺开在几条规则的两边 —— 1.5s 谁都编辑不了、3s 只有 2.0 能编辑、
- * 4.2s 起 2.5 也能编辑、8s 与 10s 用来撞 2.0 的 15 秒输入合计上限。
- */
 const clip = (name: string, dur: number) => ({ src: mediaUrl(`clip-${name}.mp4`), poster: mediaUrl(`poster-clip-${name}.jpg`), dur })
-export const WALKTHROUGH_VIDEOS = [
-  clip('1', 1.5), clip('2a', 2), clip('2b', 2), clip('3', 3), clip('4', 4.2),
-  MEDIA.defaultVideo, MEDIA.video9, MEDIA.video10,
-  clip('6', 6), clip('8', 8), MEDIA.gh77,
-]
 
-export const SAMPLE_PHOTOS = Array.from({ length: 6 }, (_, i) => mediaUrl(`photos/reference-${i + 1}.jpg`))
+export interface WalkVideo { src: string; poster: string; dur: number; name: string }
+
+/**
+ * 走查用的视频素材。每一段只为一条规则准备，名字里直接写清「时长 · 画幅 · 用途」——
+ * 走查时按名字取用，不必先播一遍才知道这段是干什么的。
+ *
+ * 时长按最终规则铺开：下限统一 4 秒（与模型无关），
+ * Seedance 2.5 单段 4–30s / 合计 ≤ 30s / 30 张 · 10 段；
+ * Seedance 2.0 系列与可灵 O1 单段 4–15s / 合计 ≤ 15s / 9 张 · 3 段。
+ * 共 14 段，越过 2.5 的 10 段视频额度；横版 5 段、竖版 9 段，两种画幅在每个时长档都有。
+ */
+export const VID = {
+  // ── 低于 4 秒下限：更换模型无效，终态 ──
+  v1_5: { ...clip('1', 1.5), name: '1.5s 竖版 · 低于 4 秒下限' },
+  h2: { ...clip('2a', 2), name: '2s 横版 · 低于 4 秒下限' },
+  v3: { ...clip('3', 3), name: '3s 竖版 · 低于 4 秒下限' },
+  // ── 刚过下限与常规可用段 ──
+  v4: { ...clip('4', 4.2), name: '4.2s 竖版 · 刚过 4 秒下限' },
+  h5: { ...MEDIA.defaultVideo, name: '5.1s 横版 · 编辑视频默认源' },
+  v5: { ...MEDIA.video9, name: '5.1s 竖版 · 第二段转全能参考' },
+  v5b: { ...MEDIA.video10, name: '5.1s 竖版 · 更换素材用' },
+  v6: { ...clip('6', 6), name: '6s 竖版 · 解除受阻用' },
+  // ── 合计时长：两段 8s ＝ 16s，撞 2.0 系列与可灵 O1 的 15 秒合计上限 ──
+  h8: { ...clip('h8', 8), name: '8s 横版 · 合计撞 2.0 上限' },
+  v8: { ...clip('8', 8), name: '8s 竖版 · 合计撞 2.0 上限' },
+  v10: { ...MEDIA.gh77, name: '10.1s 竖版 · 2.0 单段上沿' },
+  h12: { ...clip('h12', 12), name: '12s 横版 · 2.5 合计内' },
+  // ── 单段上限：18s 超 2.0，切 2.5 即恢复；32s 连 2.5 的 30 秒也接不住 ──
+  v18: { ...clip('v18', 18), name: '18s 竖版 · 超 2.0 单段 · 可切 2.5' },
+  h32: { ...clip('h32', 32), name: '32s 横版 · 超全部模型单段上限' },
+} satisfies Record<string, WalkVideo>
+
+export const WALKTHROUGH_VIDEOS: WalkVideo[] = Object.values(VID)
+
+/** 参考图池：1–6 为横版 640×400，7–8 为竖版 450×800（从竖版原片抽帧） */
+export const SAMPLE_PHOTOS = Array.from({ length: 8 }, (_, i) => mediaUrl(`photos/reference-${i + 1}.jpg`))
+
+/**
+ * 图片节点的名字同样写明用途。共 10 张：
+ * 前两张供首尾帧取用，第 9 张压在 2.0 系列与可灵 O1 的 9 张额度上沿，第 10 张越过该额度。
+ */
+export const PHOTO_ROLES = [
+  '首帧候选 · 横版客厅',
+  '尾帧候选 · 横版客厅',
+  '参考图 3 · 横版',
+  '参考图 4 · 横版',
+  '参考图 5 · 横版',
+  '参考图 6 · 横版',
+  '参考图 7 · 竖版',
+  '参考图 8 · 竖版',
+  '参考图 9 · 2.0 图片额度上沿',
+  '参考图 10 · 越过 9 张额度',
+]
 
 /** 图片节点假生成时随机填的一张 */
 export const randomPhoto = () => photo(Math.random().toString(36).slice(2, 7))

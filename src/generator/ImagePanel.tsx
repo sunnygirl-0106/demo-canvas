@@ -21,7 +21,7 @@ export default function ImagePanel({ nodeId }: { nodeId: string }) {
         ver={nodeId}
         onDoc={(doc) => patch(nodeId, { doc, prompt: docText(doc, {}) })}
         renderSeg={() => null}
-        placeholder="描述你想生成的图片内容，输入 @ 引用素材"
+        placeholder="描述你想要生成的图片，输入 @ 引用素材"
         mats={[]}
       />
       <BottomBar

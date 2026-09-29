@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { isFocusNode, useCanvas } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { matOf } from '../demo/assets'
 import { landResult } from '../demo/fake'
-import { partition, promptHint, refModeOf, tabStates, TABS, type MatGet } from './materialLayout'
-import { IcClose } from '../ui/icons'
+import { activeIds, promptHint, tabStates, TABS, type MatGet } from './materialLayout'
 import { taskError } from './videoTask'
 import ModeTabs from './ModeTabs'
 import MaterialRow from './MaterialRow'
@@ -14,6 +13,7 @@ import BottomBar from './BottomBar'
 import PromptSeg from './PromptSeg'
 import VideoSettings from './VideoSettings'
 import { useTip } from './useTip'
+import { IcCollapse, IcExpand } from '../ui/icons'
 /**
  * 面板只剩下「这句话怎么写」和「用什么参数生成」：标记和延长方向都长在节点上了，
  * 所以编辑和延长两边的面板现在完全一样，差异全在节点那半截。
@@ -28,10 +28,11 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
   /** 专注态：从视频上方入口长出来、还没出片的那段时间。Tab 收成一项、句首铁打，只在这时候。 */
   const self = nodes.find((n) => n.id === nodeId)
   const focus = !!self && isFocusNode(self)
-  const anchor = useRef<HTMLDivElement>(null)
   const patch = useGenerator((s) => s.patch)
   /** 灰掉的控件为什么点不了，悬浮 / 聚焦就说 */
-  const { node: tipNode } = useTip()
+  const { tip, node: tipNode } = useTip()
+  /** 提示词框撑大 / 收回。只管这块可编辑区有多高，不动面板别的地方。 */
+  const [big, setBig] = useState(false)
   /**
    * 进了编辑 / 延长就替用户把这句话的开头写好（「把 视频 的」「从 视频 向后延长 5s，」）。
    * 只起这一次头：删光了不会自动送回来 —— 那是开头，不是模板。
@@ -61,12 +62,11 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
     patch(nodeId, { doc, marks: marksOf(doc), prompt: say(doc), ...extra })
     onBump()
   }
-  const mats = partition(gen, gen.mode, gen.model, get).active.map((id) => get(id)!).filter(Boolean)
-  const taskMode = gen.mode === 'edit' || gen.mode === 'extend'
+  const mats = activeIds(gen, gen.mode).map((id) => get(id)!).filter(Boolean)
   /** 做不成的原因一律挂在生成按钮上（灰掉 + 悬浮说明），面板里不再留黄色小字 */
   const error = taskError(gen, get)
   const busy = gen.tasks.some((task) => task.status === 'running')
-  /** Tab 能不能进 = 素材够不够 ∧ 模型有没有这个能力。 */
+  /** Tab 能不能进 = 模型有没有这个能力 ∧ 这个模式容纳不容纳得下连着的素材。 */
   // 源视频一个节点只有一份：每个 Tab 判的都是手上这一段，没有就是连着的第一段
   const tabs = tabStates(gen.conn, get, gen.model, () => gen.slotEdit)
   /** 演示估算：按秒计价，1080p 贵一档，不接计费 —— 默认 5 秒 720p 是 188 星钻 */
@@ -88,15 +88,24 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
     {tipNode}
     {/*
       * 专注态只有一件事可做，源和模式都锁死了：Tab 数组收成一项，读起来就是这次任务的标题
-      * （ModeTabs 里点当前项本来就直接 return，所以它天然点不动）；右边那个 × 会把模式切回参考 Tab，
-      * 专注态不该有这个出口 —— 只有「生成」和「删掉这个节点」两条路。
+      * （ModeTabs 里点当前项只是把其余的展开，所以它天然换不动模式）。
       */}
     <ModeTabs mode={gen.mode}
-      tabs={focus ? [{ k: gen.mode, label: TABS.find((t) => t.k === gen.mode)!.label, enabled: true, reason: '', note: '' }] : tabs}
+      tabs={focus ? [{ k: gen.mode, label: TABS.find((t) => t.k === gen.mode)!.label, enabled: true, reason: '' }] : tabs}
       onPick={(mode) => useGenerator.getState().setMode(nodeId, mode, get)}
-      right={focus ? undefined : (taskMode ? <button className="task-exit" title="退出操作" aria-label={`退出${gen.mode === 'edit' ? '编辑' : '延长'}操作`}
-        onClick={() => useGenerator.getState().setMode(nodeId, refModeOf(gen.model) ?? 'text', get)}><IcClose size={14} /></button> : undefined)} />
-    <div ref={anchor}><MaterialRow nodeId={nodeId} gen={gen} get={get} /></div>
+      mid={<MaterialRow nodeId={nodeId} gen={gen} get={get} />}
+      /*
+       * 这一排最右边：一条细线，然后是「把框撑大」。
+       * 细线是必要的 —— 线左边说的是「这次要做哪件事」，右边说的是「这块框怎么看」，
+       * 两件不同类的事挤在同一个角上，不划一道就会被读成一排同类的开关。
+       */
+      end={<>
+        <i className="gp-tabrow-sep" aria-hidden />
+        <button className={'gp-grow' + (big ? ' on' : '')} aria-pressed={big}
+          aria-label={big ? '收起提示词框' : '放大提示词框'} {...tip(big ? '收起提示词框' : '放大提示词框')}
+          onClick={() => setBig((v) => !v)}>
+          {big ? <IcCollapse size={16} sw={1.8} /> : <IcExpand size={16} sw={1.8} />}</button>
+      </>} />
     {/*
       * 提示词框里是一整句可以编辑的话：「把 视频X 中 00:01–00:03 时间段里的 00:01 的 …」，
       * 读下来就是这次任务的全部意思。「把」「中」「时间段里的」都是普通文字，能删能改；
@@ -109,17 +118,15 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
       */}
     <PromptBox doc={gen.doc} ver={`${gen.mode}:${gen.direction}:${gen.params.duration}:${docVer}`} onDoc={setDoc}
       renderSeg={(s) => <PromptSeg s={s} doc={gen.doc} mat={source} get={get} mode={gen.mode} direction={gen.direction} duration={gen.params.duration}
-        role={gen.mode === 'edit' ? '这个视频用来编辑' : '这个视频用来延长'} />}
+        role="源视频" />}
       placeholder={promptHint(gen.mode, !!gen.slotLast).map((p) => p.t).join('')} mats={mats}
-      /* 文生视频上面没有素材行 —— 那一截高度让给这块可编辑区，换 Tab 时面板不会整个矮一截 */
-      rowless={gen.mode === 'text'}
       onInsert={(doc, m) => writeDoc(doc, { references: { ...gen.references, [m.name]: m.id } })}
       /*
        * 专注态的句首是铁打的：那枚源素材标签就是这句话的主语，删了这句话不成立。
        * 退格删掉之后在读回 DOM 那一步补回来，再让可编辑区重挂一遍（光标会掉回句尾，这是代价）。
        */
       locked={focus ? gen.doc.filter((s) => s.t === 'mat' || s.t === 'dur').map((s) => (s as { k: string }).k) : undefined}
-      onRestore={onBump} />
+      onRestore={onBump} big={big} />
     <BottomBar busy={busy} disabled={!!error} reason={error ?? undefined} cost={cost} onSend={send} left={<VideoSettings nodeId={nodeId} gen={gen} source={source} get={get} focus={focus} />} />
   </>
 }

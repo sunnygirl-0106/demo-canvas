@@ -9,28 +9,19 @@ import type { TaskPayload } from '../generator/videoTask'
  */
 export interface VersionRecord {
   id: string                       // = taskId；补记的第一版用 nanoid
-  no: number                       // 全局递增，显示为「版本 01」
+  no: number                       // 这个节点上的第几版，显示为 V1、V2
   nodeId: string                   // 这一版挂在哪个节点上产出
+  /**
+   * 产出它的那个节点当时叫什么。列表里优先读节点当下的名字（用户改了名，历史也跟着改口），
+   * 节点被删掉之后就只剩这一份 —— 没有它，一版画面在列表里就没名字可叫。
+   */
+  name: string
   sourceNodeId: string | null      // 它是从哪个节点的画面派生来的
   baseNo: number | null            // 基于版本 NN
   createdAt: number
   media: { src: string; poster?: string; dur?: number }
   payload: TaskPayload | null      // 上传 / 示例带进来的原画面没有任务记录
 }
-
-/**
- * 这一版，在「正在看它的这个节点」的列表里读作什么。卡片副标题和筛选共用这一句。
- *
- * 分类说的是这幅画面和**当前这个节点**的关系，和节点叫什么名字无关：
- * 节点自己交出来的画面一律读作「生成」—— 不管做出它的是文生视频、参考生成，
- * 还是从上游点「局部修改 / 延长视频」进来的那一次任务。这个节点存在的意义就是产出它，
- * 所以叫「局部修改视频：视频节点1」的节点打开历史，默认亮起的仍是「生成」，它生成的都收在这里。
- * 「编辑」「延长」留给从它派生出去的那一层：那是拿我这幅画面做出来的东西，
- * 是编辑还是延长由那次任务的 mode 说，不由名字说。
- */
-export type VersionRead = 'generate' | 'edit' | 'extend'
-export const readsAs = (r: VersionRecord, nodeId: string): VersionRead =>
-  r.nodeId === nodeId ? 'generate' : r.payload?.mode === 'extend' ? 'extend' : 'edit'
 
 /**
  * 这个节点的「版本记录」：它自己承载过的，加上**直接**从它派生出去的那一层。
@@ -47,7 +38,6 @@ type RecordInput = Pick<VersionRecord, 'id' | 'nodeId' | 'sourceNodeId' | 'media
 
 interface VersionStore {
   records: VersionRecord[]
-  seq: number
   /** 有画面、却还没有任何一条记录承载过它 → 把它当下这幅画面补记成第一版。幂等。 */
   base: (nodeId: string) => void
   record: (input: RecordInput) => void
@@ -56,7 +46,6 @@ interface VersionStore {
 
 export const useVersions = create<VersionStore>((set, get) => ({
   records: [],
-  seq: 0,
 
   base: (nodeId) => {
     if (heldBy(get().records, nodeId)) return
@@ -64,9 +53,9 @@ export const useVersions = create<VersionStore>((set, get) => ({
     const src = node?.data.src
     if (!src) return
     set((s) => ({
-      seq: s.seq + 1,
       records: [...s.records, {
-        id: nanoid(), no: s.seq + 1, nodeId, sourceNodeId: null, baseNo: null,
+        id: nanoid(), no: s.records.filter((r) => r.nodeId === nodeId).length + 1,
+        nodeId, name: String(node.data.name ?? ''), sourceNodeId: null, baseNo: null,
         createdAt: Date.now(), media: { src, poster: node.data.poster, dur: node.data.dur }, payload: null,
       }],
     }))
@@ -77,11 +66,12 @@ export const useVersions = create<VersionStore>((set, get) => ({
     const from = input.sourceNodeId ?? input.nodeId
     get().base(from)
     const baseNo = heldBy(get().records, from)?.no ?? null
+    const name = String(useCanvas.getState().nodes.find((n) => n.id === input.nodeId)?.data.name ?? '')
     set((s) => ({
-      seq: s.seq + 1,
-      records: [...s.records, { ...input, no: s.seq + 1, baseNo, createdAt: Date.now() }],
+      records: [...s.records, { ...input, name, baseNo, createdAt: Date.now(),
+        no: s.records.filter((r) => r.nodeId === input.nodeId).length + 1 }],
     }))
   },
 
-  reset: () => set({ records: [], seq: 0 }),
+  reset: () => set({ records: [] }),
 }))

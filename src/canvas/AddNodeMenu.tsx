@@ -13,7 +13,7 @@ const ITEMS: { k: NodeKind | null; icon: React.FC<{ size?: number }>; t: string;
   { k: null, icon: IcAudio, t: '音频', s: '音乐、配音、音效' },
   { k: null, icon: IcPano, t: '720全景', s: '全景图、空间漫游' },
   { k: null, icon: IcScript, t: '脚本生成器', s: '一句话生成分镜脚本' },
-  { k: null, icon: IcCompose, t: '视频合成', s: '多段素材合成一条片子' },
+  { k: null, icon: IcCompose, t: '视频合成', s: '多段素材合成一条视频' },
   { k: null, icon: IcCube, t: '3D导演台', s: '镜头调度与场景搭建' },
 ]
 

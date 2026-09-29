@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { fmt, isRef, matBlockedReason, visibleRefs, type Mat, type MatGet } from './materialLayout'
+import { DUR_READING, fmt, isRef, matBlockedReason, type Mat, type MatGet } from './materialLayout'
 import { useCanvas } from '../store/canvas'
 import { useGenerator, type GenState } from '../store/generator'
-import { IcExpand, IcPlay, IcSwap } from '../ui/icons'
+import { IcPlay, IcSwap } from '../ui/icons'
 import MediaPreview from './MediaPreview'
 import { shotBox, useAspect } from './hoverShot'
 import Overlay from './Overlay'
@@ -21,7 +21,7 @@ function MaterialTile({ mat, role, size, mark, why }: { mat: Mat; role: string; 
   useEffect(() => () => { clearTimeout(openTimer.current); clearTimeout(closeTimer.current); if (useCanvas.getState().hoverMat === mat.id) useCanvas.getState().setHoverMat(null) }, [mat.id])
   const ratio = useAspect(mat.thumb)
   const showPreview = () => { ref.current?.focus({ preventScroll: true }); clearTimeout(openTimer.current); clearTimeout(closeTimer.current); setHover(false); setPreview(true) }
-  const dur = mat.kind === 'video' ? (mat.dur != null ? fmt(mat.dur) : '正在读取时长') : ''
+  const dur = mat.kind === 'video' ? (mat.dur != null ? fmt(mat.dur) : DUR_READING) : ''
   const info = `${role} · ${mat.name}${dur ? ' · ' + dur : ''}${why ? ' · ' + why : ''}`
   return <div className={`material-wrap ${size}`} onMouseEnter={enter} onMouseLeave={leave} onFocus={enter} onBlur={leave}>
     <button ref={ref} className={`material-tile${lit ? ' lit' : ''}${why ? ' off' : ''}`} aria-label={info} onClick={showPreview}>
@@ -32,9 +32,11 @@ function MaterialTile({ mat, role, size, mark, why }: { mat: Mat; role: string; 
     </button>
     {/* 悬浮放大就是那张画面本身：按真实比例铺开，没有卡片外框 —— 名字和原因写在画面自己的暗角上 */}
     {hover && !preview && <Overlay passive center label={info} anchor={ref} className="shot-pop" onClose={() => setHover(false)} onMouseEnter={() => { clearTimeout(closeTimer.current); useCanvas.getState().setHoverMat(mat.id) }} onMouseLeave={leave}>
-      <button className="material-card-shot" style={shotBox(ratio)} onClick={showPreview} aria-label={`放大查看 ${mat.name}`}>
+      <button className={`material-card-shot ${mat.kind}`} style={shotBox(ratio)} onClick={showPreview} aria-label={`放大查看 ${mat.name}`}>
         {mat.thumb && <img src={mat.thumb} alt="" />}
-        <span className="material-card-cue">{mat.kind === 'video' ? <IcPlay size={16} /> : <IcExpand size={15} sw={2} />}</span>
+        {/* 视频才有这一枚：正中一个三角就是「按这儿开始放」。
+            图片不给任何角标 —— 它就是一张画，压一枚图标只是挡着它（鼠标形状和那点推近已经说了能点） */}
+        {mat.kind === 'video' && <span className="material-card-cue" aria-hidden><IcPlay size={16} /></span>}
         <span className="material-card-meta"><strong>{mat.name}</strong>{dur && <span>{dur}</span>}
           {why && <small>{why}</small>}</span>
       </button>
@@ -44,7 +46,7 @@ function MaterialTile({ mat, role, size, mark, why }: { mat: Mat; role: string; 
 }
 /** 空槽只做占位与引导，素材一律从画布连线进入。 */
 function EmptySlot({ role, size, kind, required }: { role: string; size: Size; kind: '图片' | '视频' | '素材'; required?: boolean }) {
-  const hint = `${required ? '必填' : '选填'} · 从画布连接${kind}节点后自动填入`
+  const hint = `${required ? '必填' : '选填'} · 连接${kind}节点后填入`
   return <div className={`material-wrap ${size}`}>
     <div className={`material-empty${required ? ' required' : ''}`} title={`${role}：${hint}`} aria-label={`${role}：${hint}`}>
       <span>{role}</span><small>连接节点</small>
@@ -63,7 +65,7 @@ function ShotTile({ shot, name }: { shot: MarkShot; name?: string }) {
       <i className="spin" aria-hidden />
     </div>
   </div>
-  return <MaterialTile size="reference" role="标记参考图（随标记自动生成）"
+  return <MaterialTile size="reference" role="标记参考图"
     mat={{ id: `mark-shot:${shot.key}`, name: `${name ? `${name} ` : ''}${timecode(shot.t)} 标记`, kind: 'image', src: shot.url, thumb: shot.url, grad: '' }} />
 }
 export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen: GenState; get: MatGet }) {
@@ -74,15 +76,15 @@ export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen:
   const tile = (id: string, role: string, size: Size, mark?: string) => {
     const mat = get(id)
     return mat ? <MaterialTile key={mat.id} mat={mat} role={role} size={size} mark={mark}
-      why={matBlockedReason(mat, gen.mode, gen.model) || undefined} /> : null
+      why={matBlockedReason(mat, gen.model) || undefined} /> : null
   }
   const hasSource = gen.mode === 'edit' || gen.mode === 'extend'
   /**
    * 参考素材这一栏只在真有东西时才出现：只连了一个视频就进来编辑 / 延长的人，
    * 面板上该只有那一段视频 —— 空栏和分割线是等着被填的坑，没人要填就别挖。
    */
-  /** 用不上的素材不在面板上占位，理由挂在 Tab 的悬浮说明里 */
-  const refs = visibleRefs(gen.tray, gen.mode, gen.model, get)
+  /** 用不上的素材照旧摆在面板上（灰的 + 悬浮原因）：摘掉它等于替用户决定「就用剩下的生成」 */
+  const refs = gen.tray
   /** 「参考图」那个 Tab 只收图，名字跟着叫参考图 —— 空槽里说的也是去添加什么 */
   const refRole = gen.mode === 'refImage' ? '参考图' : '参考素材'
   const showRefs = !hasSource || refs.length > 0 || shots.length > 0
@@ -98,14 +100,14 @@ export default function MaterialRow({ nodeId, gen, get }: { nodeId: string; gen:
           : <EmptySlot role={f.role} size="frame" kind="图片" required={i === 0} />}
       </div>)}
       {/* 连接区整体可悬停：线上跑光点、交换键转 180°、顶上弹「互换一下」 */}
-      <div className={`frame-link${gen.slotFirst && gen.slotLast ? ' on' : ''}`} data-tip="互换一下">
+      <div className={`frame-link${gen.slotFirst && gen.slotLast ? ' on' : ''}`} data-tip="交换首尾帧">
         <span className="frame-line" aria-hidden />
         {gen.slotFirst && gen.slotLast && <button className="frame-swap" aria-label="交换首尾帧"
           onClick={() => useGenerator.getState().swapFrames(nodeId)}><IcSwap size={13} /></button>}
       </div>
     </div> : <>
       {hasSource && <div className={`source-material${showRefs ? '' : ' solo'}`}>
-        {gen.slotEdit ? tile(gen.slotEdit, gen.mode === 'edit' ? '这个视频用来编辑' : '这个视频用来延长', 'source')
+        {gen.slotEdit ? tile(gen.slotEdit, '源视频', 'source')
           : <EmptySlot role="源视频" size="source" kind="视频" required />}
       </div>}
       {showRefs && <div className="reference-materials">

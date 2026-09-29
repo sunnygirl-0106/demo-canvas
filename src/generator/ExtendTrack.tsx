@@ -46,7 +46,7 @@ export default function ExtendTrack({ nodeId }: { nodeId: string }) {
     const on = gen.direction === dir
     const label = dir === 'before' ? '向前' : '向后'
     return <button className={`ext-side${on ? ' on' : ''}`} aria-pressed={on}
-      aria-label={`${label}延长 ${secs}s：新增片段接在原视频之${dir === 'before' ? '前' : '后'}`}
+      aria-label={`${label}延长 ${secs}s`}
       style={{ flexBasis: on ? 92 : 56 }}
       onClick={() => setDirection(dir)}>
       {on ? <><span>{label}</span><b>+{fmt(secs)}</b></>
@@ -54,7 +54,7 @@ export default function ExtendTrack({ nodeId }: { nodeId: string }) {
     </button>
   }
   return <div className="nd-board ext-board nodrag nowheel">
-    <div className="ext-axis" role="group" aria-label="延长方向与新增片段长度">
+    <div className="ext-axis" role="group" aria-label="延长方向与时长">
       {side('before')}
       {/* 原片摊成一条胶片，末尾挂着自己的时长：它是一段有长度的片子，不是一块写着秒数的牌子 */}
       <span className="ext-clip" aria-label={`原片 ${fmt(clip)}`} style={{ flexGrow: 1, flexBasis: 0 }}>

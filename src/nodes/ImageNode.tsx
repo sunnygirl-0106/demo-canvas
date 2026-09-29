@@ -3,16 +3,12 @@ import type { CNode } from '../store/canvas'
 import NodeShell from './NodeShell'
 import GeneratorPanel from '../generator/GeneratorPanel'
 import ImagePanel from '../generator/ImagePanel'
-import { IcEye, IcImage, IcUpload } from '../ui/icons'
-import { useUploadInto } from './useUpload'
+import { IcEye, IcImage } from '../ui/icons'
 
 export default function ImageNode({ id, data, selected }: NodeProps<CNode>) {
-  const upload = useUploadInto(id)
-
   return (
     <NodeShell
       id={id} kind="image" name={data.name} selected={!!selected}
-      action={<span onClick={upload.open} title="上传"><IcUpload size={13} /></span>}
       panel={<GeneratorPanel visible={!!selected}><ImagePanel nodeId={id} /></GeneratorPanel>}
     >
       {data.src ? (
@@ -24,7 +20,6 @@ export default function ImageNode({ id, data, selected }: NodeProps<CNode>) {
         <div className="nd-ph"><IcImage size={24} /></div>
       )}
       {data.busy && <div className="nd-busy"><span className="spin" />生成中…</div>}
-      {upload.input}
     </NodeShell>
   )
 }

@@ -134,10 +134,11 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, acti
     {paused && !veil && <span className="mark-paused">已暂停在 <b>{timecode(second)}</b></span>}
     {!playing && !veil && <button className="mark-play" aria-label="播放" onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onTogglePlay() }}><IcPlay size={22} /></button>}
     {!veil && tools && <div className="mark-float nodrag" onPointerDown={(e) => e.stopPropagation()}>{tools}</div>}
+    {/* 蒙层上只留原因那一句：「正在读取…」读完会自己解开，「无法读取，可尝试重新上传」
+        也已经把下一步说完了 —— 再补一行「元数据到达后自动解锁」只是把同一件事翻成技术话 */}
     {veil && <div className="mark-veil" role="status">
       {loading && <i className="spin" aria-hidden />}
       <strong>{veil}</strong>
-      <small>{loading ? '元数据到达后自动解锁标记工具' : '换一段能读出来的视频再试'}</small>
     </div>}
   </div>
 }

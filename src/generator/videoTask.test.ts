@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { sourceError, taskPayload, taskError, marksBlockModel } from './videoTask'
 import { freshGen } from '../store/generator'
-import { matBlockedReason, tabStates, type MatGet } from './materialLayout'
+import { tabStates, type MatGet } from './materialLayout'
 import type { MarkGroup, TimeRange } from './marks'
 /** 一组标记：圈了 n 处（都在第 t 秒），可选再带一段时间。 */
 const marks = (t: number, n = 1, range: TimeRange | null = null): MarkGroup[] =>
@@ -10,14 +10,15 @@ const marks = (t: number, n = 1, range: TimeRange | null = null): MarkGroup[] =>
 const img = (id: string) => id === 'a' || id === 'b'
 const get: MatGet = (id) => ({ id, name: 'ABCD', kind: img(id) ? 'image' : 'video', dur: img(id) ? undefined : 15.1, ready: true, src: 'source.mp4', grad: '' })
 describe('源视频的时长门槛（选区自己的规则在 marks.test.ts 里）', () => {
-  it('源视频区间按模式分：编辑 4–30 秒，延长放宽到 2–30 秒', () => {
-    expect(sourceError(3, true, 'edit', 'sd2.5')).toContain('4')
-    expect(sourceError(3, true, 'extend', 'sd2.5')).toBeNull()
+  it('源视频区间不再按模式分：编辑和延长共用一条 4 秒下限', () => {
+    expect(sourceError(3, true, 'sd2.5')).toContain('4')
     expect(sourceError(undefined)).toContain('读取'); expect(sourceError(15, false)).toContain('读取')
   })
 })
 describe('任务参数', () => {
   const edit = () => ({ ...freshGen(), mode: 'edit' as const, conn: ['v'], slotEdit: 'v', sourceSrc: 'source.mp4', prompt: '将椅子改成红色' })
+  /** 多段视频只可能摆在参考里：编辑只承载一段，第二段一接上落位就把人送去全能参考。 */
+  const refs = (ids: string[]) => ({ ...freshGen(), mode: 'ref' as const, conn: ids, tray: ids, prompt: '海边日落' })
   it('编辑整条进整条出，标记是作用域不改变产出长度', () => {
     // 编辑永远整条进、整条出：标记只是作用域，不改变产出长度
     expect(taskPayload(edit(), get)).toMatchObject({ scope: 'whole', range: null, rangeMeaning: null, marks: [], params: { duration: 15.1, ratio: 'adaptive' }, demo: true })
@@ -76,75 +77,42 @@ describe('任务参数', () => {
     const g = { ...edit(), model: 'sd2.0' as const, params: { ...edit().params, duration: 5 } }
     expect(taskPayload(g, short).params.duration).toBe(10)
   })
-  it('编辑的源视频下限按模型分：2.0 放行 3 秒，2.5 拦下', () => {
-    expect(sourceError(3, true, 'edit', 'sd2.0')).toBeNull()
-    expect(sourceError(3, true, 'edit', 'sd2.5')).not.toBeNull()
-  })
-  it('源视频上限也按模型分：2.5 收到 30 秒，2.0 系列只收到 15 秒', () => {
-    for (const mode of ['edit', 'extend'] as const) {
-      expect(sourceError(20, true, mode, 'sd2.5')).toBeNull()
-      expect(sourceError(30, true, mode, 'sd2.5')).toBeNull()
-      expect(sourceError(30.1, true, mode, 'sd2.5')).toContain('30 秒之间')
-      expect(sourceError(15, true, mode, 'sd2.0')).toBeNull()
-      expect(sourceError(15.1, true, mode, 'sd2.0-fast')).toContain('2–15 秒')
-    }
-  })
-  it('辅助参考视频的下限跟着任务类型走；不合规的不拦生成，是被挪出本次输入', () => {
-    // 2.5 编辑：待编辑视频 4 秒起，辅助参考视频按文档同样是 4 秒起
-    const mixed = (refDur: number): MatGet => (id) => ({ ...get(id)!, dur: id === 'v' ? 10 : refDur })
-    const g = { ...edit(), conn: ['v', 'r'], tray: ['r'] }
-    // 3 秒那段不再在提交时报黄字，而是在缩略图上就灰掉、不进本次输入，理由跟着素材走
-    expect(matBlockedReason(mixed(3)('r')!, 'edit', 'sd2.5')).toBe('视频 ABCD 的时长需在 4–30 秒之间')
-    expect(taskError(g, mixed(3))).toBeNull()
-    expect(taskPayload(g, mixed(3)).inputIds).toEqual(['v'])
-    expect(taskPayload(g, mixed(3)).skipped[0].reason).toBe('视频 ABCD 的时长需在 4–30 秒之间')
-    expect(taskPayload(g, mixed(4)).inputIds).toEqual(['v', 'r'])
-    // 2.0 编辑的下限是 2 秒，参考视频跟着放宽，3 秒照常参与
-    expect(taskPayload({ ...g, model: 'sd2.0' as const }, mixed(3)).inputIds).toEqual(['v', 'r'])
-    // 参考生成新视频：不涉及待编辑视频，参考视频 2 秒起
-    const ref = { ...freshGen(), mode: 'ref' as const, conn: ['r'], tray: ['r'], prompt: '海边日落' }
-    expect(taskError(ref, mixed(2))).toBeNull()
-    // 手上只有这一段、它还用不了：参考素材仍然进得去（它是落脚的那个 Tab），
-    // 但生成按钮灰着，说的就是那一段为什么用不上
-    expect(taskError(ref, mixed(1.5))).toBe('视频 ABCD 的时长需在 2–30 秒之间')
-    expect(tabStates(['r'], mixed(1.5), 'sd2.5').find((t) => t.k === 'ref')!.enabled).toBe(true)
-    // 延长同样按 2 秒起
-    const ext = { ...g, mode: 'extend' as const, prompt: '续写一段海浪' }
-    expect(taskPayload(ext, mixed(3)).inputIds).toEqual(['v', 'r'])
-    // 上限同样跟着型号走：20 秒的参考视频 2.5 收得下，2.0 收不下 —— 收不下的那一段直接不参与
-    expect(taskPayload(ext, mixed(20)).inputIds).toEqual(['v', 'r'])
-    expect(taskPayload({ ...ext, model: 'sd2.0' as const }, mixed(20)).inputIds).toEqual(['v'])
-    expect(tabStates(['v', 'r'], mixed(20), 'sd2.0').find((t) => t.k === 'extend')!.note).toBe('视频 ABCD 的时长需在 2–15 秒之间，不参与本次生成')
+  it('源视频只有一条区间：下限一律 4 秒，上限按模型分 —— 2.5 收到 30 秒，2.0 系列只收到 15 秒', () => {
+    // 下限不再按模型、也不按任务分档：3 秒哪个型号都不收
+    expect(sourceError(3, true, 'sd2.0')).not.toBeNull()
+    expect(sourceError(3, true, 'sd2.5')).not.toBeNull()
+    expect(sourceError(20, true, 'sd2.5')).toBeNull()
+    expect(sourceError(30, true, 'sd2.5')).toBeNull()
+    expect(sourceError(30.1, true, 'sd2.5')).toContain('30 秒之间')
+    expect(sourceError(15, true, 'sd2.0')).toBeNull()
+    expect(sourceError(15.1, true, 'sd2.0-fast')).toContain('4–15 秒')
   })
   it('三条限制各自独立：单个时长、数量、合计时长，任意一条超了都提交不了', () => {
-    const many = ['r1', 'r2', 'r3', 'r4']
-    const each = (dur: number): MatGet => (id) => ({ ...get(id)!, dur: id === 'v' ? 4 : dur })
-    const g = { ...edit(), conn: ['v', ...many], tray: many }
-    // 单个时长：2.5 编辑要 4 秒起，3 秒的那几段一开始就不算数（缩略图灰掉），不是提交时才拦
-    expect(taskPayload(g, each(3)).inputIds).toEqual(['v'])
-    expect(taskPayload(g, each(3)).skipped).toHaveLength(4)
-    // 数量：2.5 收 10 段视频，5 段没超，超出的才会被挪出本次输入
-    expect(taskPayload(g, each(4)).inputIds).toHaveLength(5)
-    expect(taskPayload(g, each(4)).skipped).toEqual([])
-    // 合计时长：每段 7 秒单独都合规，5 段共 35 秒超出 2.5 的 30 秒
-    expect(taskError(g, each(7))).toContain('视频总时长为 32 秒')
+    const each = (dur: number): MatGet => (id) => ({ ...get(id)!, dur })
+    const g = refs(['r1', 'r2', 'r3', 'r4'])
+    // 单个时长：3 秒那几段不合规，整件事就做不成 —— 不是把它们挪出去、别的照生成
+    expect(taskError(g, each(3))).toBeTruthy()
+    // 数量：2.5 收 10 段视频，11 段参考视频就超了
+    expect(taskError(refs(Array.from({ length: 11 }, (_, i) => `r${i}`)), each(4))).toBeTruthy()
+    // 合计时长：每段 7 秒单独都合规，4 段共 28 秒仍在 30 秒内，5 段 35 秒就超了
+    expect(taskError(g, each(7))).toBeNull()
+    expect(taskError(refs(['r1', 'r2', 'r3', 'r4', 'r5']), each(7))).toBeTruthy()
   })
-  it('2.5 编辑最多 7 段视频：接口写着 10 个，但每段 4 秒起，8 段必然超 30 秒', () => {
+  it('2.5 最多收 7 段视频：接口写着 10 个，但每段 4 秒起，8 段必然超 30 秒', () => {
     const ids = Array.from({ length: 8 }, (_, i) => `r${i}`)
     const four: MatGet = (id) => ({ ...get(id)!, dur: 4 })
-    const g = { ...edit(), conn: ['v', ...ids.slice(0, 6)], tray: ids.slice(0, 6) }
-    // 1 段待编辑 + 6 段参考 = 7 段 × 4 秒 = 28 秒，正好在上限内
-    expect(taskError(g, four)).toBeNull()
+    // 7 段 × 4 秒 = 28 秒，正好在上限内
+    expect(taskError(refs(ids.slice(0, 7)), four)).toBeNull()
     // 再加一段就是 8 段 × 4 秒 = 32 秒：数量没超 10，合计这条把它拦下
-    expect(taskError({ ...g, conn: ['v', ...ids.slice(0, 7)], tray: ids.slice(0, 7) }, four)).toContain('超过 Seedance 2.5 的 30 秒上限')
+    expect(taskError(refs(ids), four)).toContain('超过 Seedance 2.5 的 30 秒上限')
   })
-  it('配额为 0 的素材，连着也不算有效输入', () => {
-    // Wan 2.2 图生视频只收 1 张图、不收视频。连了视频但一个都用不上时不能提交，
+  it('配额为 0 的素材：整类都不收就是容纳不下，入口与生成按钮说的是同一句', () => {
+    // Wan 2.2 图生视频只收 1 张图、不收视频。连了视频就不能生成，并给出两条出路；
     // 错了的表现是生成按钮亮着、payload 里 inputIds 是空的，界面看不出来。
     const g = { ...freshGen(), mode: 'refImage' as const, model: 'wan2.2-i2v-a14b' as const, conn: ['v'], tray: ['v'], prompt: '海边日落' }
     expect(taskError(g, get)).toBe('Wan 2.2 图生视频 不支持视频输入')
-    // 说这句话的地方不止一处：Tab 灰、型号也灰，用户在做选择之前就看得到
-    expect(tabStates(['v'], get, 'wan2.2-i2v-a14b').find((t) => t.k === 'refImage')!.note).toBe('视频不参与本次生成')
+    // 入口读的也是这一条：参考图这个 Tab 跟着灰（该换型号，落位会替他换）
+    expect(tabStates(['v'], get, 'wan2.2-i2v-a14b').find((t) => t.k === 'refImage')!.enabled).toBe(false)
   })
   it('延长按整条原片计入时长，合计超限只能靠移除素材', () => {
     const long: MatGet = (id) => ({ ...get(id)!, dur: id === 'v' ? 28 : 10 })
@@ -165,12 +133,13 @@ describe('任务参数', () => {
   })
   it('参考素材也要能读、时长合规：1 秒视频与读不出的文件都拦在提交前', () => {
     const g = { ...freshGen(), mode: 'ref' as const, conn: ['r'], tray: ['r'], prompt: '海边日落' }
-    expect(taskError(g, (id) => ({ ...get(id)!, dur: 1 }))).toBe('视频 ABCD 的时长需在 2–30 秒之间')
+    expect(taskError(g, (id) => ({ ...get(id)!, dur: 1 }))).toBe('视频 ABCD 的时长需在 4–30 秒之间')
     expect(taskError(g, (id) => ({ ...get(id)!, error: '无法读取' }))).toBe('视频 ABCD 无法读取，可尝试重新上传')
     expect(taskError(g, (id) => ({ ...get(id)!, ready: false }))).toContain('读取')
   })
   it('隐藏素材不进入任务或引用映射，引用绑定稳定 ID', () => {
-    const g = { ...freshGen(), mode: 'frames' as const, conn: ['a', 'v'], slotFirst: 'a', unused: ['v'], prompt: '参考 @ABCD 的光线', references: { ABCD: 'a', EFGH: 'v' } }
+    // 首尾帧只接图片（连了视频整件事就做不成），所以隐藏的那一个也是图片
+    const g = { ...freshGen(), mode: 'frames' as const, conn: ['a', 'b'], slotFirst: 'a', unused: ['b'], prompt: '参考 @ABCD 的光线', references: { ABCD: 'a', EFGH: 'b' } }
     expect(taskPayload(g, get)).toMatchObject({ inputIds: ['a'], references: { ABCD: 'a' }, params: { ratio: 'adaptive' } })
   })
 })

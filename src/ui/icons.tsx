@@ -1,78 +1,266 @@
-/** 线稿图标，路径与原型 / 截图一致；统一 24 viewBox。 */
+/**
+ * 线稿图标，取自 Figma 社区的 Lets Icons「Free Icon Pack 1800+」（personal & commercial use）。
+ *
+ * 那套图标的规矩，这里一并照搬 —— 混着两套画法，小尺寸下就会有一枚显得比邻居胖：
+ * 24 的格子、笔画走 3–21 的范围、线宽 2、圆头圆角；
+ * 该实的地方给一小块实心（镜头、瞳孔、笔尖），其余全是描边。
+ *
+ * 颜色统一走 currentColor：描边和那一小块实心都读同一个 currentColor，
+ * 不是「描边给 color、实心写死 currentColor」—— 那样调色时描边变了、实心还留在继承来的旧色上。
+ * 所以 `color` 是落到 svg 的 style 上的，而且**只在真给了的时候才落**：
+ * 无条件写一个 `color: currentColor` 是个空转的内联样式，却会盖掉 class 里的颜色
+ * （`.model-check` 那类「这一项是选中的，给它涂上主题色」当场失效）。
+ */
 import type { CSSProperties } from 'react'
 
 interface P { size?: number; color?: string; sw?: number; style?: CSSProperties; className?: string }
 
-const Svg = ({ size = 16, color = 'currentColor', sw = 2, style, className, children }: P & { children: React.ReactNode }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+const Svg = ({ size = 16, color, sw = 2, style, className, children }: P & { children: React.ReactNode }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
+    style={color ? { color, ...style } : style} className={className}>
     {children}
   </svg>
 )
 
-export const IcLock = (p: P) => <Svg {...p}><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></Svg>
-export const IcVideo = (p: P) => <Svg {...p}><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3" /></Svg>
-export const IcImage = (p: P) => <Svg {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-9 9" /></Svg>
-export const IcText = (p: P) => <Svg {...p}><path d="M4 7V5h16v2M12 5v14M9 19h6" /></Svg>
-export const IcPlus = (p: P) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>
-export const IcSwap = (p: P) => <Svg {...p}><path d="M4 8h14l-3-3M20 16H6l3 3" /></Svg>
-export const IcChev = (p: P) => <Svg {...p}><path d="M6 9l6 6 6-6" /></Svg>
-export const IcBack = (p: P) => <Svg {...p}><path d="M15 18l-6-6 6-6" /></Svg>
-export const IcShare = (p: P) => <Svg {...p}><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" /></Svg>
-export const IcBell = (p: P) => <Svg {...p}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" /></Svg>
-export const IcUser = (p: P) => <Svg {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></Svg>
-export const IcFolder = (p: P) => <Svg {...p}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Svg>
-export const IcGrid = (p: P) => <Svg {...p}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></Svg>
-export const IcHistory = (p: P) => <Svg {...p}><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2" /></Svg>
-export const IcCursor = (p: P) => <Svg {...p}><path d="M5 3l14 7-6 2-2 6z" /></Svg>
-export const IcKeyboard = (p: P) => <Svg {...p}><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></Svg>
-export const IcTarget = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="2" fill="currentColor" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></Svg>
-export const IcMinus = (p: P) => <Svg {...p}><path d="M5 12h14" /></Svg>
-export const IcUpload = (p: P) => <Svg {...p}><path d="M12 16V4M7 9l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></Svg>
-export const IcExpand = (p: P) => <Svg {...p}><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></Svg>
-export const IcScissors = (p: P) => <Svg {...p}><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12" /></Svg>
-export const IcCamera = (p: P) => <Svg {...p}><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><circle cx="12" cy="13" r="3.5" /></Svg>
-export const IcShots = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></Svg>
-export const IcDownload = (p: P) => <Svg {...p}><path d="M12 4v12M7 11l5 5 5-5M4 20h16" /></Svg>
-export const IcSpeaker = (p: P) => <Svg {...p}><path d="M4 9v6h4l5 4V5L8 9zM17 9a4 4 0 0 1 0 6" /></Svg>
-export const IcPhone = (p: P) => <Svg {...p}><rect x="7" y="2" width="10" height="20" rx="2.5" /><path d="M11 18.5h2" /></Svg>
-export const IcMic = (p: P) => <Svg {...p}><path d="M12 4a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4M12 4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4M8 9H5.5a2 2 0 0 0 0 4H8M16 9h2.5a2 2 0 0 1 0 4H16" /></Svg>
-export const IcEye = (p: P) => <Svg {...p}><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" /><circle cx="12" cy="12" r="2.6" /></Svg>
-export const IcAudio = (p: P) => <Svg {...p}><path d="M9 18V5l10-2v13" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></Svg>
-export const IcPano = (p: P) => <Svg {...p}><ellipse cx="12" cy="12" rx="9" ry="4" /><circle cx="12" cy="12" r="8" /></Svg>
-export const IcScript = (p: P) => <Svg {...p}><path d="M6 3h9l5 5v13H6z" /><path d="M15 3v5h5M9 13h7M9 17h5" /></Svg>
-export const IcCompose = (p: P) => <Svg {...p}><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M18 9l4-2v10l-4-2" /></Svg>
-export const IcCube = (p: P) => <Svg {...p}><path d="M12 2l9 5v10l-9 5-9-5V7z" /><path d="M12 22V12M3 7l9 5 9-5" /></Svg>
+/** 实心图标（整枚都是面，没有描边）用这个壳，免得继承到 stroke 又胖一圈 */
+const SvgF = ({ size = 16, color, style, className, children }: P & { children: React.ReactNode }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none"
+    style={color ? { color, ...style } : style} className={className}>
+    {children}
+  </svg>
+)
+
+/** 描边图标里那一小块实心：显式关掉 stroke，不然会被壳上的 stroke 又描粗一圈 */
+const solid = { fill: 'currentColor', stroke: 'none' } as const
+
+export const IcLock = (p: P) => <Svg {...p}>
+  <path d="M4 13c0-1.886 0-2.828.586-3.414C5.172 9 6.114 9 8 9h8c1.886 0 2.828 0 3.414.586C20 10.172 20 11.114 20 13v2c0 2.828 0 4.243-.879 5.121C18.243 21 16.828 21 14 21h-4c-2.828 0-4.243 0-5.121-.879C4 19.243 4 17.828 4 15v-2Z" />
+  <path d="M16 8V7a4 4 0 0 0-8 0v1" />
+  <circle cx="12" cy="15" r="2" {...solid} />
+</Svg>
+/**
+ * 摄像机。pack 里只有「圆圈套播放三角」和「文档带播放角标」两种视频图标 ——
+ * 前者会和缩略图上的播放键读成同一件事，后者说的是「一个文件」，
+ * 所以这枚按 pack 的规矩自己画，机身仍是原型里那个横着的比例。
+ *
+ * 两处是试出来的，不是随手定的：
+ * 机身**横着**（13×10），方的读出来是「视频通话」而不是「一段视频」；
+ * 镜头和机身之间**留一道 1.2 的缝** —— 楔子直接贴在圆角机身的右壁上，
+ * 圆角把那条壁往里收，接缝处就掐出一个腰，整枚读成一只蝴蝶结。
+ * 也不给实心点：机身里摆一颗就成了 IcCamera，这两枚要能一眼分开。
+ */
+export const IcVideo = (p: P) => <Svg {...p}>
+  <path d="M3 10a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-4Z" />
+  <path d="M17.2 13.9v-3.8L21 7.8v8.4l-3.8-2.3Z" />
+</Svg>
+export const IcImage = (p: P) => <Svg {...p}>
+  <path d="M3 7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7Z" />
+  <path d="M3 15l2.806-2.806c.882-.882 2.348-.75 3.058.276l1.902 2.748c.665.96 2.007 1.149 2.911.41l2.422-1.982c.795-.65 1.954-.593 2.68.134L21 16" />
+  <circle cx="16" cy="8" r="2" {...solid} />
+</Svg>
+export const IcText = (p: P) => <Svg {...p}>
+  <path d="M7 6v8.593c0 1.718 2.024 2.636 3.317 1.504L11 15.5" />
+  <path d="M4 9h6M14 9l5 8M19 9l-5 8" />
+</Svg>
+export const IcPlus = (p: P) => <Svg {...p}><path d="M12 6v12M18 12H6" /></Svg>
+export const IcMinus = (p: P) => <Svg {...p}><path d="M18 12H6" /></Svg>
+/** 交换首尾帧：两条互相让路的箭头，比一条折回去的线更像「换个位置」 */
+export const IcSwap = (p: P) => <Svg {...p}>
+  <path d="M13 17H9v2.589c0 .167-.192.26-.324.157L2 14.5l6.676-5.246c.132-.103.324-.01.324.157V12h6" />
+  <path d="M11 7h4V4.411c0-.167.192-.26.324-.157L22 9.5l-6.676 5.246c-.132.103-.324.01-.324-.157V12H9" />
+</Svg>
+export const IcChev = (p: P) => <Svg {...p}><path d="M18 9l-6 6-6-6" /></Svg>
+export const IcBack = (p: P) => <Svg {...p}><path d="M15 6l-6 6 6 6" /></Svg>
+export const IcShare = (p: P) => <Svg {...p}>
+  <path d="M10 16H7a4 4 0 0 1 0-8h3" />
+  <path d="M16 12H8" />
+  <path d="M14 16h3a4 4 0 0 0 0-8h-3" />
+</Svg>
+export const IcBell = (p: P) => <Svg {...p}>
+  <path d="M6.448 7.969C6.762 5.14 9.153 3 12 3s5.238 2.14 5.552 4.969l.252 2.266c.129 1.124.495 2.208 1.073 3.18l.578.963c.525.875.787 1.312.73 1.671a.87.87 0 0 1-.346.611c-.278.234-.788.234-1.808.234H5.932c-1.02 0-1.529 0-1.808-.234a.87.87 0 0 1-.345-.61c-.057-.36.205-.797.73-1.672l.578-.963a7.87 7.87 0 0 0 1.073-3.18l.252-2.266Z" />
+  <path d="M8 17a4 4 0 0 0 8 0" />
+</Svg>
+export const IcUser = (p: P) => <Svg {...p}>
+  <path d="M19.727 20.447C19.272 19.171 18.267 18.044 16.87 17.24 15.473 16.436 13.761 16 12 16s-3.473.436-4.87 1.24C5.733 18.044 4.728 19.171 4.273 20.447" />
+  <circle cx="12" cy="8" r="4" />
+</Svg>
+export const IcFolder = (p: P) => <Svg {...p}>
+  <path d="M4 9c0-1.886 0-2.828.586-3.414C5.172 5 6.114 5 8 5h.343c.818 0 1.226 0 1.594.152.368.152.657.441 1.235 1.02l.657.656c.578.578.867.867 1.234 1.02.368.152.776.152 1.594.152H16c1.886 0 2.828 0 3.414.586C20 9.172 20 10.114 20 12v3c0 1.886 0 2.828-.586 3.414C18.828 19 17.886 19 16 19H8c-1.886 0-2.828 0-3.414-.586C4 17.828 4 16.886 4 15V9Z" />
+</Svg>
+export const IcGrid = (p: P) => <Svg {...p}>
+  <rect x="4" y="4" width="6" height="6" rx="1" />
+  <rect x="14" y="4" width="6" height="6" rx="1" />
+  <rect x="4" y="14" width="6" height="6" rx="1" />
+  <rect x="14" y="14" width="6" height="6" rx="1" />
+</Svg>
+/** 版本记录：缺一口的表盘 + 指针 —— 缺口开在 12 点，读出来是「往回走的时间」 */
+export const IcHistory = (p: P) => <Svg {...p}>
+  <path d="M5.636 5.636a9 9 0 1 0 6.364-2.636" />
+  <path d="M12 7.5V12l3.5 2" />
+</Svg>
+/** 选择工具：箭头尖朝左上，尾巴收窄 —— 和整套一样走 3–21 的格子 */
+export const IcCursor = (p: P) => <Svg {...p}><path d="M5 3.8l13.4 7.4c.5.28.42 1.02-.13 1.18l-5.1 1.5a.8.8 0 0 0-.52.45l-2.2 5.02c-.24.54-1.04.44-1.14-.14L5 3.8Z" /></Svg>
+export const IcKeyboard = (p: P) => <Svg {...p}>
+  <rect x="3" y="6" width="18" height="12" rx="3" />
+  <path d="M7 10h.01M11 10h.01M15 10h.01M9 14h6" />
+</Svg>
+export const IcTarget = (p: P) => <Svg {...p}>
+  <circle cx="12" cy="12" r="7" />
+  <circle cx="12" cy="12" r="2" {...solid} />
+  <path d="M7.05 7.05L4 4M16.95 7.05L20 4M20 20l-3.05-3.05M4 20l3.05-3.05" />
+</Svg>
+export const IcUpload = (p: P) => <Svg {...p}>
+  <path d="M12 20V9" />
+  <path d="M8 13l4-4 4 4" />
+  <path d="M4 7V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1" />
+</Svg>
+export const IcDownload = (p: P) => <Svg {...p}>
+  <path d="M12 4v11" />
+  <path d="M16 11l-4 4-4-4" />
+  <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" />
+</Svg>
+/** 全屏：两只对角撑开的角，和 IcOpenOut 同一套折线语言 */
+export const IcExpand = (p: P) => <Svg {...p}>
+  <path d="M14 4h6v6M20 4l-7 7" />
+  <path d="M10 20H4v-6M4 20l7-7" />
+</Svg>
+/** 收回：同两只角，箭头掉头往里指 —— 和 IcExpand 是同一枚图标的两个方向，不另起一套画法 */
+export const IcCollapse = (p: P) => <Svg {...p}>
+  <path d="M20 4l-7 7M13 4v7h7" />
+  <path d="M4 20l7-7M11 20v-7H4" />
+</Svg>
+export const IcScissors = (p: P) => <Svg {...p}>
+  <circle cx="6" cy="6" r="2.5" />
+  <circle cx="6" cy="18" r="2.5" />
+  <path d="M20 4L8.2 15.8M14.6 14.6L20 20M8.2 8.2L12 12" />
+</Svg>
+export const IcCamera = (p: P) => <Svg {...p}>
+  <path d="M3 9.854A1.854 1.854 0 0 1 4.854 8c.702 0 1.344-.397 1.658-1.025l.821-1.642c.11-.22.165-.33.228-.425a1.78 1.78 0 0 1 1.448-.895C9.122 4 9.245 4 9.491 4h5.018c.246 0 .369 0 .482.013a1.78 1.78 0 0 1 1.448.895c.063.096.118.205.228.425l.821 1.642A1.854 1.854 0 0 0 19.146 8 1.854 1.854 0 0 1 21 9.854v5.003c0 2.005 0 3.007-.46 3.739a3.43 3.43 0 0 1-1.144 1.144c-.732.46-1.734.46-3.739.46H8.143c-2.005 0-3.007 0-3.739-.46a3.43 3.43 0 0 1-1.144-1.144C3 17.864 3 16.862 3 14.857V9.854Z" />
+  <circle cx="12" cy="13" r="3" />
+</Svg>
+export const IcShots = (p: P) => <Svg {...p}>
+  <circle cx="12" cy="12" r="8" />
+  <circle cx="12" cy="12" r="3" />
+</Svg>
+export const IcSpeaker = (p: P) => <Svg {...p}>
+  <path d="M3.158 13.931a3.74 3.74 0 0 1 0-3.862c.218-.362.578-.616.993-.699l1.693-.339a.32.32 0 0 0 .258-.153l2.069-2.483c1.183-1.419 1.774-2.129 2.302-1.938.527.191.527 1.115.527 2.962v9.162c0 1.847 0 2.771-.528 2.962-.527.191-1.118-.519-2.301-1.938l-2.069-2.483a.32.32 0 0 0-.258-.153l-1.693-.339a1.66 1.66 0 0 1-.993-.699Z" />
+  <path d="M15.536 8.464a4.98 4.98 0 0 1 1.464 3.516 4.98 4.98 0 0 1-1.437 3.527" />
+  <path d="M19.657 6.343a7.97 7.97 0 0 1 2.343 5.626 7.97 7.97 0 0 1-2.299 5.643" />
+</Svg>
+export const IcPhone = (p: P) => <Svg {...p}>
+  <path d="M13 2c.914 0 1.701 0 2.328.082.655.088 1.283.287 1.793.797.51.51.709 1.138.797 1.793C18.002 5.299 18 6.085 18 7v10c0 .914.002 1.701-.082 2.328-.088.655-.287 1.283-.797 1.793-.51.51-1.138.709-1.793.797C14.701 22 13.914 22 13 22h-2c-.914 0-1.701 0-2.328-.082-.655-.088-1.283-.287-1.793-.797-.51-.51-.709-1.138-.797-1.793C5.998 18.701 6 17.914 6 17V7c0-.914-.002-1.701.082-2.328.088-.655.287-1.283.797-1.793.51-.51 1.138-.709 1.793-.797C9.299 2 10.085 2 11 2h2Z" />
+  <path d="M7 16h10" />
+</Svg>
+export const IcMic = (p: P) => <Svg {...p}>
+  <rect x="9" y="3" width="6" height="11" rx="3" />
+  <path d="M5 11a7 7 0 0 0 14 0" />
+  <path d="M12 21v-2" />
+</Svg>
+export const IcEye = (p: P) => <Svg {...p}>
+  <path d="M12 5C6.556 5 3.531 9.234 2.456 11.116c-.221.387-.331.58-.319.868.012.288.142.476.401.852C3.818 14.694 7.294 19 12 19s8.182-4.306 9.462-6.164c.259-.376.389-.564.401-.852.012-.288-.098-.481-.319-.868C20.469 9.234 17.444 5 12 5Z" />
+  <circle cx="12" cy="12" r="4" {...solid} />
+</Svg>
+export const IcAudio = (p: P) => <Svg {...p}>
+  <path d="M9 16H6.252c-.234 0-.351 0-.45.01a2.25 2.25 0 0 0-1.792 1.792C4 17.901 4 18.018 4 18.253c0 .28 0 .42.012.53a2.25 2.25 0 0 0 2.159 1.77c.111-.01.248-.037.523-.092l.296-.059c.38-.076.571-.114.731-.176a2.25 2.25 0 0 0 1.249-1.524C9 18.533 9 18.339 9 17.951V9.279c0-1.57 0-2.355.453-2.908.454-.553 1.223-.707 2.762-1.014l2-.4c2.214-.443 3.321-.664 4.053-.064.732.6.732 1.729.732 3.986v.121" />
+  <path d="M19 14v1.951c0 .388 0 .582-.029.751a2.25 2.25 0 0 1-1.249 1.524c-.16.062-.351.1-.731.176l-.296.059c-.275.055-.412.082-.523.092a2.25 2.25 0 0 1-2.159-1.77C14 16.673 14 16.532 14 16.253c0-.235 0-.352.01-.451a2.25 2.25 0 0 1 1.792-1.792c.099-.01.216-.01.45-.01H19Zm0 0V9m0 0L9 11" />
+</Svg>
+/** 720 全景：球体 + 一圈经线，转起来的那种「一整圈都在」 */
+export const IcPano = (p: P) => <Svg {...p}>
+  <circle cx="12" cy="12" r="8" />
+  <ellipse cx="12" cy="12" rx="3" ry="8" />
+  <path d="M4 12h16" />
+</Svg>
+export const IcScript = (p: P) => <Svg {...p}>
+  <path d="M13.172 3H9c-1.886 0-2.828 0-3.414.586C5 4.172 5 5.114 5 7v10c0 1.886 0 2.828.586 3.414C6.172 21 7.114 21 9 21h6c1.886 0 2.828 0 3.414-.586C19 19.828 19 18.886 19 17V8.828c0-.409 0-.613-.076-.797-.076-.184-.221-.328-.51-.617l-3.828-3.828c-.289-.289-.434-.434-.617-.51C13.785 3 13.58 3 13.172 3Z" />
+  <path d="M9 13h6M9 17h4" />
+  <path d="M13 3v4c0 .943 0 1.414.293 1.707C13.586 9 14.057 9 15 9h4" />
+</Svg>
+/** 视频合成：一叠对齐的片子 —— 多段素材落成一条 */
+export const IcCompose = (p: P) => <Svg {...p}>
+  <path d="M12 4L5 7l7 3 7-3-7-3Z" />
+  <path d="M7.025 10.044 4.606 11.081c-.368.157-.606.519-.606.919 0 .4.238.762.606.919l7 3c.252.108.536.108.788 0l7-3c.368-.157.606-.519.606-.919 0-.4-.238-.762-.606-.919l-2.419-1.037-2.538 1.088L16.461 12 12 13.912 7.539 12l2.025-.868-2.539-1.088Z" {...solid} />
+  <path d="M7.025 15.044 4.606 16.081c-.368.157-.606.519-.606.919 0 .4.238.762.606.919l7 3c.252.108.536.108.788 0l7-3c.368-.157.606-.519.606-.919 0-.4-.238-.762-.606-.919l-2.419-1.037-2.538 1.088L16.461 17 12 18.912 7.539 17l2.025-.869-2.539-1.087Z" {...solid} />
+</Svg>
+export const IcCube = (p: P) => <Svg {...p}>
+  <path d="M12 21v-8M19 8l-5.838-4.17C12.601 3.43 12.32 3.229 12 3.229s-.601.201-1.163.601L5 8v6.971c0 .504 0 .757.111.972.111.215.316.362.727.655L12 21l6.163-4.402c.41-.293.615-.44.726-.655.111-.215.111-.468.111-.972V8Z" />
+  <path d="M12 13L5 8M12 13l7-5" />
+</Svg>
 export const IcWarn = (p: P) => <Svg {...p} sw={3}><path d="M12 6v7M12 17v.5" /></Svg>
 
 /**
- * 星钻：一大一小两枚四角星芒。每条边都往中心弯，小尺寸下四个角才立得住 ——
- * 直边画出来的是一个菱形块，不是「闪」。
+ * 星钻：一颗四角星形的切面水晶，不是一枚发光的火花。
+ *
+ * 它是这套界面里的货币，得读成「一样值钱的东西」——「亮闪闪的一下」说的是特效，不是余额。
+ * 所以四个角是实的、浅冰蓝（#a8beec），上面再切两刀：左上两瓣压一层白、右下两瓣压一层深蓝，
+ * 一块石头的受光面和背光面就分出来了，同一个轮廓于是有了厚度。
+ * 右上角那一小颗是这枚水晶唯一许可的「闪」—— 不落在石头身上，落在它旁边。
  */
-export const IcSparkle = ({ size = 14, color = 'currentColor' }: P) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-    <path d="M9.5 5.6Q9.5 13.5 1.9 13.5 9.5 13.5 9.5 21.4 9.5 13.5 17.1 13.5 9.5 13.5 9.5 5.6Z" />
-    <path d="M18.6 2.2Q18.6 6.4 14.5 6.4 18.6 6.4 18.6 10.6 18.6 6.4 22.7 6.4 18.6 6.4 18.6 2.2Z" />
+export const IcGem = ({ size = 16, style, className }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" style={style} className={className}>
+    <path d="M12 2l2.9 7.1L22 12l-7.1 2.9L12 22l-2.9-7.1L2 12l7.1-2.9z" fill="#a8beec" />
+    <path d="M12 2l2.9 7.1L12 12zM2 12l7.1-2.9L12 12z" fill="#fff" fillOpacity=".6" />
+    <path d="M12 22l-2.9-7.1L12 12zM22 12l-7.1 2.9L12 12z" fill="#3c4f97" fillOpacity=".45" />
+    <circle cx="19.5" cy="4.5" r="1.3" fill="#d8e5ff" />
   </svg>
 )
-/** 发送（生成）按钮里的纸飞机 */
-export const IcSend = (p: P) => <Svg {...p}><path d="M4.5 12.5l15.5-7-7 15.5-1.8-6.3z" /><path d="M11.2 14.7l3.6-3.9" /></Svg>
 /** 延长方向：向后为默认朝向，向前翻转 */
-export const IcArrowR = (p: P) => <Svg {...p}><path d="M4 12h14" /><path d="M13 6l6 6-6 6" /></Svg>
+export const IcArrowR = (p: P) => <Svg {...p}><path d="M4 12h15" /><path d="M14 6l6 6-6 6" /></Svg>
 /** 退出编辑 / 延长操作 */
 export const IcClose = (p: P) => <Svg {...p}><path d="M6 6l12 12M18 6L6 18" /></Svg>
 /** @ 呼出的素材面板顶上的搜索 */
-export const IcSearch = (p: P) => <Svg {...p}><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></Svg>
-export const IcPlay = ({ size = 28 }: P) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="#fff"><path d="M8 5l11 7-11 7z" /></svg>
+export const IcSearch = (p: P) => <Svg {...p}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" /></Svg>
+/** 放大镜里加一个 +：单是一枚放大镜读作「搜索」，加号才说明点下去是把这一幅看大 */
+export const IcZoomIn = (p: P) => <Svg {...p}>
+  <circle cx="11" cy="11" r="7" /><path d="M20 20l-3-3" /><path d="M11 8v6M14 11H8" />
+</Svg>
+/** 缩略图上的播放：整枚实心，三个角都收圆，压在暗底上不扎眼 */
+export const IcPlay = ({ size = 28, color = '#fff', style, className }: P) => (
+  <SvgF size={size} color={color} style={style} className={className}>
+    <path d="M16.138 10.569 9.605 7.302C8.408 6.704 7 7.574 7 8.912v6.175c0 1.339 1.408 2.209 2.605 1.61l6.533-3.266c1.179-.59 1.179-2.272 0-2.862Z" />
+  </SvgF>
 )
 
 /** 模型 icon */
 /** 勾：列表里「现在用的就是这一项」 */
-export const IcCheck = (p: P) => <Svg {...p}><path d="M4 12.5l5 5L20 6.5" /></Svg>
+export const IcCheck = (p: P) => <Svg {...p}><path d="M5 14l4 3 9-11" /></Svg>
+/** 两张叠起来的纸：把这段话抄走一份 */
+export const IcCopy = (p: P) => <Svg {...p}>
+  <rect x="9" y="9" width="12" height="12" rx="2.5" />
+  <path d="M9 15H5.5A2.5 2.5 0 0 1 3 12.5v-7A2.5 2.5 0 0 1 5.5 3h7A2.5 2.5 0 0 1 15 5.5V9" />
+</Svg>
 export const IcSeedance = (p: P) => <Svg {...p}><rect x="5" y="10" width="2.5" height="8" rx="1" /><rect x="10.25" y="6" width="2.5" height="12" rx="1" /><rect x="15.5" y="8" width="2.5" height="10" rx="1" /></Svg>
 export const IcWan = (p: P) => <Svg {...p}><path d="M4 12c2-4 4-6 8-6s6 2 8 6-2 6-8 6-6-2-8-6z" /></Svg>
 export const IcKling = (p: P) => <Svg {...p}><circle cx="6" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="18" cy="12" r="2" /><path d="M3 12h4M8 12h4M14 12h4" /></Svg>
+/*
+ * 模型徽记：落在底栏那枚等级环里，圆心只有 13px 见方。
+ * 上面那三枚描边的品牌图标缩到这个尺寸只剩一团灰（可灵那三颗点会糊成一条横杠），
+ * 所以另画一套实心的 —— 柱 / 镜 / 三角，三个轮廓互不相似，不靠细节就分得开。
+ * 不画成「圆环里一根斜线」那种画法：外面已经套着一圈等级环，里面再来一根斜线就读成钟面了。
+ */
+export const IcSeedanceS = (p: P) => <SvgF {...p}>
+  <rect x="3.8" y="9.4" width="3.8" height="10.2" rx="1.9" />
+  <rect x="10.1" y="4.4" width="3.8" height="15.2" rx="1.9" />
+  <rect x="16.4" y="7.4" width="3.8" height="12.2" rx="1.9" />
+</SvgF>
+export const IcWanS = (p: P) => <SvgF {...p}>
+  <path d="M2.6 12c3.1-4.9 6.2-7.4 9.4-7.4s6.3 2.5 9.4 7.4c-3.1 4.9-6.2 7.4-9.4 7.4S5.7 16.9 2.6 12Z" />
+</SvgF>
+export const IcKlingS = (p: P) => <SvgF {...p}>
+  <path d="M7.4 5.1c0-1.3 1.4-2.1 2.5-1.4l9.6 6.9c.9.7.9 2.1 0 2.8l-9.6 6.9c-1.1.7-2.5-.1-2.5-1.4z" />
+</SvgF>
+/**
+ * 画质：一块屏幕里三根从矮到高的柱子，暗着的那几根就是还没到的档位 ——
+ * 「720p」四个字要在脑子里排一次序，柱子不必排，一眼就是「三档里的第二档」。
+ */
+export const IcQuality = ({ lv = 3, ...p }: P & { lv?: number }) => <Svg {...p}>
+  <rect x="3" y="5" width="18" height="14" rx="2.6" />
+  <path d="M8 15.4v-2.2" />
+  <path d="M12 15.4v-4.4" opacity={lv >= 2 ? 1 : .32} />
+  <path d="M16 15.4v-6.6" opacity={lv >= 3 ? 1 : .32} />
+</Svg>
+/** 时长：钟面。只留时针分针，秒针在 15px 上只是一根会把钟面划花的线 */
+export const IcClock = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="8.6" /><path d="M12 7.2V12l3.2 2.1" /></Svg>
 /* ── 标记修改 ── */
 /**
  * 入口用的套索：虚线圈 + 收绳 + 落点。比方框更像「圈一块出来」这件事，
@@ -86,10 +274,29 @@ export const IcLasso = ({ size = 14, color = 'currentColor', sw = 1.7, style, cl
     <circle cx="10.4" cy="19.9" r="1.4" fill={color} stroke="none" />
   </svg>
 )
-export const IcFrame = (p: P) => <Svg {...p}><path d="M4 9V6a2 2 0 0 1 2-2h3M15 4h3a2 2 0 0 1 2 2v3M20 15v3a2 2 0 0 1-2 2h-3M9 20H6a2 2 0 0 1-2-2v-3" /></Svg>
-export const IcBrush = (p: P) => <Svg {...p}><path d="M15 4l5 5-9.5 9.5L5 20l1.5-5.5z" /><path d="M13 6l5 5" /></Svg>
-export const IcUndo = (p: P) => <Svg {...p}><path d="M4 10h9.5a4.5 4.5 0 1 1 0 9H8" /><path d="M8 6l-4 4 4 4" /></Svg>
-export const IcTrash = (p: P) => <Svg {...p}><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" /></Svg>
+/** 框选：四只角，圆角半径跟着这套图标的方框走（r=3.5） */
+export const IcFrame = (p: P) => <Svg {...p}>
+  <path d="M4 9V7.5A3.5 3.5 0 0 1 7.5 4H9" />
+  <path d="M15 4h1.5A3.5 3.5 0 0 1 20 7.5V9" />
+  <path d="M20 15v1.5a3.5 3.5 0 0 1-3.5 3.5H15" />
+  <path d="M9 20H7.5A3.5 3.5 0 0 1 4 16.5V15" />
+</Svg>
+/** 画笔：一支蘸尖的笔 —— 笔肚、笔尖和握把分了节，14px 下还读得出是笔 */
+export const IcBrush = (p: P) => <Svg {...p}>
+  <rect x="4" y="16" width="16" height="4" rx="2" />
+  <path d="M4.909 11.364 8 16h8l3.091-4.636c.435-.653.652-.98.617-1.335-.035-.356-.313-.634-.868-1.189L12 2 5.159 8.841c-.555.555-.832.833-.868 1.189-.035.355.183.682.618 1.334Z" />
+  <circle cx="12" cy="11" r="2" />
+  <path d="M12 2v7" />
+</Svg>
+export const IcUndo = (p: P) => <Svg {...p}>
+  <path d="M4 8h10.5a5.5 5.5 0 1 1 0 11H9" />
+  <path d="M9 3L4 8l5 5" />
+</Svg>
+export const IcTrash = (p: P) => <Svg {...p}>
+  <path d="M3 7h18c-.932 0-1.398 0-1.765.152a2 2 0 0 0-1.083 1.083C18 8.602 18 9.068 18 10v6c0 1.886 0 2.828-.586 3.414C16.828 20 15.886 20 14 20h-4c-1.886 0-2.828 0-3.414-.586C6 18.828 6 17.886 6 16v-6c0-.932 0-1.398-.152-1.765a2 2 0 0 0-1.083-1.083C4.398 7 3.932 7 3 7Z" />
+  <path d="M10.068 3.371c.114-.107.365-.201.714-.268A7.3 7.3 0 0 1 12 3c.44 0 .868.036 1.218.103.349.067.6.161.714.268" />
+  <path d="M10 15v-3M14 15v-3" />
+</Svg>
 /** 铅笔：局部修改这件事的图标，节点入口、标题栏的「编辑中」和面板里都用它 */
 /**
  * 「正在编辑」那枚会写字的笔。和别的图标不同，它不是方的：写字要有一段跑道，
@@ -134,9 +341,93 @@ export const IcWriting = ({ size = 14, color = 'currentColor', sw = 1, style, cl
     </g>
   </svg>
 )
-/* 版本记录里那三枚：带杆的返回箭头、方框加号（添加到画布）、外指箭头（在画布中查看）——
-   路径照设计稿的 16 viewBox 等比放到 24 上，形状一模一样。 */
-export const IcArrowL = (p: P) => <Svg {...p}><path d="M13.5 5.25L6.75 12l6.75 6.75" /><path d="M6.75 12h12" /></Svg>
-export const IcPlusBox = (p: P) => <Svg {...p}><rect x="3.75" y="3.75" width="16.5" height="16.5" rx="3.75" /><path d="M12 8.25v7.5M8.25 12h7.5" /></Svg>
-export const IcOpenOut = (p: P) => <Svg {...p}><path d="M14.25 3.75h6v6" /><path d="M20.25 3.75l-7.5 7.5" /><path d="M18.75 14.25v4.5a1.5 1.5 0 0 1-1.5 1.5h-12a1.5 1.5 0 0 1-1.5-1.5v-12a1.5 1.5 0 0 1 1.5-1.5h4.5" /></Svg>
-export const IcPencil = (p: P) => <Svg {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></Svg>
+/* 版本记录里那三枚：带杆的返回箭头、方框加号（添加到画布）、外指箭头（在画布中查看） */
+export const IcArrowL = (p: P) => <Svg {...p}><path d="M4 12h15" /><path d="M10 6l-6 6 6 6" /></Svg>
+export const IcPlusBox = (p: P) => <Svg {...p}>
+  <path d="M3 7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7Z" />
+  <path d="M12 8v8M16 12H8" />
+</Svg>
+export const IcOpenOut = (p: P) => <Svg {...p}>
+  <path d="M20 10V4h-6M20 4l-8 8" />
+  <path d="M11 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+</Svg>
+/** 局部修改的笔：笔身描边、笔尖那一小块实心 */
+export const IcPencil = (p: P) => <Svg {...p}>
+  <path d="M15.188 5.424c.424.045.762.24 1.031.445.284.217.589.525.902.838l.172.172c.313.313.621.618.838.902.234.307.455.705.455 1.219 0 .514-.221.911-.455 1.219-.217.284-.525.589-.838.902l-7.194 7.194c-.157.157-.36.373-.624.523-.264.149-.554.212-.77.266l-2.608.651c-.148.037-.369.096-.564.115-.207.02-.659.027-1.027-.342-.369-.369-.362-.821-.342-1.027.019-.195.077-.416.114-.564l.663-2.654c.054-.216.117-.506.266-.77.149-.264.366-.467.523-.624l7.194-7.194c.313-.313.618-.621.902-.838.307-.234.705-.455 1.219-.455l.188.01Z" />
+  <path d="M12.5 7.5l3-2 3 3-2 3-4-4Z" {...solid} />
+</Svg>
+/* ── 视频节点悬浮控制条 ── */
+/** 暂停：两根收圆的竖条，和 IcPlay 同一套实心画法，摆在一起才是同一枚开关的两面 */
+export const IcPause = ({ size = 16, color = '#fff', style, className }: P) => (
+  <SvgF size={size} color={color} style={style} className={className}>
+    <rect x="7.2" y="5" width="3.6" height="14" rx="1.7" />
+    <rect x="13.2" y="5" width="3.6" height="14" rx="1.7" />
+  </SvgF>
+)
+/** 静音：喇叭 + 一道划过去的斜杠，比「少画两道声波」更像一个被关掉的开关 */
+export const IcMute = (p: P) => <Svg {...p}>
+  <path d="M3.158 13.931a3.74 3.74 0 0 1 0-3.862c.218-.362.578-.616.993-.699l1.693-.339a.32.32 0 0 0 .258-.153l2.069-2.483c1.183-1.419 1.774-2.129 2.302-1.938.527.191.527 1.115.527 2.962v9.162c0 1.847 0 2.771-.528 2.962-.527.191-1.118-.519-2.301-1.938l-2.069-2.483a.32.32 0 0 0-.258-.153l-1.693-.339a1.66 1.66 0 0 1-.993-.699Z" />
+  <path d="M16 10l5 4M21 10l-5 4" />
+</Svg>
+/**
+ * 场记板：控制条右下角那枚菜单。里面摆的是剪辑、分镜、截帧 ——
+ * 一块场记板说的正是「对这条片子动手」，而不是某一件具体的事（相机说的是截帧，就把另外两件盖住了）。
+ * 顶板画成一条横的，斜杠在里面走：板子本身也斜着画，缩到 15px 就只剩一团歪的方块。
+ */
+export const IcClapper = (p: P) => <Svg {...p}>
+  <path d="M3 9.5h18V16c0 1.886 0 2.828-.586 3.414C19.828 20 18.886 20 17 20H7c-1.886 0-2.828 0-3.414-.586C3 18.828 3 17.886 3 16V9.5Z" />
+  <path d="M5.5 4h13A2.5 2.5 0 0 1 21 6.5v3H3v-3A2.5 2.5 0 0 1 5.5 4Z" />
+  <path d="M8.4 4 6.6 9.5M13.6 4l-1.8 5.5M18.8 4 17 9.5" />
+</Svg>
+/** 首帧 / 尾帧：一格画面靠着片头（片尾）那道边 —— 两枚镜像着画，一眼分得出取的是哪一头 */
+export const IcFirstFrame = (p: P) => <Svg {...p}>
+  <path d="M4 4.5v15" />
+  <rect x="8" y="5.5" width="12" height="13" rx="3" />
+</Svg>
+export const IcLastFrame = (p: P) => <Svg {...p}>
+  <rect x="4" y="5.5" width="12" height="13" rx="3" />
+  <path d="M20 4.5v15" />
+</Svg>
+
+/*
+ * 「全部版本」那一行筛选各自的图标 —— 四档说的是四件不同的事，光靠两个汉字分辨要读完才知道，
+ * 前面摆一枚图形，扫一眼就断得开。摄像机和笔直接复用上面那两枚（IcVideo / IcPencil）：
+ * 同一件事在这个产品里只该有一个长相。剩下两档这里补齐。
+ */
+/** 全部：四格铺满，格与格之间只留一道缝 —— 缝一宽就读成「四个按钮」，不是「全部」 */
+export const IcTiles = (p: P) => <Svg {...p}>
+  <rect x="3.2" y="3.2" width="8.2" height="8.2" rx="2.4" />
+  <rect x="12.6" y="3.2" width="8.2" height="8.2" rx="2.4" />
+  <rect x="3.2" y="12.6" width="8.2" height="8.2" rx="2.4" />
+  <rect x="12.6" y="12.6" width="8.2" height="8.2" rx="2.4" />
+</Svg>
+/** 延长：箭头一直推到尾巴那道竖线上 —— 「往后接一段」说的就是这个方向 */
+export const IcToEnd = (p: P) => <Svg {...p}>
+  <path d="M3.5 12h12.5" />
+  <path d="M11 6.8 16.2 12 11 17.2" />
+  <path d="M20 5v14" />
+</Svg>
+
+/* ── 模式球里的那一枚图标 ── */
+/*
+ * 这六枚只在模式球里用，和上面那套 24 格 / 线宽 2 的图标是两回事：
+ * 球最小的时候图标只有 15px 见方，照那套画法描出来是一团糊。
+ * 所以统一压到 1.7 的线宽、只留骨架（几条直线、一两个方框），
+ * 让人在 15px 上分得出「这是文字 / 这是两帧 / 这是笔」就够了 —— 细节留给悬浮出来的那行字。
+ */
+const ModeIc = ({ d, ...p }: P & { d: string }) => <Svg sw={1.7} {...p}><path d={d} /></Svg>
+/** 文生视频：一个「T」—— 从一段文字起头 */
+export const IcModeText = (p: P) => <ModeIc {...p} d="M4.8 6h14.4M12 6v12M9 18h6" />
+/** 首尾帧：两格画面，中间那道短横是要补的过渡 */
+export const IcModeFrames = (p: P) => <ModeIc {...p} d="M3 7.2h6v9.6H3zM15 7.2h6v9.6h-6zM10.2 12h3.6" />
+/** 参考图：一格画面加一点 —— 只有一张图在被参考 */
+export const IcModeRefImage = (p: P) => <Svg sw={1.7} {...p}>
+  <path d="M4.2 6h15.6v12H4.2z" /><path d="M4.2 15l4.2-3.6 3.6 3 2.4-1.8 5.4 4.2" />
+  <circle cx="8.4" cy="9.6" r="1.1" {...solid} />
+</Svg>
+/** 全能参考：两格画面叠着 —— 好几张图一起当参考 */
+export const IcModeRef = (p: P) => <ModeIc {...p} d="M3.6 9.6h12v9.6h-12zM7.8 6h12.6v9.6" />
+/** 编辑视频：一支笔 */
+export const IcModeEdit = (p: P) => <ModeIc {...p} d="M4.8 19.2l1.2-4.8 9.6-9.6 3.6 3.6-9.6 9.6zM13.2 7.2l3.6 3.6" />
+/** 延长视频：一段画面，后面接着往外走 */
+export const IcModeExtend = (p: P) => <ModeIc {...p} d="M3.6 8.4h9.6v7.2H3.6zM16.2 12h5.4M19.2 9l3 3-3 3" />

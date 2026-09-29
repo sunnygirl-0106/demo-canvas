@@ -16,7 +16,27 @@ import LeftDock from './LeftDock'
 import ZoomBar from './ZoomBar'
 import ContextMenu, { type MenuPos } from './ContextMenu'
 import AddNodeMenu from './AddNodeMenu'
-import { sceneShowcase, sceneWorkflow } from '../demo/scenes'
+import { sceneShowcase, sceneWired, sceneWorkflow } from '../demo/scenes'
+
+/**
+ * 把画布缩放比（--z）和标签系数（--zk）写进 CSS。单拎成一个不渲染任何东西的小组件 ——
+ * 缩放是每帧都在变的量，让它只惊动这一个组件，摆在 Canvas 里会把整棵节点树一起重画。
+ *
+ * --zk 就是下面这一行：缩小时恒为 1（标签跟着画面缩），放大过 100% 之后按 1/√z 跟随 ——
+ * 画面翻一倍，名字和那几枚开关在屏幕上长大 1.41 倍而不是原地不动。理由见 tokens.css 的那一段。
+ * 想调跟随的松紧只动 FOLLOW：0 是一路封死（放大时标签在屏幕上恒定），1 是完全不封（标签跟画面等比长大）。
+ */
+const FOLLOW = 0.5
+
+function ZoomVar() {
+  const zoom = useStore((s) => s.transform[2])
+  useEffect(() => {
+    const css = document.documentElement.style
+    css.setProperty('--z', String(zoom))
+    css.setProperty('--zk', String(Math.max(1, zoom) ** (FOLLOW - 1)))
+  }, [zoom])
+  return null
+}
 
 const nodeTypes: NodeTypes = { text: TextNode, image: ImageNode, video: VideoNode }
 const edgeTypes: EdgeTypes = { dashed: DashedEdge }
@@ -136,8 +156,9 @@ export default function Canvas() {
         onPaneClick={() => { setMenu(null); setAddMenu(null) }}
         connectOnClick={false}
       >
+        <ZoomVar />
         {/* 底色交给 .react-flow 那层径向渐变，这里只画点阵：1px 的点、26px 一格 */}
-        <Background variant={BackgroundVariant.Dots} gap={26} size={1} color="var(--dot)" />
+        <Background variant={BackgroundVariant.Dots} gap={45} size={2} color="var(--dot)" />
       </ReactFlow>
 
       {/* 连线箭头 */}
@@ -149,7 +170,9 @@ export default function Canvas() {
         </defs>
       </svg>
 
-      <TopBar onShowcase={() => showScene(sceneShowcase)} onDemo={() => showScene(sceneWorkflow)} />
+      <TopBar onShowcase={() => showScene(sceneShowcase)}
+        onWired={(key) => showScene(() => sceneWired(key))}
+        onWorkflow={() => showScene(sceneWorkflow)} />
       <LeftDock onAdd={(e) => { setMenu(null); setAddMenu(posAt(e.clientX + 8, e.clientY)) }} />
       <ZoomBar />
 

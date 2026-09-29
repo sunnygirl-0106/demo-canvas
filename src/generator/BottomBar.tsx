@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { IcSparkle, IcSend } from '../ui/icons'
+import { IcGem } from '../ui/icons'
 import { useTip } from './useTip'
 interface Props { left: ReactNode; cost?: number; busy?: boolean; disabled?: boolean; reason?: string; onSend: () => void }
 export default function BottomBar({ left, cost, busy, disabled, reason, onSend }: Props) {
@@ -11,10 +11,11 @@ export default function BottomBar({ left, cost, busy, disabled, reason, onSend }
    */
   const { tip, node: tipNode } = useTip()
   return <div className="gp-bot nodrag"><div className="gp-botL">{left}</div><div className="gp-botR">
-    {cost != null && <span className="gp-cost" title="演示估算，不实际扣费">
-      <IcSparkle size={18} color="var(--ink)" /><span>星钻</span><b>{cost}</b></span>}
+    {/* 先数目、后单位：这一格要读的是那个数，「星钻」两个字只是它的量词 */}
+    {cost != null && <span className="gp-cost" title="演示估算，不扣费">
+      <IcGem size={17} /><b>{cost}</b><span>星钻</span></span>}
     <button className={`gp-send${busy ? ' busy' : ''}`} aria-disabled={off} {...tip(off ? label : undefined)}
       onClick={() => { if (!off) onSend() }} aria-label={label}>
-      {busy ? <span className="spin" /> : <span className="gp-send-ic"><IcSend size={27} sw={1.4} /></span>}
+      {busy && <span className="spin" />}{busy ? '生成中' : '生成'}
     </button>{tipNode}</div></div>
 }

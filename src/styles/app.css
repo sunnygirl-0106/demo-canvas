@@ -24,7 +24,18 @@ input,textarea{font:inherit;color:inherit}
 .react-flow{background:radial-gradient(ellipse at 50% 50%,
   var(--canvas-core) 0%, var(--canvas-mid) 48%, var(--bg) 100%)}
 .react-flow__node{font-family:var(--font)}
-.react-flow__handle{border:0;background:none;width:22px;height:22px;min-width:22px;min-height:22px}
+/*
+ * handle 本体是**连线的锚点**，不是那枚能点的圆（见 .h-plus）—— 把它的框**摆成和那枚圆一样**
+ * （26×26、离节点边 6px；left/right:-19px 是被 react-flow 的 translate(±50%) 拉回半格后的写法）。
+ * react-flow 的左右 handle 取的是框的左 / 右沿当端点，于是连线正好停在圆的外沿上：
+ * 箭头尖顶着圆、不被圆拦腰切掉，出去的那条也是从圆的边上起笔，而不是从圆肚子里钻出来。
+ * 圆没画出来时（节点未选中）线也停在同一处 —— 端点不跟着选中态跳。
+ *
+ * pointer-events 全让给圆：看得见的只有那枚圆，
+ * 不能让节点边上一道看不见的带子把点击吃掉（节点就选不中了）。
+ */
+.react-flow__handle{border:0;background:none;width:26px;height:26px;min-width:26px;min-height:26px;
+  pointer-events:none}
 .react-flow__handle:after{display:none}
 .rf-edgepath{animation:gp-flow 3.4s linear infinite}
 .react-flow__edge.selected .rf-edgepath{stroke-width:2.4}
@@ -67,6 +78,20 @@ input,textarea{font:inherit;color:inherit}
 .tb-demo{height:24px;padding:0 10px;border-radius:var(--r-pill);border:1px solid var(--line-2);
   color:var(--ink-3);font-size:12px;transition:border-color .2s,color .2s}
 .tb-demo:hover{border-color:var(--teal-soft);color:var(--teal)}
+.tb-demo[aria-expanded="true"]{border-color:var(--teal-soft);color:var(--teal)}
+/* 连线示例菜单：每一项三行 —— 标题、状态机上应当落到哪、?scene 的键。浮层用和右键菜单同一套皮 */
+.tb-wrap{position:relative;display:flex}
+.tb-menu{position:absolute;top:32px;right:0;z-index:60;width:332px;max-height:68vh;overflow-y:auto;
+  padding:6px;border-radius:16px;background:var(--surface-3);border:1px solid var(--line-2);
+  box-shadow:var(--pop);display:flex;flex-direction:column;gap:2px;text-align:left;
+  animation:gp-pop .18s var(--ease-soft) both}
+.tb-menu button{display:block;width:100%;padding:9px 11px;border-radius:10px;text-align:left;
+  background:none;border:0;cursor:pointer;transition:background .15s}
+.tb-menu button:hover{background:var(--fill-2)}
+.tb-menu b{display:block;font-size:13px;font-weight:600;color:var(--ink)}
+.tb-menu i{display:block;margin-top:3px;font-size:11.5px;line-height:1.55;color:var(--ink-2);font-style:normal}
+.tb-menu code{display:block;margin-top:4px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
+.tb-menu .tb-menu-last{margin-top:5px;padding-top:11px;border-top:1px solid var(--line-2);border-radius:0 0 10px 10px}
 
 /* ═══ 左侧工具条 ═══════════════════════════════════════════ */
 .dock{position:absolute;left:18px;top:64px;width:46px;padding:6px;z-index:11;
@@ -121,32 +146,53 @@ input,textarea{font:inherit;color:inherit}
 /* ═══ 节点 ═════════════════════════════════════════════════ */
 /* 宽度由节点自己的 style 说了算：专注态要在同一个节点里摆下画面 + 控件，比别的宽一截 */
 .nd{width:100%;position:relative}
-.nd-head{position:absolute;left:2px;right:2px;top:-24px;height:22px;display:flex;align-items:center;gap:6px;
-  color:var(--ink-2);font-size:12px}
 /*
- * 标题栏左边这枚图标只说「这是个视频 / 图片节点」—— 是名字的一部分，跟着名字用白。
+ * 标题栏的尺寸写在画布坐标里（12px 是节点自己那套坐标里的 12px，不是屏幕上的），
+ * 再乘一个跟随系数 --zk：缩小时它和画面一起缩，占画面多大一块不变；
+ * 放大过 100% 之后只跟一半（1/√z）—— 画面翻一倍，名字在屏幕上长大 1.41 倍：
+ * 一路封死会让一块两倍大的画面配一行还是 12px 的名字，名字小得像没跟上来。
+ * 这一行里其余尺寸（行高、间距、图标、输入框）一律用 em 说话，跟着这个字号一起走。
+ */
+.nd-head{position:absolute;left:.17em;right:.17em;bottom:100%;margin-bottom:.2em;height:1.85em;
+  display:flex;align-items:flex-end;justify-content:space-between;color:var(--ink-2);
+  font-size:calc(12px * var(--zk))}
+.nd-label{display:flex;align-items:center;gap:.5em;min-width:0}
+/* 图标按字号走：它是名字的一部分，名字多大它多大 */
+.nd-label svg{width:1.08em;height:1.08em}
+/*
+ * 标题栏左边这枚图标只说「这是个视频 / 图片节点」—— 是名字的一部分，跟着名字同一档灰。
  * 着青就成了一整张画布上十几处闪青点，青色该留给「这儿正在发生什么」。
  */
-.nd-head .ic{color:var(--ink);display:flex}
-.nd-name{font-weight:600;color:var(--ink);letter-spacing:.04em;max-width:200px;overflow:hidden;
+.nd-head .ic{color:var(--ink-1);display:flex}
+/*
+ * 名字是一句称呼，不是一句强调：细体、比正文再退一档的灰。
+ * 一屏十来个节点，名字要是又粗又白，先看见的就是一排标签而不是那些画面。
+ */
+.nd-name{font-weight:400;color:var(--ink-1);letter-spacing:.04em;max-width:16.7em;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
-.nd-name input{width:150px;background:var(--fill);border:1px solid var(--teal-soft);border-radius:5px;
-  padding:1px 5px;font-size:12px;letter-spacing:normal;outline:none}
-.nd-head .act{margin-left:auto;color:var(--ink-2);display:flex;padding:4px;border-radius:8px;
+.nd-name input{width:12.5em;background:var(--fill);border:1px solid var(--teal-soft);border-radius:.42em;
+  padding:.08em .42em;font-size:1em;letter-spacing:normal;outline:none}
+.nd-head .act{color:var(--ink-2);display:flex;padding:.33em;border-radius:.67em;
   transition:background .2s,color .2s,transform .2s}
-.nd-head .act:hover{color:var(--ink);background:var(--fill-2);transform:translateY(-1px)}
+.nd-head .act svg{width:1.08em;height:1.08em}
+.nd-head .act:hover{color:var(--ink);background:var(--fill-2);transform:translateY(-.08em)}
 .nd-body{height:200px;border-radius:var(--r-node);background:linear-gradient(180deg,#171919,#121414);
   border:1px solid var(--line-2);overflow:hidden;position:relative;display:flex;align-items:center;
   justify-content:center;transition:border-color .22s,box-shadow .22s}
 /*
- * 选中只是「现在在说的是它」，不是一件正在发生的事：一圈微白的边就够。
+ * 选中只是「现在在说的是它」，不是一件正在发生的事：一圈白边就够。
  * 着上青色等于让画布上随手一点就亮起强调色 —— 那一档留给真正在进行的那些（专注态、标记、当前模式）。
+ *
+ * 但这圈边得**明显**：左右两枚 ⊕ 只在选中时出现，边不亮，那两枚圆就成了凭空飘在旁边的东西。
+ * 一道到位的白边（.55）比原先「淡边 + 再套一圈」更干净 —— 两圈描边读起来是个厚壳，不是「被选中」。
  */
-.nd.sel .nd-body{border-color:rgba(255,255,255,.34);box-shadow:0 0 0 1px rgba(255,255,255,.16)}
-/* 悬浮只是一声招呼，比选中再淡一档：一条细的、淡的白边，不再套第二圈描边 */
-.nd.hl .nd-body{border-color:rgba(255,255,255,.22);box-shadow:0 6px 20px rgba(0,0,0,.45)}
+.nd.sel .nd-body{border-color:rgba(255,255,255,.55)}
+/* 悬浮只是一声招呼，比选中再淡一档：一条细的、淡的白边，不再套第二圈描边。
+   :not(.sel) 是必须的 —— 选中的节点被鼠标扫过时还带着 hl，这条写在后面会把它那圈亮边压回去 */
+.nd.hl:not(.sel) .nd-body{border-color:rgba(255,255,255,.22)}
+.nd.hl .nd-body{box-shadow:0 6px 20px rgba(0,0,0,.45)}
 .nd.dim{opacity:.35}
-.nd-ph{width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid var(--line);
+.nd-ph{width:72px;height:72px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid var(--line);
   display:flex;align-items:center;justify-content:center;color:var(--ink-2);
   animation:gp-float 6s ease-in-out infinite}
 .nd-img{width:100%;height:100%;object-fit:cover;display:block}
@@ -160,13 +206,83 @@ input,textarea{font:inherit;color:inherit}
  */
 .nd[data-kind=video]:not(.focus) .nd-body{height:auto;aspect-ratio:9/16}
 .nd[data-kind=video]:not(.focus) .nd-vid{object-fit:cover;background:var(--sunk)}
-.nd-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.nd-play span{width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,.5);
-  border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(2px);
-  display:flex;align-items:center;justify-content:center;padding-left:3px;transition:transform .25s,background .25s}
-.nd-play:hover span{transform:scale(1.08);background:rgba(0,0,0,.8)}
-.nd-corner{position:absolute;left:8px;top:8px;width:22px;height:22px;border-radius:7px;background:rgba(0,0,0,.6);
-  display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer}
+/*
+ * 全屏键落在画面右上角 —— 和版本卡片上那枚放大镜同一个角，「把这一幅看大」在哪儿点是一回事。
+ * 静止态不摆：鼠标一压上来这段视频就开始放，画面上那几件小功能也同时浮出来，
+ * 一屏缩略图于是是一屏画面，不是一屏按钮。键盘走到它身上（focus-visible）也照样露出来。
+ */
+/*
+ * 画面上这几件控件和标题同一套规矩（见 --zk）：缩小时跟着画面缩，放大过 100% 之后只跟一半 ——
+ * 一段视频先是画面，才是几枚开关，画面放大时它们该往角落里退，但不是原地不动：
+ * 在 200% 那一档，一条封死的控制条压在两倍大的画面上，小得像是掉进了画里。
+ * 也别做成屏幕上恒定大小（1/z 一路到底）：试过一次，缩到 60% 以下时
+ * 一条原尺寸控制条压在 117px 宽的竖片上，右边两枚直接被挤出了节点。
+ */
+.nd-corner{position:absolute;right:.64em;top:.64em;width:1.73em;height:1.73em;border-radius:.55em;
+  font-size:calc(11px * var(--zk));
+  background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer;
+  opacity:0;transition:opacity .18s,background .2s}
+.nd-corner svg{width:1em;height:1em}
+.nd-shot:hover .nd-corner,.nd-corner:focus-visible{opacity:1}
+.nd-corner:hover{background:rgba(0,0,0,.8)}
+/*
+ * 悬浮控制条：压在画面底边的一条，鼠标进节点才浮出来。
+ * 底下垫一道从透明到黑的渐变，不是一整条实色横杠 ——
+ * 一条实色的底会把画面下缘齐齐切掉一截，渐变只是把那几个字垫住，画面还是完整的。
+ * 菜单开着（.on）或键盘走到里面（focus-within）时一直留着：
+ * 那会儿鼠标可能已经挪到浮层上去了，一收，用户正在用的东西就没了。
+ */
+/* 整条的尺寸由这一个字号派生（往下全用 em）：要整条大一点小一点，只改 11px 这一个数 */
+.vhud{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;align-items:center;gap:.5em;
+  font-size:calc(11px * var(--zk));padding:1.4em .55em .55em;color:#fff;opacity:0;transition:opacity .18s;
+  background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.34) 38%,rgba(0,0,0,.66))}
+.nd-shot:hover .vhud,.vhud.on,.vhud:focus-within{opacity:1}
+.vhud-key,.vhud-more{display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;
+  color:#fff;border-radius:.54em;transition:background .18s,color .18s,transform .18s}
+.vhud-key{width:1.55em;height:1.55em}
+.vhud-key:hover{background:rgba(255,255,255,.18)}
+.vhud svg{width:1.15em;height:1.15em}
+/* 时间码压在画面上，比灰底上的标签多留半档字重才看得清（见 tokens.css 的 --num 那一段） */
+.vhud .t{flex:none;font-family:var(--num);font-size:.85em;font-weight:500;font-variant-numeric:tabular-nums;
+  color:rgba(255,255,255,.94);text-shadow:0 1px 2px rgba(0,0,0,.5)}
+/*
+ * 进度条：细的一条，但能按的是整条一行高的区域 ——
+ * 三个像素高的线要用鼠标去戳，戳十次有三次落空。
+ */
+.vhud-bar{flex:1;min-width:1.5em;height:1.1em;display:flex;align-items:center;cursor:pointer;
+  touch-action:none;outline:none}
+.vhud-bar i{position:relative;display:block;width:100%;height:.23em;border-radius:.12em;
+  background:rgba(255,255,255,.32)}
+.vhud-bar b{position:absolute;left:0;top:0;bottom:0;border-radius:.12em;background:#fff}
+/* 走到哪儿的那颗点长在已播那一段的头上：它就是「现在在这儿」，不是轨道上另摆的一件东西 */
+.vhud-bar b::after{content:'';position:absolute;right:-.38em;top:-.27em;width:.77em;height:.77em;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.55);transition:transform .16s var(--ease-bounce)}
+.vhud-bar:hover b::after,.vhud-bar:focus-visible b::after{transform:scale(1.25)}
+.vhud-bar:focus-visible i{box-shadow:0 0 0 2px var(--teal-ring)}
+/*
+ * 菜单那枚静止态不镶底，就一枚裸图标：这条控制条上其余几件也都是裸的，
+ * 唯独它套一块毛玻璃底，看着像条上多摆了一颗按钮。压在画面上读不读得清交给投影 ——
+ * 一道贴着轮廓的黑影，亮画面上也描得出那几笔，比一整块底安静得多。
+ * 鼠标压上来才浮出那块底：那时它确实是「正要被按的一件东西」。
+ */
+.vhud-more{width:1.55em;height:1.55em;border-radius:.54em;background:none;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
+.vhud-more:hover{background:rgba(255,255,255,.3);filter:none;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.vhud-more[aria-expanded=true]{background:#fff;color:#111;filter:none}
+/*
+ * 控制条上那枚菜单。走浮层（Overlay）而不是画面里的绝对定位：
+ * 节点体是 overflow:hidden 的，一段横片只有 200px 高，五条菜单在里面要被切掉大半截。
+ */
+.overlay.vhud-menu{padding:5px;border-radius:14px;min-width:132px;overflow:visible}
+.vhud-menu button{display:flex;align-items:center;gap:9px;width:100%;height:32px;padding:0 10px;
+  border-radius:9px;font-size:12.5px;color:var(--ink);cursor:pointer;transition:background .16s}
+.vhud-menu button:hover{background:var(--fill-2)}
+.vhud-menu button[aria-disabled=true]{color:var(--ink-3);cursor:default}
+.vhud-menu button[aria-disabled=true]:hover{background:none}
+/* 前两件把人带进另一种状态，后三件是就地取一张图：靠一条细线分开，不靠间距猜 */
+.vhud-menu .sep{display:block;height:1px;background:var(--line);margin:4px 8px}
+
 /* 画面自己占一格：普通节点填满那 200px，专注态按 16:9 摊开，下面留给控件 */
 .nd-shot{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 /* 专注态节点体不再是固定高的一块画面：上半截是画面，下半截是各自的那条轴 */
@@ -178,9 +294,10 @@ input,textarea{font:inherit;color:inherit}
  * 专注态节点：这段时间里用户唯一在看的那块屏，所以它不套普通节点那层渐变底，
  * 而是一块纯黑的屏加一圈青边 —— 画面是主角，节点体只是它的边框。
  */
-.nd.focus .nd-head{top:-30px;height:26px;gap:8px}
-.nd.focus .nd-name{font-weight:500;color:#dce3e2;letter-spacing:0;max-width:340px}
-.nd.focus .nd-body{height:auto;border-radius:14px;background:#0e1010;border-color:rgba(127,227,203,.3);
+.nd.focus .nd-head{height:2.17em;margin-bottom:.33em}
+.nd.focus .nd-label{gap:.67em}
+.nd.focus .nd-name{font-weight:400;color:var(--ink-1);letter-spacing:0;max-width:28em}
+.nd.focus .nd-body{height:auto;border-radius:var(--r-node);background:#0e1010;border-color:rgba(127,227,203,.3);
   box-shadow:0 26px 64px -32px #000;animation:nd-popin .22s ease-out both}
 .nd.focus.sel .nd-body{border-color:rgba(127,227,203,.3);box-shadow:0 26px 64px -32px #000}
 /*
@@ -189,7 +306,7 @@ input,textarea{font:inherit;color:inherit}
  * 浅一档的青说明「这会儿有事正在发生」；那枚图标自己小幅地动，
  * 一句静止的字说的是「现在是编辑态」，一枚在动的图标说的才是「正在编辑」。
  */
-.nd-op{display:flex;align-items:center;gap:5px;flex:none;font-size:11px;color:var(--teal-pale);
+.nd-op{display:flex;align-items:center;gap:.45em;flex:none;font-size:.92em;color:var(--teal-pale);
   /*
    * 笔是青的、写出来的那道线是白的：同色摆在一起，笔杆和它刚写下的那道痕会糊成一团。
    * 那道痕半透明：墨落在纸上总比笔尖里浅；一句「正在编辑」的状态，也不该比旁边的正文还响。
@@ -255,9 +372,17 @@ input,textarea{font:inherit;color:inherit}
   83%{transform:translateY(-2.6px)}
 }
 .nd-head .nd-op{margin-left:auto}
-.nd-wm{position:absolute;right:9px;bottom:8px;font-size:11px;color:rgba(255,255,255,.5);letter-spacing:.4px}
-.nd-preview{position:absolute;right:8px;bottom:8px;height:22px;padding:0 9px;border-radius:var(--r-pill);
-  background:rgba(0,0,0,.6);color:var(--ink);font-size:11px;display:flex;align-items:center;gap:4px}
+.nd-op svg{width:1.27em;height:1.27em}
+/*
+ * 压在画面上的这几件跟着画面走，不做恒定大小 —— 它们是盖在这幅画上的一层，
+ * 画缩小了它们还那么大，一张缩略图就被自己的角标糊住了。恒定的是节点名那一行（.nd-head）。
+ */
+.nd-wm{position:absolute;right:.82em;bottom:.73em;font-size:calc(11px * var(--zk));
+  color:rgba(255,255,255,.5);letter-spacing:.4px}
+.nd-preview{position:absolute;right:.73em;bottom:.73em;height:2em;padding:0 .82em;border-radius:var(--r-pill);
+  background:rgba(0,0,0,.6);color:var(--ink);font-size:calc(11px * var(--zk));
+  display:flex;align-items:center;gap:.36em}
+.nd-preview svg{width:1.09em;height:1.09em}
 .nd-text{position:absolute;inset:0;padding:14px 16px;font-size:13px;line-height:1.65;color:var(--ink-1);
   white-space:pre-wrap;overflow:auto}
 .nd-text.ph{color:var(--ink-3)}
@@ -268,29 +393,140 @@ input,textarea{font:inherit;color:inherit}
 .nd-busy{position:absolute;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;
   gap:8px;font-size:12px;color:var(--ink-2)}
 
-/* ⊕ handle */
-.h-plus{width:24px;height:24px;border-radius:50%;background:var(--sunk);border:1px solid var(--line-dash);
-  display:flex;align-items:center;justify-content:center;color:var(--ink-2);
-  transition:border-color .2s,color .2s,transform .2s}
-.react-flow__handle:hover .h-plus,.h-plus:hover{border-color:var(--teal-soft);color:var(--teal);transform:scale(1.08)}
-.react-flow__handle-left .h-plus{color:var(--teal)}
-.react-flow__handle-left{left:-13px}
-.react-flow__handle-right{right:-13px}
+/*
+ * ⊕ ——「从这儿接下一段」。只在节点被选中时露出来（渲染由 NodeShell 管）。
+ *
+ * 静止的画布上每个节点左右各挂一枚，一屏就是几十枚小圆在同时喊「点我」，
+ * 于是哪一枚都不像在说话。选中才出现，画面上就只有「现在在说的这一个」带着它的两个出口。
+ *
+ * 出现时自己会呼吸（.h-plus-wave）：一圈白边从圆的边线上向外荡出去，3.6s 一轮 ——
+ * 比心跳慢得多，是「这儿能点」的一句提示，不是催促。原先要把鼠标移上去才知道这儿有东西。
+ * 波纹是圆下面的一层、比圆先画，所以荡到圆身上的那一瞬间是被圆盖住的，看着才像从边线上长出来。
+ * 左右两枚同步（不给 delay）：它们是一对出口，错开半拍就成了两件各自在动的东西。
+ *
+ * 位置：离节点边 6px —— 和 handle 框严丝合缝（见上），所以这儿只要 inset:0。
+ * 圆自己接事件，按下 / 点击照样冒泡到外面的 handle 上 —— 拖出去还是连线。
+ */
+.h-plus{position:absolute;inset:0;pointer-events:auto;cursor:pointer;animation:plus-in .25s ease-out}
+.h-plus-wave{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  border:1px solid rgba(255,255,255,.45);animation:plus-ripple 3.6s ease-out infinite}
+.h-plus-btn{position:absolute;inset:0;border-radius:50%;background:rgba(22,23,25,.8);
+  border:1px solid rgba(255,255,255,.16);color:rgba(255,255,255,.72);
+  display:flex;align-items:center;justify-content:center;transition:border-color .25s,color .25s}
+.h-plus:hover .h-plus-btn{border-color:rgba(255,255,255,.4);color:#fff}
+/*
+ * 这一侧真接着一条线时，圆就穿上那条线的颜色 —— 不然是一根青线顶着一枚发白的灰圆，
+ * 两种材质撞在一起。取 --teal-pale / --teal-dash 这一档（同色相、压掉三成饱和）：
+ * 它是「这条线停在这儿」，不是「这儿正在出东西」，不该和满色的 --teal 一样响。
+ */
+.h-plus.linked .h-plus-btn{border-color:var(--teal-dash);color:var(--teal-pale)}
+.h-plus.linked .h-plus-wave{border-color:var(--teal-ring)}
+.h-plus.linked:hover .h-plus-btn{border-color:var(--teal-soft);color:var(--teal)}
+@keyframes plus-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+@keyframes plus-ripple{0%{transform:scale(1);opacity:.28}100%{transform:scale(1.6);opacity:0}}
+/* 一圈不停荡的波纹正是这档设置要关掉的东西：留下那枚圆，去掉动 */
+@media (prefers-reduced-motion:reduce){
+  .h-plus{animation:none}
+  .h-plus-wave{display:none}
+}
+.react-flow__handle-left{left:-19px}
+.react-flow__handle-right{right:-19px}
 
 /*
  * 节点上方浮动工具栏。四件事一样重、都是未点击态 —— 没有哪一件已经选中，
  * 一条竖线把「能把人带走的两件」和「顺手的两件」分开，每两个之间都插一条线，那条线就什么都没说了。
  */
-.vtool{display:flex;align-items:center;gap:4px;padding:5px;border-radius:13px;white-space:nowrap;
-  background:rgba(22,24,24,.92);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(18px);
-  box-shadow:0 18px 40px -18px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
-.vtool button,.vtool a{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:9px;
-  font-size:13.5px;color:#aeb6b5;text-decoration:none;transition:background .2s,color .2s}
-.vtool button:hover,.vtool a:hover{background:rgba(255,255,255,.05);color:#edf1f0}
+/*
+ * 节点上方那排工具栏，照「Untitled / 87:577」那版做。
+ *
+ * 外面那圈不是单色描边，是一道**渐变**描边：上沿亮（32% 白）、腰上暗（7%）、下沿回一点（18%）——
+ * 一圈均匀的白边会把这块浮层读成一张贴纸，上亮下暗才像有个厚度、被上方的光照着。
+ * border 画不出渐变，所以用外层的 padding 垫出这圈，渐变铺在外层上；
+ * 上下只垫 0.8、左右垫 1.27 —— 胶囊的两头是半圆，那儿的描边本来就比腰上看着厚。
+ *
+ * 圆角是 999 而不是某个具体值：这条和里面亮起来的那一枚都是**整枚胶囊**，
+ * 写死一个半径，高度一动（字号、内边距）两头就从半圆变成圆角矩形。
+ */
+/* inline-flex 不是排版口味：这层是后加的块级外壳，不收窄就会被父容器撑满，
+   胶囊两头跟着拉到画布边上去 —— 原先 .vtool 自己在最外面时是 flex，本来就是贴着内容的。 */
+.vtool-ring{display:inline-flex;padding:.8px 1.27px;border-radius:999px;
+  background:linear-gradient(177.5deg,rgba(255,255,255,.32) 8.5%,rgba(255,255,255,.07) 46%,rgba(255,255,255,.18) 91.5%);
+  box-shadow:0 17px 51px rgba(0,0,0,.85),0 2px 8px rgba(0,0,0,.5)}
+.vtool{display:flex;align-items:center;gap:3.4px;padding:4.2px;border-radius:999px;white-space:nowrap;
+  background:linear-gradient(177.6deg,rgba(26,28,34,.93) 8.5%,rgba(18,20,24,.96) 91.5%);
+  backdrop-filter:blur(51px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.15),inset 0 -1px 0 rgba(0,0,0,.3)}
+/*
+ * 按钮高 32.5 = 容器 41 减掉上下那 4.2 的内边距。稿子在这三枚普通按钮上还写着 40.629，
+ * 那是上一版容器 49 高时留下的旧值 —— 这一版只改了亮起来的那一枚（34）。
+ * 按 41 − 8.4 反算才和量出来的一致：亮块实测 33 高，两头各离容器边 4。
+ * 圆角同样是胶囊：稿子给普通按钮写的 13.5 也是旧值，而它们在稿子里没有底、看不出来；
+ * 真正看得出来的是 hover —— 那块底该是「亮起来那一枚的预演」，形状得是同一个。
+ */
+.vtool button,.vtool a{position:relative;display:flex;align-items:center;gap:7.6px;
+  height:32.5px;padding:0 13.5px;border-radius:999px;
+  font-size:12.7px;font-weight:500;letter-spacing:.08px;color:rgba(255,255,255,.72);
+  text-decoration:none;transition:background .2s,color .2s,box-shadow .2s,transform .3s var(--ease-bounce)}
+/*
+ * 图标给 19 而不是稿子上那个 16.7 的盒子：两边数的不是同一样东西。
+ * 稿子里那些图标墨迹填满自己盒子的 ~84%（16.7 的盒子出 14 的墨）；
+ * 这套 Lets Icons 的约定是墨走 3–21、占盒子 75%，盒子给 17 只能出 12.75 的墨 ——
+ * 照着盒子对齐，落到屏幕上的图标就比稿子小了一圈。按墨迹反算，盒子该是 19。
+ *
+ * 那 1.5 的横向 margin 也不是「看着舒服」加的：稿子里每个图标都装在一个 22 的方格里，
+ * 方格不画出来，但它占着位。19 的盒子两边各补 1.5 正好凑满 22 ——
+ * 少了这两下，四个按钮各窄 3px，整条比稿子短一截、图标也贴着自己那侧的内边距。
+ * 不能改成给 svg 一个 22 的宽度：svg 会跟着 CSS 宽度整枚放大，墨迹就从 14 涨到 16.5。
+ */
+.vtool button>svg,.vtool a>svg{flex:none;margin:0 1.5px;opacity:.7;transition:opacity .2s}
+/*
+ * 亮起来的那一枚 —— hover 和「正开着」用的是同一套，不是两档深浅。
+ *
+ * 亮的条件之一是它自己那件事正开着：版本记录气泡在屏幕上的时候（aria-expanded）。
+ * 稿子里亮的就是这一枚，而这排四件事一进来都没有选中态 ——
+ * 这样「稿子里那个样子」和「代码里那个状态」说的是同一件事，不用再造一个假的选中。
+ *
+ * 灰掉的那些排除在外：底和亮着的一样，只是整枚压到 40% 不透明，
+ * 读起来像「亮了但没亮透」，反倒像是能点的。灰掉就该在鼠标底下毫无反应。
+ */
+.vtool button:not([aria-disabled=true]):hover,.vtool a:hover,
+.vtool button[aria-expanded=true]{color:rgba(255,255,255,.97);
+  background:linear-gradient(173.7deg,rgba(255,255,255,.17) 8.5%,rgba(255,255,255,.07) 91.5%);
+  box-shadow:0 2px 13.5px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.24)}
+/*
+ * 亮块不是「唰」地贴上去，是软软地涨出来的：从贴着原尺寸起步，越过去一点点，再落回 scale(1)。
+ * 只过冲这一次、不来回荡 —— 荡两趟是玩具的弹，这排按钮是工具，那股劲儿要收在「有回应」为止。
+ * 静止那一帧回到 scale(1)：鼠标停在上面时这一排还是原来的尺寸，不会有一枚常驻放大的按钮把整条撑歪；
+ * 鼠标移开时动画随规则一起消失，而它的收尾值和静止值相同，所以不会跳回去。
+ */
+@keyframes vtool-boing{
+  0%  {transform:scale(.975)}
+  46% {transform:scale(1.032)}
+  100%{transform:scale(1)}
+}
+.vtool button:not([aria-disabled=true]):not([aria-expanded=true]):hover,
+.vtool a:hover{animation:vtool-boing .34s var(--ease-soft) both}
+/* 按下去那一下轻轻一沉就够，弹回来的那一点留给松手之后 */
+.vtool button:not([aria-disabled=true]):active,.vtool a:active{
+  animation:none;transform:scale(.975);transition:transform .1s var(--ease-soft)}
+@media (prefers-reduced-motion:reduce){
+  .vtool button,.vtool a,.vtool button:active,.vtool a:active{animation:none;transform:none}
+}
+.vtool button:not([aria-disabled=true]):hover>svg,.vtool a:hover>svg,
+.vtool button[aria-expanded=true]>svg{opacity:.95}
+/*
+ * 宽出来的这一圈**只给真正开着的那一枚**，hover 不动内边距。
+ * 19 是稿子里量得出来的：整块 142 宽 = 19×2 + 图标 22 + 7.6 + 标签 50.8 + 7.6 + 版本数 15.2，
+ * 比旁边那三枚的 13.5 宽一截，那一圈是它「浮在这条上面」的由来。
+ * 但 hover 要是也跟着变宽，鼠标扫过去整条就会左右抽动 ——
+ * 一个悬浮态把它后面所有按钮都推走，代价比多出来那 11px 的观感大得多。
+ */
+.vtool button[aria-expanded=true]{padding:0 19px}
 /* 版本数是这枚入口带着的一个数，不是它名字的一部分：给它一块自己的底 */
-.vtool button>b{font-size:11px;font-weight:600;color:#8e9797;background:rgba(255,255,255,.07);
-  border-radius:5px;padding:1px 5px}
-.vtool .sep{width:1px;height:20px;background:rgba(255,255,255,.09);margin:0 4px}
+.vtool button>b{flex:none;display:flex;align-items:center;justify-content:center;
+  min-width:15px;height:15px;padding:0 3px;border-radius:5px;
+  font:700 8.5px/1 var(--num);font-variant-numeric:tabular-nums;color:rgba(255,255,255,.82);
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.14)}
 
 
 /* ═══ 生成器面板 ═══════════════════════════════════════════ */
@@ -300,35 +536,214 @@ button:disabled{opacity:.4;cursor:not-allowed}
  * 面板永远长在节点下面，所以它的高度上限要给节点自己留出那一截 ——
  * 顶到 100dvh 就等于逼着镜头把节点推出画外，而这块面板说的正是那个节点。
  */
+/*
+ * 面板外壳。和节点上方那条工具栏是同一族：渐变描边 + 渐变底 + 上下内亮线，
+ * 只是这块大得多，所以亮的那一段要压在最上面几个百分点里 ——
+ * 工具栏 43px 高，.32 的白从头铺到尾也就一道边；同样的铺法摊在四百多像素上，
+ * 整个上半截会泛白，读成一块打了柔光的塑料板。
+ *
+ * 描边用「两层背景 + 透明 border」的办法画（padding-box 装底、border-box 装描边）：
+ * border 本身画不出渐变，而这块不像工具栏那样能随手包一层外壳 ——
+ * .gp 上挂着 overflow:auto 和 sticky 的底栏，多包一层会把这两样都挪到错的元素上。
+ *
+ * 底色从 #1a1d1d 收到 #121414（原来是一色 #151717）：顶上亮半档、底下暗半档，
+ * 这块板才像是被上方的光照着，而不是自己在发光。色相仍走项目这套偏青的中性灰 ——
+ * 工具栏那份是照设计稿的偏蓝值来的，两者本来就有一点色差，不必把面板也拽过去。
+ */
 .gp{width:min(840px,calc(100vw - 24px));max-height:calc(100dvh - 180px);overflow:auto;scrollbar-width:thin;
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);padding:13px 22px 16px;
-  display:flex;flex-direction:column;cursor:default;
-  box-shadow:0 40px 90px -36px rgba(0,0,0,.92),inset 0 1px 0 rgba(255,255,255,.04);
+  border:1.2px solid transparent;border-radius:var(--r-panel);padding:13px 22px 16px;
+  background:linear-gradient(#1a1d1d,#121414) padding-box,
+    linear-gradient(177deg,rgba(255,255,255,.30) 0%,rgba(255,255,255,.075) 9%,
+      rgba(255,255,255,.055) 72%,rgba(255,255,255,.17) 100%) border-box;
+  position:relative;display:flex;flex-direction:column;cursor:default;
+  box-shadow:0 40px 90px -36px rgba(0,0,0,.92),inset 0 -1px 0 rgba(0,0,0,.35);
   animation:gp-pop .24s var(--ease-soft) both}
 
-/* ── 模式 tab：下划线指示条随选中项滑动，亮带自左向右巡游 ── */
-.gp-tabrow{display:flex;align-items:center;justify-content:space-between}
-.gp-tabs{position:relative;display:flex;align-items:flex-end;gap:4px;padding-bottom:13px;flex:1;min-width:0}
-.gp-tab{display:flex;align-items:center;padding:6px 14px 8px;font-size:14.5px;font-weight:500;
-  letter-spacing:.02em;white-space:nowrap;
-  background:transparent;border:0;color:var(--ink-off);cursor:pointer;user-select:none;transition:color .3s}
-.gp-tab:hover{color:var(--ink-1)}
-.gp-tab.on,.gp-tab.on:hover{color:var(--ink-0);font-weight:650}
+/* ── 模式 tab：一排玻璃球，静止收成当前那一颗，光标底下那颗鼓起来 ── */
 /*
- * 选中位置只由一个滑点标出来：它落在选中项的中线上，宽度与那个 Tab 有多少字无关。
- * 换 Tab 的一刻被拉成短棒、到站收回成点 —— 让「它是从哪儿走过来的」这件事看得见，
- * 而不是凭空在新位置亮起来。滑点不占满整个 Tab，所以也不必跟着字重变宽变窄。
+ * 素材和模式摆在同一行：收起态的 Tab 只占一个词，一行里空着的地方足够摆下那几张图 ——
+ * 省下的一整行高度归提示词。
+ * 行高按缩略图那一档钉死（方块 + Tab 底下那道滑点的留白），空画布和连了素材的面板一样高，
+ * 换个 Tab 上下沿都不动。
  */
-.gp-ind{position:absolute;left:0;bottom:5px;height:5px;border-radius:3px;background:var(--teal);z-index:1;
-  pointer-events:none;transition:transform .28s cubic-bezier(.32,.94,.28,1),width .28s cubic-bezier(.32,.94,.28,1)}
-
-/* ── 操作标题 ── */
-.task-exit{flex:none;display:flex;align-items:center;justify-content:center;width:26px;height:26px;
-  margin-bottom:8px;border-radius:7px;color:var(--ink-3);transition:color .2s,background .2s}
-.task-exit:hover{color:var(--ink-0);background:var(--fill-2)}
+/* 素材行那一行有多高。提到面板上，是因为文生视频里这段高度要由提示词接着占住（见 .prompt-editor） */
+.gp{--mrow:calc(var(--tile) + 13px)}
+.gp-tabrow{display:flex;align-items:flex-end;gap:14px}
+/*
+ * 这一行替素材留的位置，只在真有素材行的时候留（MaterialRow 在文生视频里直接返回 null）。
+ * 文生视频没有任何素材，左边那一整条是空的 —— 空着还占着 46px 的高，
+ * 面板顶上就多出一条谁也不用的带子，提示词被它推下去一截。没有素材就只剩那颗模式药丸，
+ * 提示词跟着往上走，面板顶着标题那行开口。
+ */
+.gp-tabrow:has(.material-row){min-height:var(--mrow)}
+/*
+ * 文生视频连素材行都没有，这一行左边整条是空的：让它整条浮到面板右上角，不再占一行的高 ——
+ * 提示词跟着上来，面板顶上没有一条谁也不用的带子。
+ * 提示词右边让出整簇的宽度（球 + 名字 + 细线 + 撑大键，172px），字不会钻到它们底下。
+ * 让的是整块可编辑区而不只是头两行：只缩头两行得在 contentEditable 里塞一个浮动占位，
+ * 那东西会被打字、粘贴、退格各自碰一遍 —— 为省掉三行以下的一点留白，不值当。
+ * top 钉在「有素材行」那一档量出来的同一个位置上（面板 13px 的内边距 +
+ * 那一行 59px 里 48px 高的球行底对齐剩下的 11px）：换模式时素材行有没有，
+ * 这颗球都落在同一个点上 —— 它是面板顶上唯一从头留到尾的东西，
+ * 一跳，用户会以为自己点错了地方。
+ */
+.gp-tabrow:not(:has(.material-row)){position:absolute;top:24px;right:22px;z-index:2}
+/*
+ * 素材靠左、右端这一簇靠右：素材是这次任务的料，先看见；这一簇是开关，收在一边。
+ *
+ * 簇里从左到右是「一排球 → 模式名 → 一条细线 → 把框撑大」。
+ * 球那一排贴着名字的左沿钉住，悬浮展开时往左边那段空白里长 —— 左边的缩略图一格也不用挪；
+ * 名字、细线、展开键都排在球的右边且宽度固定，所以球从头到尾停在同一个点上。
+ * 撑大那一枚只能放在这一侧：放左边，球一展开就把它压在底下了。
+ */
+.gp-tabend{display:flex;align-items:center;height:48px;flex:0 0 auto;margin-left:auto}
+/*
+ * 一条图标坞，静止时只剩当前那一枚。
+ *
+ * 面板顶上说的是「我正在做什么」，不是一排待选项 —— 所以静止态整条收成一枚药丸：
+ * 一枚图标 + 它的名字，就是最外层那句话本身。鼠标进到这一条（或键盘聚焦进来），
+ * 托盘往左长开，名字收走，其余几枚图标从当前那枚背后一枚接一枚抽出来。
+ *
+ * 底是画在这一层的，不是画在每一枚图标上：一排各自带身子的玻璃球读起来是
+ * 「几个独立的按钮碰巧排在一起」，而这一条要读成一件东西 —— 一条坞，里面搁着几枚图标。
+ * 也正因为底只有一层，收起态它就是那枚药丸、展开态它就是那条坞，中间不用换皮，
+ * 只是同一块底自己变宽、变淡。
+ *
+ * 两态都压得很暗。这一枚常驻在提示词框的右上角，它答的是「我正在做什么」——
+ * 一句背景交代，不是这块板上要先读的东西（先读的是那句提示词，和右下角的「生成」）。
+ * 底栏那一排（型号、清晰度、时长）静止时压根不画底，所以这一枚只要稍微白一点，
+ * 整块面板上最亮的一片就落在它身上了 —— 一句交代压过了正文。
+ *
+ * 所以分量靠影子给，不靠亮度：底只留一层很薄的白（顶上 .05 往下收到 .014，
+ * 盖在面板的 #1a1d1d 上大约提亮 11 档，和设计稿同一量级），影子换成又深又散的两层。
+ * 一枚暗的、浮着的药丸，和一枚亮的、贴着的药丸，分量是一样的，但前者不抢视线。
+ * 展开后再退一档、换成一圈极淡的内描边，让位给里头那排图标。
+ */
+.gp-tabs{position:relative;display:flex;align-items:center;flex:0 0 auto;
+  height:40px;padding:0 5px;box-sizing:border-box;border-radius:20px;
+  backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+  background:linear-gradient(172deg,rgba(255,255,255,.05),rgba(255,255,255,.02) 58%,
+    rgba(255,255,255,.014));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 26px rgba(0,0,0,.5),
+    0 2px 6px rgba(0,0,0,.3);
+  transition:background .45s ease,box-shadow .45s ease}
+.gp-tabs.open{
+  background:rgba(255,255,255,.03);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),inset 0 0 0 1px rgba(255,255,255,.04),
+    0 10px 28px rgba(0,0,0,.34)}
+/*
+ * 一枚图标占的格子，宽度由两截相加：--slot 是「展开到位该有多宽」，--bump 是「此刻被光标顶出来多少」。
+ *
+ * 这两截分开是整段动效的骨架 —— 它们变化的节律根本不是一回事：
+ *   · --slot 一次开合只变一回，要走满半秒的缓动；
+ *   · --bump 磁吸醒着时每帧都在变，那一路插值已经在 useMagnet 里做完了，再缓一道就是两层缓动互相追。
+ * 拿 min(width, max-width) 那种写法凑不出来：那条路上「展开」的缓动会被「放大」的目标值截断，
+ * 半秒的曲线两三帧就跑到头，读起来就是啪一下弹开。
+ * 两条都靠 @property 注册成长度，calc 才认得它们、transition 也才缓得动其中一条。
+ */
+@property --slot{syntax:'<length>';inherits:false;initial-value:0px}
+@property --bump{syntax:'<length>';inherits:false;initial-value:0px}
+.gp-orb{position:relative;flex:none;width:calc(var(--slot) + var(--bump));height:40px;
+  padding:0;border:0;gap:8px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;background:transparent;cursor:pointer;
+  transition:--slot .5s var(--ease) var(--wait),opacity .34s ease var(--wait)}
+/*
+ * 磁吸醒着的时候才不裁 —— 那时光标底下那枚鼓起来要顶出坞沿，顶出去才是「被托着走」。
+ *
+ * 认磁吸而不认「展开了没有」：展开那半秒里格子正从零宽长开，这会儿要是已经不裁了，
+ * 四枚图标会先在坞的左沿叠成一摞、再各自滑到位 —— 它们是被格子裁着、一枚接一枚露出来的，
+ * 不是凭空冒出来再排队。磁吸是在整排站定之后才醒的（见 WAKE），正好接上。
+ */
+.gp-tabs.live .gp-orb{overflow:visible}
+/*
+ * 收起态：除了当前那枚，其余的收成零宽、淡出 —— 展开时是从当前这枚身上长出来的。
+ *
+ * 收这一程全排走同一条曲线、同一个时长，当前那枚把名字接回来也用它（下一条）：
+ * 四枚退掉 192px、当前这枚长回 58px，两边同步，托盘的宽度才是一路减到底。
+ * 让当前那枚晚半拍的话，托盘会先缩过头再弹回来 —— 量出来是 12px 的一次回弹，
+ * 收到一半突然又胖一圈，比慢半拍难看得多。
+ */
+.gp-tabs:not(.open) .gp-orb{transition:--slot .38s var(--ease-soft),opacity .22s}
+.gp-tabs:not(.open) .gp-orb:not([aria-selected=true]){opacity:0;pointer-events:none}
+.gp-tabs:not(.open) .gp-orb-name{
+  transition:width .38s var(--ease-soft),opacity .3s,margin-left .38s var(--ease-soft)}
+/*
+ * 图标本身。没有身子、没有底 —— 坞已经是那层身子了，再给每枚配一个圆，
+ * 这一条就成了「一排按钮」，磁吸那道浪也就推不动了：浪推的是一排轻的东西，不是一排盒子。
+ *
+ * 尺寸和上抬都不给 transition，每帧由 --ic / --lift 直接给（同 --bump 那条理由）。
+ * 出场那一下的弹性走 transform，和尺寸是两套通道：transform 不碰布局，
+ * 所以「弹一下」和「被光标顶大」叠在同一枚图标上也互不干扰。
+ */
+.gp-orb-ic{position:relative;display:flex;flex:none;width:var(--ic);height:var(--ic);
+  margin-top:var(--lift);color:rgba(255,255,255,.5);transform:scale(var(--sc,1));
+  transition:transform .5s var(--ease-bounce) var(--wait),color .25s}
+/* 收回去的那一下不弹：弹是「到位了」的语气，收起来没有到位这回事 */
+.gp-tabs:not(.open) .gp-orb:not([aria-selected=true]) .gp-orb-ic{transition:transform .3s ease-out}
+.gp-orb-ic>svg{width:100%;height:100%}
+/*
+ * 收起态整条只剩这一枚，它就是那句话本身：近白的一档，不着色。
+ * 转青要跟着整条一起到位（--wait），不然托盘还没长开它先绿了 —— 那点青是「一排里的这一枚」，
+ * 排还没排开的时候它没有意思。收回去时不等：一收就该变回那句话本身。
+ */
+.gp-orb.on .gp-orb-ic{color:var(--ink);
+  transition:transform .5s var(--ease-bounce) var(--wait),color .25s var(--wait)}
+/* 展开后才转青：那时一排等大的图标摆开了，青色回答的是「哪一枚是现在这枚」 */
+.gp-tabs.open .gp-orb.on .gp-orb-ic{color:var(--teal-on)}
+.gp-orb.hot:not(.on):not(.off) .gp-orb-ic{color:var(--ink-0)}
+/*
+ * 当前那枚底下一点青，贴在坞沿外。颜色在一排等大的图标里还不够钉死「是这一枚」——
+ * 它只在展开的时候出现：收起时整条就剩这一枚，不必再指认。
+ */
+.gp-orb-dot{position:absolute;left:50%;bottom:-5px;width:4px;height:4px;margin-left:-2px;
+  border-radius:50%;background:var(--teal-deep);pointer-events:none;opacity:0;transform:scale(0);
+  transition:opacity .25s var(--wait),transform .4s var(--ease-bounce) var(--wait)}
+.gp-tabs.open .gp-orb.on .gp-orb-dot{opacity:1;transform:scale(1)}
+/*
+ * 收起态那枚药丸里的名字。宽度钉死在「四个字」上、三个字的居中 —— 模式名有三字也有四字，
+ * 不钉死的话换个模式药丸就长短一跳，而它是面板顶上唯一从头留到尾的锚。
+ * 展开时连同它左边那道 gap 一起收成零宽：那时该读的是一排图标，
+ * 留一截字在最右边，整条会一头长一头短，磁吸那道浪扫到尽头也会被它顶住。
+ * line-height 给 1：默认行高在汉字上下各留一截空，那截空是不对称的 ——
+ * 交给 flex 居中的是「行盒」，于是字看着往上飘了一两个像素。行盒贴着字，居中才是字居中。
+ */
+.gp-orb-name{flex:none;width:56px;overflow:hidden;text-align:center;font-size:13.5px;
+  letter-spacing:.02em;line-height:1;color:var(--ink);white-space:nowrap;pointer-events:none;
+  transition:width .5s var(--ease) var(--wait),opacity .3s var(--wait),
+    margin-left .5s var(--ease) var(--wait)}
+.gp-tabs.open .gp-orb.on .gp-orb-name{width:0;opacity:0;margin-left:-8px}
+/*
+ * 展开后图标上没地方写字：名字在悬浮时从坞底下浮出来，一枚小气泡。
+ * 给底不给裸字 —— 它压在提示词第一行上，裸字要靠一层厚字影才读得出，
+ * 而那层影子在浅色的字底下会糊成一团；一块自带底的小牌子把两层字彻底分开。
+ * 只摆得下一个名字：灰掉的那枚要说一整句原因，那一句归通用的说明气泡（见 ModeTabs 里的 useTip）。
+ */
+.gp-orb-tip{position:absolute;top:100%;left:50%;margin-top:11px;padding:5px 9px;
+  border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(22,23,24,.88);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  box-shadow:0 10px 24px rgba(0,0,0,.5);
+  font-size:12px;line-height:1.35;white-space:nowrap;color:var(--ink-0);pointer-events:none;
+  opacity:0;transform:translate(-50%,-4px);transition:opacity .18s,transform .3s var(--ease)}
+.gp-orb.hot .gp-orb-tip{opacity:1;transform:translate(-50%,0)}
+/*
+ * 一道细线把这个角分成两半：左边说「这次要做哪件事」，右边说「这块框怎么看」。
+ * 不划这一道，两件不同类的事挤在同一个角上，会被读成一排同类的开关。
+ * 只有 16px 高、又淡：它是断句，不是围栏。
+ */
+.gp-tabrow-sep{flex:none;width:1px;height:16px;margin:0 12px;background:var(--line-2)}
+/*
+ * 把提示词框撑大。素图标，不给底也不给圆圈 —— 它旁边就是一颗自带模糊和投影的玻璃球，
+ * 再摆一个有身子的圆过去，这个角就成了两颗珠子在并排。
+ */
+.gp-grow{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;
+  color:var(--ink-2);cursor:pointer;transition:background .2s,color .2s}
+.gp-grow:hover{background:var(--fill-2);color:var(--ink-0)}
+/* 撑开着的时候它一直亮着：那是个开着的开关，不是一次按完就完的动作 */
+.gp-grow.on{color:var(--ink-0);background:var(--fill)}
 
 /* ── 素材位 ── */
-.material-row{display:flex;align-items:center;gap:12px;min-height:var(--tile);margin-top:11px}
+/* 坐在行底，和右边那颗药丸同一条底线 —— 上面留出来的那截气口是面板顶和这排图之间的呼吸 */
+.material-row{display:flex;align-items:flex-end;gap:12px;min-height:var(--tile);min-width:0}
 .material-wrap{position:relative;flex:none;width:var(--tile);height:var(--tile)}
 .material-tile{width:100%;height:100%;border-radius:var(--r-tile);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.10);
@@ -430,11 +845,28 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 尺寸由 JS 按素材真实比例算好：静止态一律正方形，展开才还原它本来的样子 */
 .material-card-shot{display:block;position:relative;margin:0 auto;border-radius:12px;overflow:hidden;
   background:var(--surface-2);cursor:zoom-in}
-.material-card-shot img{display:block;width:100%;height:100%;object-fit:cover}
-.material-card-cue{position:absolute;left:50%;top:50%;margin:-21px 0 0 -21px;width:42px;height:42px;border-radius:50%;
+.material-card-shot img{display:block;width:100%;height:100%;object-fit:cover;
+  transition:transform .45s var(--ease-soft),filter .3s}
+/*
+ * 引导分两种，因为这两种素材点下去会发生的事不一样。
+ *
+ * 视频：画面正中一枚播放键，常驻 —— 一块画面正中摆着三角形，是所有人都认得的那句
+ * 「按这儿开始放」。它挡住的那一点画面，换来的是「这是一段能放的片子」一眼说清，这笔账划得来。
+ * 图片：一个角标都不给。没有「播放」这回事，压什么上去都只是挡着这张画 ——
+ * 而这张卡存在的全部理由就是把它看清楚。「还能再点」交给两样不占画面的东西：
+ * 鼠标变成放大镜（cursor:zoom-in），以及压上来时画面自己轻轻推近的那一下。
+ */
+/* 图片那张卡鼠标压上来画面轻轻推近一点；视频那张不动 —— 它正中钉着播放键，画面一动那枚键就浮 */
+.material-card-shot.image:hover img,.material-card-shot.image:focus-visible img{
+  transform:scale(1.035);filter:brightness(.93)}
+.material-card-shot.video .material-card-cue{position:absolute;left:50%;top:50%;
+  margin:-21px 0 0 -21px;width:42px;height:42px;border-radius:50%;
   background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.4);color:#fff;display:grid;place-items:center;
   transition:transform .25s var(--ease-soft),background .25s}
-.material-card-shot:hover .material-card-cue{transform:scale(1.12);background:rgba(0,0,0,.85)}
+.material-card-shot.video:hover .material-card-cue{transform:scale(1.12);background:rgba(0,0,0,.85)}
+@media (prefers-reduced-motion:reduce){
+  .material-card-shot.image:hover img,.material-card-shot.image:focus-visible img{transform:none}
+}
 /* 名字、时长、用不上的原因都压在画面底部的暗角里：一张图就是一张图，不在它外面再搭一层
    角色（参考素材 / 源视频）不写 —— 它已经写在这块画面所在的那一栏上了，读屏另有 aria-label */
 .material-card-meta{position:absolute;left:0;right:0;bottom:0;padding:20px 11px 10px;text-align:left;
@@ -456,137 +888,427 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .media-preview img,.media-preview video{display:block;width:100%;max-height:calc(100dvh - 130px);object-fit:contain;
   background:#0b0c0c;border-radius:12px}
 
-/* ── 版本记录 ──
- * 布局照「气泡内二级页 · 2a 上下分区」：气泡挂在节点侧边，里头分两页 ——
- * 先是一屏卡片（这个节点做出过哪几幅画面），点一张才进那一版的细节。
- * 分页而不是「列表下面接一块详情」，是因为提示词是整段的话：一段话垫在一屏卡片底下，
- * 卡片被挤到看不全，话也读不完整；一次只说一件事，两边都能摊开。
+/* ── 全部版本 ──
+ * 长相照交互原型「全部版本-v8-美化」：下面每一个数都是稿子上的原值，一个没换算过，
+ * 面板宽度也照它的 912 —— 收窄一档就得把一行四张的卡片压成三张、再把左边那块屏按比例缩，
+ * 稿子定下的那套比例关系（卡片多大、画面占多宽、参数多不起眼）就一处接一处地走样了。
+ * 统一乘 --vp-k 是留给整体放大 / 缩小的一个口子，默认 1：稿子这一版就是按真机尺寸画的。
  *
- * 下面每一个数都是设计稿上的原值，再统一乘 --vp-k。稿子是 1000px 示意画布上的一张图，
- * 按它的绝对像素落到 1920 的真机上偏小了一档；等比放大而不是挨个重调，
- * 是为了让稿子定下的那套比例关系（标题比版本号小、画面占多宽、参数多不起眼）一个都不走样。
- * 整块界面的大小就是这一个数说了算，要再大 / 再小一档只改它。
- *
- * 色板不照搬稿子。稿子那一套底色带绿味（#111817 / #7d8e89），单看没问题，
- * 摆进这个画布就成了另一支色 —— 一块浮层比它底下的节点更绿，读到的第一件事是「它跟别处不一样」。
- * 所以这里只承接稿子的**明度关系**（浮层底 → 卡片底 → 选中档各抬一级，正文 → 注脚 → 描边各降一级），
- * 色相一律交给 tokens.css 那套中性灰。留着这组变量是为了这层对应关系一眼看得见，
- * 改色时也只动这一处；青色只剩主操作那一行字，它本来就该是全局强调色。
+ * 色板不照搬稿子的十六进制，走 tokens 那套中性灰 —— 两边本来就几乎一一对应
+ *（#F2F2F0→--ink-0、#C8C8CC→--ink-1、#8E8E93→--ink-2、#6E6E73→--ink-3），
+ * 差的只是这套灰里那一点绿。留着下面这组变量是为了这层对应关系一眼看得见，改色也只动这一处。
+ * 唯一照搬实色的是压在画面上那几枚磨砂角标：它们贴在任意一幅画面上，
+ * 底色得自己站住，不能跟着浮层的底走。
  */
 .versions-pop{
-  --vp-k:1.05;
-  --vp-bg:var(--surface-3);      --vp-line:var(--line-2);     --vp-hover:var(--fill-2);
-  --vp-ink:var(--ink-0);         --vp-ink-2:var(--ink-2);     --vp-ink-3:var(--ink-2);
-  --vp-card:var(--surface-2);    --vp-card-line:var(--line);  --vp-card-line-on:var(--line-2);
-  --vp-chip:var(--fill-3);       --vp-chip-ink:var(--ink-0);
-  --vp-value:var(--ink-1);       --vp-hair:var(--line);       --vp-still:var(--sunk);
-  --vp-pill-line:var(--line-2);  --vp-pill-ink:var(--ink-2);
+  --vp-k:1;
+  /*
+   * 这块浮层自带一副中性灰，不跟全局那套 —— 全局的 surface / ink 都掺了一点绿
+   * （整个产品的底色是偏青的），而这一屏是一整面深色底上摆一排画面：
+   * 底和字一旦带色，压在那些暖调的画面旁边就读成了「偏色」，而不是「中性的底」。
+   * 下面每个值都是稿子上量出来的原值。
+   */
+  --vp-bg:#222226;               --vp-line:rgba(255,255,255,.08);
+  --vp-hover:rgba(255,255,255,.07);
+  --vp-ink:#ececee;              --vp-ink-1:#c6c8cc;
+  --vp-ink-2:#9a9da2;            --vp-ink-3:#5f6266;
+  --vp-card:var(--surface-2);
+  /* 选中的那一档是浅底深字（稿子上的 #F2F2F0 / #111）——整片深色里唯一一块亮的，
+     一眼就读得出「现在看的是哪一档」。--go 那一对是这套色板里调过的浅底，不泛蓝 */
+  --vp-chip:var(--go);           --vp-chip-ink:var(--go-ink);
+  /* 筛选那一行：没选中的一档和说明同一档灰；
+     选中那一档的计数跟着底一起提亮，不然白字旁边挂个暗号码，读起来像没跟上 */
+  --vp-tab:#9a9da2;              --vp-chip-num:#acacad;
+  --vp-value:#c6c8cc;            --vp-hair:rgba(255,255,255,.08);  --vp-still:#191a1d;
+  /* 提示词那口井：比浮层底还深一档 —— 深下去的是「装东西的」，浮起来的是「能按的」 */
+  --vp-well:#1a1c1d;             --vp-well-line:rgba(255,255,255,.08);
+  /* 参数那排小牌子的底：只是查证用的标签，比能按的东西再淡一档 */
+  --vp-tag:rgba(255,255,255,.05);      --vp-tag-line:rgba(255,255,255,.07);
   --vp-act:var(--teal-pale);     --vp-act-line:var(--teal-dash);
   --vp-act-on:var(--teal-on);    --vp-act-line-on:var(--teal-ring);
-  width:calc(660px * var(--vp-k));max-width:calc(100vw - 48px);padding:0;overflow:visible;
-  background:var(--vp-bg);border:1px solid var(--vp-line);border-radius:calc(20px * var(--vp-k));
-  box-shadow:0 30px 70px rgba(0,0,0,.6);color:var(--vp-ink);
+  /* 压在画面上那几枚：磨砂片 + 一道发丝边，同一套，只是「当前显示」暗一档 */
+  --vp-glass:rgba(60,60,64,.5);       --vp-glass-line:rgba(255,255,255,.12);
+  --vp-glass-2:rgba(18,18,20,.45);    --vp-glass-line-2:rgba(255,255,255,.14);
+  /* 空着的那一档：稿子把它压到一档死灰（#48484C / 数字 #3A3A3E），不是把整枚调透明 ——
+     调透明会连它那块底一起淡掉，读起来像「这枚按钮没画完」；压字色才是「这一档是空的」 */
+  --vp-dim:#4d5054;                   --vp-dim-2:#3c3f43;
+  width:calc(962px * var(--vp-k));max-width:calc(100vw - 48px);padding:0;overflow:visible;
+  background:color-mix(in srgb,var(--vp-bg) 94%,transparent);
+  backdrop-filter:blur(20px) saturate(140%);
+  border:1px solid var(--vp-line);border-radius:calc(24px * var(--vp-k));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 50px 120px -30px rgba(0,0,0,.85);
+  color:var(--vp-ink);
   animation:gp-rise .22s var(--ease-soft) both}
 /* 尖角是这只气泡的一部分，底色和描边跟着它走，不跟通用浮层 */
 .versions-pop>.overlay-tail{background:var(--vp-bg);border-color:var(--vp-line)}
 /* 两页共用一副外框：返回时只有内容换掉，框不动 —— 换的是页，不是弹窗 */
 .versions-pop>div{display:flex;flex-direction:column;max-height:calc(100dvh - 48px)}
-.vp-list{padding:calc(22px * var(--vp-k)) calc(24px * var(--vp-k))}
-.vp-detail{padding:calc(18px * var(--vp-k)) calc(24px * var(--vp-k)) calc(24px * var(--vp-k))}
+/*
+ * ── 换页的那一下 ──
+ * 一屏卡片 ↔ 一版详情。原先是整块内容直接替换：外框的高度一跳，里面的画面和文字同一帧全到位，
+ * 于是「点进去」这个动作在屏幕上没留下任何痕迹 —— 明明是往里走了一层，看着却像有人把这块面换了张贴纸。
+ *
+ * 分成三件事说：外框的高矮自己补一段过渡（在 VersionsDialog 里用 WAAPI 从旧高度补到新高度，
+ * CSS 量不到「上一页多高」，这一段只能在那边做）；里面的东西按主次先后落位；
+ * 方向跟着「往里走 / 往回走」翻个身 —— data-dir=back 时 --vp-dx 变负，内容从左边进来。
+ *
+ * 位移一律小（十来个像素）且都朝着内容自己那一栏的内侧：气泡是 overflow:visible 的，
+ * 位移一大就会从圆角外面探出去一截，那就不是「内容进来了」而是「有东西从气泡里漏出来」。
+ *
+ * 先后次序照「先看什么」排：画面最先（这一页就是来看这一版长什么样的），
+ * 接着是它叫什么、第几版，然后那段提示词，参数最后 —— 一层层长出来，眼睛跟着这条路径走一遍,
+ * 就知道这一页哪儿是主、哪儿是脚注。间隔都是二三十毫秒一档，摞起来也就三百毫秒出头：
+ * 再慢一档就从「回应」变成「等它演完」。
+ */
+/* 补间这段时间里外框自己夹住溢出，里面那栏也一并夹住 —— 理由见 VersionsDialog 里那段 */
+.vp-morph,.vp-morph .vp-body{overflow:hidden}
+.vp-list,.vp-detail{--vp-dx:14px}
+.vp-list[data-dir=back],.vp-detail[data-dir=back]{--vp-dx:-14px}
+@keyframes vp-in{from{opacity:0;transform:translateX(var(--vp-dx))}to{opacity:1;transform:none}}
+/* 顶上那一行不跟着左右走：它两页都在原地（返回键换成标题，叉一直在右上角），
+   横着滑一下等于说「这一行也换了」—— 只淡进来，压住那一点位移感就够 */
+@keyframes vp-in-top{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+/* 画面是这一页的主角：除了跟着方向进来，还从 .94 张开 —— 那一点放大读作「它长出来了」 */
+@keyframes vp-shot-in{from{opacity:0;transform:translateX(calc(var(--vp-dx) * .6)) scale(.94)}
+  to{opacity:1;transform:none}}
+@keyframes vp-card-in{from{opacity:0;transform:translateX(calc(var(--vp-dx) * .45)) scale(.965)}
+  to{opacity:1;transform:none}}
+.vp-detail>header,.vp-list>header{animation:vp-in-top .26s var(--ease-soft) both}
+.vp-filters{animation:vp-in-top .3s var(--ease-soft) .04s both}
+.vp-still{animation:vp-shot-in .42s cubic-bezier(.2,.75,.2,1) .04s both}
+.vp-rel{animation:vp-in .34s var(--ease-soft) .1s both}
+.vp-pbox{animation:vp-in .34s var(--ease-soft) .16s both}
+.vp-specs{animation:vp-in .34s var(--ease-soft) .22s both}
+/*
+ * 卡片一张接一张落下，不是一整片同时出现：一屏卡片本来就是从左上往右下读的，
+ * 依次落地的时候这条读法自己就说出来了（和素材面板里那条列表同一个办法，见 .asset-option）。
+ * 三十毫秒一档，第八张之后不再往后排 —— 版本一多就得等最后一张，那就成了「加载中」。
+ */
+.vp-card{animation:vp-card-in .3s cubic-bezier(.2,.7,.2,1) both}
+.vp-card:nth-child(2){animation-delay:.03s}
+.vp-card:nth-child(3){animation-delay:.06s}
+.vp-card:nth-child(4){animation-delay:.09s}
+.vp-card:nth-child(5){animation-delay:.12s}
+.vp-card:nth-child(6){animation-delay:.15s}
+.vp-card:nth-child(7){animation-delay:.18s}
+.vp-card:nth-child(n+8){animation-delay:.21s}
+/* 关掉动效的那一路：位移和缩放一概不做（外框那段补间也在 JS 里一并跳过），
+   内容直接就位 —— 换页这件事本来也不靠动效才说得清 */
+@media (prefers-reduced-motion:reduce){
+  .vp-detail>header,.vp-list>header,.vp-filters,.vp-still,
+  .vp-rel,.vp-pbox,.vp-specs,.vp-card{animation:none}
+}
+.vp-list{padding:calc(24px * var(--vp-k)) calc(28px * var(--vp-k)) calc(28px * var(--vp-k))}
+/* 高度写死：列表页和详情页来回切，换的是页，不是弹窗 —— 外框跟着内容一跳一跳，
+   就成了两只大小不一的气泡在交替出现。一版没写提示词、底下空出一块，也好过框在跳 */
+.vp-detail{height:calc(528px * var(--vp-k));max-height:100%;
+  padding:calc(16px * var(--vp-k)) calc(22px * var(--vp-k))
+  calc(24px * var(--vp-k)) calc(16px * var(--vp-k))}
 .versions-pop header{display:flex;justify-content:space-between;align-items:center;
   gap:calc(16px * var(--vp-k));flex:0 0 auto}
-/* 浮层自己的标题：这一块弹出来说的是「版本记录」，名字和数量退到它旁边当注脚 */
-.vp-list header>div{display:flex;align-items:baseline;gap:calc(10px * var(--vp-k));min-width:0}
-.vp-list header strong{font-size:calc(20px * var(--vp-k));font-weight:600;color:var(--vp-ink)}
-.vp-list header span{font-size:calc(13px * var(--vp-k));color:var(--vp-ink-2);
+/* 标题和名字并排一行，落在同一条基线上：「全部版本」是这块浮层的名字，
+   「小猫咪」是它在说哪一条视频 —— 一句话里的两截，分了轻重就够，不必再分两行。
+   摞成两行会把名字抬成整屏最大的一块字，而这一屏真正要看的是下面那几幅画面。 */
+.vp-head{display:flex;align-items:baseline;gap:calc(10px * var(--vp-k));flex:1;min-width:0}
+.vp-head>strong{flex:none;font-size:calc(19px * var(--vp-k));font-weight:600;
+  letter-spacing:-.01em;color:var(--vp-ink);line-height:1.3}
+.vp-head>span{min-width:0;font-size:calc(15px * var(--vp-k));color:var(--vp-ink-2);line-height:1.3;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vp-x{flex:0 0 auto;width:calc(28px * var(--vp-k));height:calc(28px * var(--vp-k));
-  border-radius:calc(9px * var(--vp-k));display:grid;place-items:center;
-  color:var(--vp-ink-3);transition:background .2s,color .2s}
+/* 静止态不给底：一枚叉本来就读得出是「关掉」，套上一块底反倒和旁边那些真需要底的按钮
+   （返回、在画布中查看）排成一列，谁主谁次就看不出了。压上来才浮一块底应一声。 */
+.vp-x{flex:0 0 auto;width:calc(34px * var(--vp-k));height:calc(34px * var(--vp-k));
+  border-radius:calc(10px * var(--vp-k));display:grid;place-items:center;
+  color:var(--vp-ink-2);transition:background .2s,color .2s}
+/* 图标的光学中心比那块底还要往里缩一点，所以整枚往右探出 4px，
+   让那一撇一捺的视觉右边线和底下卡片的右边线对齐，而不是让方底去对 */
+.vp-list .vp-x{margin-right:calc(-4px * var(--vp-k))}
 .vp-x:hover{background:var(--vp-hover);color:var(--vp-ink)}
 
-/* 筛选那排是四个并列的词，不是四枚控件：静止态只有字，选中的那一档才落一块底。
- * 每一档都镶一圈线，四个框并排，先看见的是框，读到哪一档亮着反倒要找。 */
-.vp-filters{display:flex;flex-wrap:wrap;gap:calc(6px * var(--vp-k));flex:0 0 auto;
-  margin:calc(18px * var(--vp-k)) 0 calc(16px * var(--vp-k))}
-.vp-filters button{padding:calc(6px * var(--vp-k)) calc(14px * var(--vp-k));border-radius:999px;
-  font-size:calc(13px * var(--vp-k));color:var(--vp-ink-2);transition:background .2s,color .2s}
-.vp-filters button:hover{color:var(--vp-chip-ink)}
-.vp-filters .selected,.vp-filters .selected:hover{background:var(--vp-chip);color:var(--vp-chip-ink)}
-/* 一条都没有的那一档：点不动，也不假装它有内容 */
-.vp-filters button[aria-disabled=true],.vp-filters button[aria-disabled=true]:hover{opacity:.38;
-  color:var(--vp-ink-2);background:none;cursor:not-allowed}
+/* 四档单起一行，左边线顶着底下那一列卡片：没有外框把它们圈成一个控件 ——
+ * 圈起来就成了标题旁边的一枚小部件，而它管的是底下整整一屏。
+ * 只有当前这一档落一块底：一圈发丝边 + 一层极淡的浅色，字翻白；其余三档裸着站在那儿。
+ * 每档名字后跟一个数，暗一档：它是这一档的规模，不是这一档的名字。 */
+.vp-filters{display:flex;align-items:center;gap:calc(8px * var(--vp-k));flex:0 0 auto;
+  margin-top:calc(18px * var(--vp-k))}
+.vp-filters button{display:inline-flex;align-items:center;gap:calc(10px * var(--vp-k));
+  height:calc(40px * var(--vp-k));padding:0 calc(14px * var(--vp-k));
+  border-radius:calc(12px * var(--vp-k));border:1px solid transparent;
+  font-size:calc(15px * var(--vp-k));color:var(--vp-tab);
+  transition:background .2s,color .2s,border-color .2s}
+.vp-filters button>svg{flex:none}
+.vp-filters button b{font-weight:400;font-size:calc(14px * var(--vp-k));
+  font-variant-numeric:tabular-nums;color:var(--vp-ink-3)}
+.vp-filters button:hover{color:var(--vp-ink)}
+.vp-filters .selected,.vp-filters .selected:hover{color:#fff;font-weight:500;
+  background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.16)}
+.vp-filters .selected b{color:var(--vp-chip-num)}
+/* 一条都没有的那一档：点不动，也不假装它有内容 —— 名字和那个数一起压到同一档死灰 */
+.vp-filters button[aria-disabled=true],.vp-filters button[aria-disabled=true]:hover{
+  color:var(--vp-dim);background:none;border-color:transparent;cursor:not-allowed}
+.vp-filters button[aria-disabled=true] b{color:var(--vp-dim)}
 
-.vp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(14px * var(--vp-k));
-  overflow:auto;scrollbar-width:thin;padding:1px;margin:-1px}
-/* 卡片自己成一块：画面满铺在上，名字和出身收在下面那条带里，两者同属一张卡，不各自飘着 */
-.vp-card{display:block;text-align:left;background:var(--vp-card);border:1px solid var(--vp-card-line);
-  border-radius:calc(14px * var(--vp-k));overflow:hidden;transition:border-color .2s}
-.vp-card:hover{border-color:var(--vp-card-line-on)}
-.vp-card:focus-visible{border-color:var(--vp-act-line-on)}
-.vp-shot{display:block;position:relative;height:calc(192px * var(--vp-k));overflow:hidden}
-.vp-shot img{display:block;width:100%;height:100%;object-fit:cover}
-/* 时长角标压在画面右下角：左下留给卡片自己那条文字带 */
-.vp-shot em{position:absolute;right:calc(8px * var(--vp-k));bottom:calc(8px * var(--vp-k));
-  padding:calc(3px * var(--vp-k)) calc(7px * var(--vp-k));border-radius:calc(6px * var(--vp-k));
-  background:rgba(0,0,0,.6);font-family:var(--num);font-weight:500;font-style:normal;line-height:1.4;
-  font-size:calc(11px * var(--vp-k));font-variant-numeric:tabular-nums;color:#fff;letter-spacing:.03em}
-.vp-card strong{display:block;font-size:calc(13px * var(--vp-k));font-weight:500;color:var(--vp-ink);
-  margin:calc(10px * var(--vp-k)) calc(11px * var(--vp-k)) 0}
-.vp-card small{display:block;font-size:calc(11px * var(--vp-k));color:var(--vp-ink-2);
-  margin:calc(4px * var(--vp-k)) calc(11px * var(--vp-k)) calc(12px * var(--vp-k));
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 四列铺满这块浮层的宽度，不是四列定宽靠左排 —— 列数写死、宽度随框走：
+   右边不会空出一条说不清是留白还是没排满的缝，版本再多也是整齐地往下翻一行 */
+.vp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:calc(14px * var(--vp-k));
+  /* 21 而不是 24：这块网格自己带 2px 的内衬（给卡片的亮边留出画的地方），
+     两头一加，眼睛量到的仍是 23 —— 对齐的是看得见的那条边，不是盒子的边 */
+  margin-top:calc(21px * var(--vp-k));
+  overflow:auto;scrollbar-width:thin;padding:2px;margin-left:-2px;margin-right:-2px}
+/* 一张卡片就是一幅正方的画面，没有别的 —— 版本号、时间、出身都是进了详情才要查证的东西。
+   卡片这层是个壳，不是那枚按钮本身 —— 放大镜要和「进详情」并排住在里面，按钮不能嵌按钮。
+   静止时只有一道发丝边，压上来才浮起来（一圈亮边 + 一片投影）：一屏卡片扫过去是一屏画面，
+   不是一屏卡片，被指着的那一张自己会站出来。 */
+/* 一张卡片是一幅正方的缩略：横片竖片各按各的比例裁进同一个方框，一屏扫过去才是齐的 ——
+   跟着素材比例长高长扁，三张并排就成了高低不一的一排，眼睛先看见的是那条起伏的边 */
+.vp-card{position:relative;background:#000;aspect-ratio:1;
+  border-radius:calc(14px * var(--vp-k));overflow:hidden;
+  transition:box-shadow .3s ease,transform .3s ease}
+/*
+ * 那一圈边画在一层盖在画面上的伪元素里，不是卡片自己的 inset 阴影 ——
+ * inset 阴影垫在内容底下，而画面铺满整个内容盒，一个像素都露不出来。
+ */
+.vp-card::after{content:'';position:absolute;inset:0;z-index:3;pointer-events:none;
+  border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);
+  transition:box-shadow .3s ease}
+/* 亮边只在鼠标压上来时出现 —— 静止态一屏卡片扫过去是一屏画面，不是一屏镶了边的框。
+   「画布上在用的是哪一幅」由左上角那枚便签说，不必再多描一圈 */
+.vp-card:hover::after{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.5)}
+.vp-card:hover{box-shadow:0 18px 36px -14px rgba(0,0,0,.85)}
+.vp-card:has(:focus-visible)::after{box-shadow:inset 0 0 0 2px var(--vp-act-line-on)}
+.vp-open{display:block;width:100%;height:100%;text-align:left}
+/* 画面铺满整张卡片：横片竖片各按各的比例裁进同一个框，整屏才齐 */
+.vp-shot{display:block;position:relative;height:100%;overflow:hidden;background:#000}
+/* 一版画面要么是一段能放的视频，要么只剩一张封面：两者占的位置是同一块，读法也该是同一套 */
+.vp-shot img,.vp-shot video{display:block;width:100%;height:100%;object-fit:cover}
+/*
+ * 画面上下各压一道极淡的黑：角上那两枚标签和底边那条轴要落在任意一幅画面上 ——
+ * 遇上一幅亮的（雪地、白墙），没有这道压暗，白字白线就整个糊没了。
+ * 中间七成完全透明，所以画面本身一点没被压住。
+ */
+.vp-shot::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(0,0,0,.3) 0%,rgba(0,0,0,0) 32%,
+    rgba(0,0,0,0) 72%,rgba(0,0,0,.4) 100%)}
+/*
+ * 生成 / 编辑 / 延长 / 上传这一档，挂在画面右上角当一枚小便签 —— 它说的是「这一幅是怎么来的」，
+ * 贴在那幅画面上才认得出是在说谁。一片磨砂、一道发丝边、没有颜色也没有投影：
+ * 压在画面上的标签一旦做实（深底、亮边、彩色图标），它就成了这张卡片上最响的东西，
+ * 而这张卡片要人看的是那幅画面，不是它角上写着什么。
+ * 字距拉开一点点（.08em）是这枚标签唯一「用力」的地方：两个汉字稍稍分开，看着才像排过的。
+ *
+ * 放大镜就贴在它左边，同一撮里排着：两枚一样的磨砂片，读起来是一组，不是各贴各的。
+ */
+.vp-corner{position:absolute;right:calc(10px * var(--vp-k));top:calc(10px * var(--vp-k));z-index:2;
+  display:flex;align-items:center;gap:calc(6px * var(--vp-k))}
+.vp-kind{display:flex;align-items:center;height:calc(23px * var(--vp-k));
+  padding:0 calc(9px * var(--vp-k));border-radius:999px;
+  font-size:calc(11.5px * var(--vp-k));font-style:normal;font-weight:400;color:#fff;
+  background:var(--vp-glass);border:1px solid var(--vp-glass-line);
+  backdrop-filter:blur(12px);pointer-events:none}
+/*
+ * 「当前显示」贴在画面左上角：画布上现在挂的就是这一版 —— 一屏卡片里认出哪一幅正在用，
+ * 靠的就是它。和右角那枚便签同一副磨砂，只暗一档、多一颗会发光的白点：
+ * 点是「亮着的」那个意思，两个字加一颗点比一块彩色底安静得多。
+ * 鼠标压上卡片就淡出：这时候用户已经在看那幅画面了，角上的字该让路。
+ */
+.vp-now{position:absolute;left:calc(10px * var(--vp-k));top:calc(10px * var(--vp-k));z-index:2;
+  display:inline-flex;align-items:center;gap:calc(6px * var(--vp-k));
+  height:calc(23px * var(--vp-k));padding:0 calc(9px * var(--vp-k)) 0 calc(8px * var(--vp-k));
+  border-radius:999px;font-size:calc(11.5px * var(--vp-k));font-style:normal;font-weight:400;
+  color:#fff;background:var(--vp-glass-2);border:1px solid var(--vp-glass-line-2);
+  backdrop-filter:blur(14px);pointer-events:none;transition:opacity .25s}
+.vp-now b{flex:none;width:calc(6px * var(--vp-k));height:calc(6px * var(--vp-k));border-radius:50%;
+  background:#fff;box-shadow:0 0 calc(8px * var(--vp-k)) rgba(255,255,255,.8)}
+.vp-card:hover .vp-now{opacity:0}
+/*
+ * 放大镜只在鼠标压着这张卡时露出来，点它是把这一幅看大（走素材预览那套弹窗），
+ * 点画面别处才是进详情 —— 两件事都要，就不能都靠「点卡片」去办。
+ * 静止态整枚不占位置（opacity:0），所以一屏卡片扫过去仍旧是一屏画面，不是一屏按钮。
+ * 和便签同一片磨砂，只是圆的、没有边：这两枚是一组，不该一枚淡一枚实。
+ */
+.vp-zoom{flex:none;display:grid;place-items:center;
+  width:calc(24px * var(--vp-k));height:calc(24px * var(--vp-k));border-radius:50%;
+  color:#fff;background:rgba(40,40,42,.55);backdrop-filter:blur(12px);
+  opacity:0;transform:scale(.85);cursor:zoom-in;
+  transition:opacity .25s ease,transform .35s cubic-bezier(.22,1,.36,1),background .2s}
+.vp-card:hover .vp-zoom,.vp-still:hover .vp-zoom,.vp-zoom:focus-visible{opacity:1;transform:none}
+.vp-zoom:hover{background:rgba(10,10,12,.72)}
+@media (prefers-reduced-motion:reduce){.vp-zoom{transition:opacity .25s}}
 
-.vp-detail header{margin-bottom:calc(16px * var(--vp-k))}
-/* 返回处写的是上一页的名字，不是一个光秃秃的「返回」：点下去落到哪儿，字面上就说清 */
-.vp-back{display:inline-flex;align-items:center;gap:calc(7px * var(--vp-k));
-  font-size:calc(13px * var(--vp-k));color:var(--vp-ink-3);transition:color .2s}
+/*
+ * 鼠标压上来这一版就开始放（和画布上的视频节点同一个读法），于是画面底边得有一条轴
+ * 说清「放到哪儿了」—— 再加一枚喇叭，想听听这一版有没有声音。就这两件。
+ * 播放键不摆：hover 本身就是播放，再给一枚按钮是在说一件已经发生的事。
+ * 时间码也不摆：一张两百来像素宽的卡片，左右各一组数字，轴就只剩中间半截。
+ * 自己不带底 —— 压暗由画面上那道渐变统一管（见 .vp-shot::after），
+ * 一条轴再垫一层自己的黑，画面底下就有两道深浅不一的边。
+ * 它是「进详情」那枚按钮的兄弟，不住在它里面 —— 按钮不能嵌按钮，和放大镜那处同一个原因。
+ */
+.vp-hud{position:absolute;z-index:4;
+  left:calc(12px * var(--vp-k));right:calc(11px * var(--vp-k));bottom:calc(9px * var(--vp-k));
+  display:flex;align-items:center;gap:calc(10px * var(--vp-k));
+  opacity:0;transition:opacity .25s}
+.vp-card:hover .vp-hud,.vp-hud:focus-within{opacity:1}
+/* 详情页只有一块屏，轴常驻 —— 一屏卡片才需要靠 hover 把轴收起来还画面一个干净 */
+.vp-still .vp-hud{opacity:1}
+/* 细的一条，但能按的是整条一行高的区域 —— 三个像素高的线要用鼠标去戳，戳十次有三次落空 */
+.vp-bar{flex:1;min-width:0;height:calc(12px * var(--vp-k));display:flex;align-items:center;
+  cursor:pointer;touch-action:none;outline:none}
+.vp-bar i{position:relative;display:block;width:100%;height:calc(3px * var(--vp-k));
+  border-radius:calc(2px * var(--vp-k));background:rgba(255,255,255,.3)}
+.vp-bar b{position:absolute;left:0;top:0;bottom:0;border-radius:calc(2px * var(--vp-k));background:#fff}
+/* 走到哪儿的那颗点长在已播那一段的头上：它就是「现在在这儿」，不是轨道上另摆的一件东西。
+   稿子上没有它 —— 稿子那条轴不用拖，这一条要拖，得给手指一个落点 */
+.vp-bar b::after{content:'';position:absolute;right:calc(-3.5px * var(--vp-k));top:calc(-2px * var(--vp-k));
+  width:calc(7px * var(--vp-k));height:calc(7px * var(--vp-k));border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.55);transition:transform .16s var(--ease-bounce)}
+.vp-bar:hover b::after,.vp-bar:focus-visible b::after{transform:scale(1.25)}
+.vp-bar:focus-visible i{box-shadow:0 0 0 2px var(--teal-ring)}
+/* 裸图标，底交给投影：压在画面上的一枚开关套一块底，看着像条上多摆了一颗按钮 */
+.vp-sound{flex:none;display:grid;place-items:center;
+  width:calc(18px * var(--vp-k));height:calc(18px * var(--vp-k));
+  color:#fff;opacity:.92;transition:opacity .18s}
+.vp-sound:hover{opacity:1}
+
+.vp-detail header{flex:0 0 auto;gap:calc(12px * var(--vp-k))}
+/* 返回：一枚方底的箭头 + 一行落点的名字。方块说「这是能按的」，名字说「按下去回到哪儿」——
+   整条都点得中，不是只有那枚方块能点：一行字摆在按钮旁边却点不动，是最容易踩空的一种。 */
+.vp-back{display:inline-flex;align-items:center;gap:calc(11px * var(--vp-k));flex:0 1 auto;min-width:0;
+  height:calc(34px * var(--vp-k));font-size:calc(15px * var(--vp-k));color:var(--vp-ink-1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s}
+.vp-back>i{flex:none;display:grid;place-items:center;
+  width:calc(34px * var(--vp-k));height:calc(34px * var(--vp-k));
+  border-radius:calc(10px * var(--vp-k));background:rgba(255,255,255,.07);
+  transition:background .2s}
 .vp-back:hover{color:var(--vp-ink)}
-.vp-acts{display:flex;align-items:center;gap:calc(16px * var(--vp-k))}
-/* 主操作：一行带下划线的字，不是实心块。这一页真正的主角是那幅画面和那段提示词 */
-.vp-link{display:inline-flex;align-items:center;gap:calc(7px * var(--vp-k));
-  padding-bottom:calc(3px * var(--vp-k));font-size:calc(13.5px * var(--vp-k));font-weight:500;
-  color:var(--vp-act);border-bottom:1px solid var(--vp-act-line);transition:color .2s,border-color .2s}
+.vp-back:hover>i{background:rgba(255,255,255,.13)}
+.vp-acts{display:flex;align-items:center;gap:calc(10px * var(--vp-k));flex:0 0 auto}
+/* 主操作：一行带下划线的青字，不是实心块。这一页真正的主角是那幅画面和那段提示词，
+   摆一块实底在右上角，眼睛先落在按钮上；一行着了色又划了线的字同样点得中，
+   却不抢走这一屏的落点。自己只有 30 高（不跟返回键的 34）—— 那条线画在盒子的底边上，
+   盒子撑到 34，线就掉到离字六七个像素远的地方，读起来不像是这行字的下划线了。 */
+.vp-link{display:inline-flex;align-items:center;gap:calc(8px * var(--vp-k));
+  height:calc(30px * var(--vp-k));padding:0 1px;font-size:calc(15px * var(--vp-k));
+  color:var(--vp-act);border-bottom:1px solid var(--vp-act-line);
+  transition:color .2s,border-color .2s}
 .vp-link:hover{color:var(--vp-act-on);border-color:var(--vp-act-line-on)}
 
-.vp-body{display:flex;gap:calc(20px * var(--vp-k));min-height:0;overflow:auto;scrollbar-width:thin}
-.vp-still{flex:0 0 auto;width:calc(200px * var(--vp-k));height:calc(340px * var(--vp-k));
-  border-radius:calc(12px * var(--vp-k));overflow:hidden;background:var(--vp-still)}
-.vp-still img{display:block;width:100%;height:100%;object-fit:cover}
-.vp-info{flex:1;min-width:0;display:flex;flex-direction:column}
-.vp-title{display:flex;align-items:baseline;gap:calc(10px * var(--vp-k))}
-.vp-title strong{font-size:calc(22px * var(--vp-k));font-weight:600;color:var(--vp-ink)}
-/* 分类只镶一圈细线：它是「这一版是哪一档」的注解，着了色就成了这一页最亮的东西 */
-.vp-title em{flex:0 0 auto;padding:calc(2px * var(--vp-k)) calc(9px * var(--vp-k));
-  border:1px solid var(--vp-pill-line);border-radius:999px;
-  font-size:calc(12px * var(--vp-k));font-style:normal;color:var(--vp-pill-ink)}
-.vp-rel{margin-top:calc(7px * var(--vp-k));font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
-.vp-label{margin:calc(20px * var(--vp-k)) 0 calc(8px * var(--vp-k));
-  font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
+/* 只在竖着的方向上滚：这一栏横着没有东西可看 —— 画面和右栏本来就是照着宽度摆的。
+   留着 overflow-x:auto 的代价是一道会闪的横滑条：这一栏的滚动区比可视区宽出 14px
+  （量得到，但没有任何一个子元素探出去，是 flex 容器自己算出来的那一点零头），
+   平时看不见，可换页那一下 .vp-morph 把 overflow 从 hidden 放回 auto，
+   macOS 的浮层滚动条就被这一放惊动，在底边白白闪一下。横向锁死，那一下就没有了。 */
+.vp-body{flex:1;display:flex;align-items:flex-start;gap:calc(20px * var(--vp-k));
+  min-height:0;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;
+  padding:calc(16px * var(--vp-k)) 0 0 calc(6px * var(--vp-k))}
+/* 宽高由素材比例算出来，逐个写在行内（见 VersionsDialog 的 stillBox）——
+   这儿只管长相。列表页那张卡片则一律是正方的（见 .vp-shot）。
+   在这一栏里居中，不钉在顶上：竖片占满这一栏的高度，居中摆出来的位置和钉在顶上差不多
+   （上下各余二十来个像素，正好压在名字那一行的腰上）；横片只有两百来像素高，
+   一钉到顶就整个飞上去，底下空出大半栏，看着像内容没加载完。同一条规矩管两种画幅。 */
+.vp-still{position:relative;flex:0 0 auto;align-self:center;
+  border-radius:calc(14px * var(--vp-k));overflow:hidden;background:var(--vp-still);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06),0 30px 60px -24px rgba(0,0,0,.9)}
+.vp-still .vp-shot{height:100%;border-radius:inherit}
+.vp-info{flex:1;min-width:0;display:flex;flex-direction:column;align-self:stretch}
+/*
+ * 「小猫咪 〔V2〕 生成 · 今天 15:04」—— 一句话，四档深浅：名字最实，
+ * 版本号进一枚小方牌（它是个编号，不是一个词，给它一块底就不会被当成名字的一部分读），
+ * 出身和时间退到说明那一档，中间那一点最暗。一行里分了四档，眼睛自己就断得开。
+ * 名字长了自己截断，后面那几样是定长的，不会被挤出视野。
+ */
+.vp-rel{flex:0 0 auto;display:flex;align-items:center;gap:calc(10px * var(--vp-k));
+  height:calc(26px * var(--vp-k));min-width:0;
+  font-size:calc(15px * var(--vp-k));color:var(--vp-ink-2)}
+.vp-rel strong{min-width:0;font-size:calc(20px * var(--vp-k));font-weight:600;letter-spacing:-.01em;
+  color:var(--vp-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vp-rel b{flex:none;display:inline-flex;align-items:center;
+  height:calc(26px * var(--vp-k));padding:0 calc(9px * var(--vp-k));
+  border-radius:calc(8px * var(--vp-k));
+  font:500 calc(13px * var(--vp-k))/1 var(--mono);
+  font-variant-numeric:tabular-nums;color:var(--vp-ink);background:rgba(255,255,255,.1)}
+.vp-rel em{flex:none;font-style:normal}
+.vp-rel i{flex:none;font-style:normal;color:var(--vp-dim)}
+.vp-rel>span:not(.vp-srcline){flex:none}
+.vp-label{margin:0;font-size:calc(15px * var(--vp-k));color:var(--vp-ink-2)}
+.vp-pbox .vp-label{display:flex;align-items:center;gap:calc(8px * var(--vp-k));
+  height:calc(22px * var(--vp-k))}
+/*
+ * 抄走这段话的那一枚：只在压着提示词那一块时露出来 —— 静止态这一页上该只有画面和那段话。
+ * 唯一着青的地方，因为它是这一页上唯一「会改变外面世界」的动作；抄完就地改口说「已复制」，
+ * 不另弹一条 toast：结果落在按下去的那个地方，眼睛不用再找。
+ */
+.vp-copy{margin-left:auto;display:inline-flex;align-items:center;gap:calc(4px * var(--vp-k));
+  height:calc(22px * var(--vp-k));padding:0 calc(8px * var(--vp-k)) 0 calc(7px * var(--vp-k));
+  border-radius:999px;font-size:calc(11px * var(--vp-k));white-space:nowrap;
+  color:var(--vp-act);background:var(--teal-wash);border:1px solid var(--teal-dash);
+  opacity:0;pointer-events:none;transition:opacity .2s,background .2s,color .2s}
+.vp-pbox:hover .vp-copy,.vp-copy:focus-visible{opacity:1;pointer-events:auto}
+.vp-copy:hover{background:var(--teal-bg);color:var(--vp-act-on)}
+/*
+ * 「基于〔缩略图〕修改」—— 中间那枚缩略图是唯一可点的东西，点它跳到那一版的详情。
+ * 一律裁成正方的一小块：按原片比例摆的话，一段竖片只剩 11px 宽的一条线，
+ * 夹在「基于」和「修改」当中看着像排版错了；方块在这一行里是个稳定的形状，
+ * 横片竖片进来都一样大，整句话的节奏不跟着素材的朝向变。
+ * 认不出是哪一段由悬浮说明补上（见 useTip）——「是谁的第几版」这句话，方块本来也装不下。
+ * 描边走 outline 而不是 inset 阴影：图像内容盖满整个内容盒，inset 那一道画在它底下，
+ * 一个像素都露不出来。悬浮时描边提亮：这是它「可以点」的信号。
+ */
+.vp-srcline{display:inline-flex;align-items:center;flex:none;
+  gap:calc(6px * var(--vp-k));margin-left:calc(4px * var(--vp-k));
+  font-size:calc(14px * var(--vp-k));color:var(--vp-ink-2);white-space:nowrap}
+.vp-src{display:block;flex:none;border-radius:calc(5px * var(--vp-k));cursor:pointer}
+.vp-src img{display:block;width:calc(20px * var(--vp-k));height:calc(20px * var(--vp-k));
+  object-fit:cover;border-radius:calc(5px * var(--vp-k));
+  outline:1px solid rgba(255,255,255,.14);outline-offset:-1px;transition:outline .2s}
+.vp-src:hover img,.vp-src:focus-visible img{outline:1.5px solid rgba(255,255,255,.7);outline-offset:0}
 /* 提示词是整段的一句话，给足行距摊开读；不再截三行 —— 这一页就是为看全它才分出来的 */
-.vp-prompt{font-size:calc(14px * var(--vp-k));line-height:1.8;color:var(--vp-value);
+/*
+ * 提示词是一口常驻的井：一道边、一块比浮层更深的底。深下去的读作「这里装着东西」，
+ * 浮起来的读作「这里能按」—— 这段话是那一版的输入，是被装着的，不是一枚控件。
+ * 原先那块底只在鼠标压上来时才浮出，静止态里这段话就飘在半空，
+ * 和底下那排参数之间没有任何分界。话长了在井里滚，不把参数顶下去。
+ */
+.vp-pbox{flex:1;min-height:0;display:flex;flex-direction:column;
+  margin-top:calc(14px * var(--vp-k));
+  padding:calc(16px * var(--vp-k)) calc(18px * var(--vp-k)) calc(14px * var(--vp-k));
+  border-radius:calc(16px * var(--vp-k));
+  background:var(--vp-well);border:1px solid var(--vp-well-line)}
+.vp-pbox .vp-label{margin:0 0 calc(12px * var(--vp-k))}
+.vp-prompt{flex:1;min-height:0;overflow:auto;scrollbar-width:none;
+  padding:0 calc(4px * var(--vp-k)) calc(4px * var(--vp-k)) 0;
+  font-size:calc(16px * var(--vp-k));line-height:1.8;color:var(--vp-ink);
   text-wrap:pretty;white-space:pre-wrap}
-.vp-blank{margin-top:calc(20px * var(--vp-k));font-size:calc(13px * var(--vp-k));
-  line-height:1.7;color:var(--vp-ink-2)}
+.vp-pbox:hover .vp-prompt{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.vp-blank{font-size:calc(14px * var(--vp-k));line-height:1.7;color:var(--vp-ink-2)}
 .vp-grid .vp-blank{grid-column:1/-1;margin:calc(6px * var(--vp-k)) 0 2px}
-.vp-fill{flex:1}
-/* 参数沉在底边、压在一条细线下：查证用的东西，不横在提示词和画面之间 */
-.vp-specs{display:grid;grid-template-columns:1fr 1fr;
-  gap:calc(12px * var(--vp-k)) calc(10px * var(--vp-k));
-  margin-top:calc(20px * var(--vp-k));padding-top:calc(14px * var(--vp-k));
-  border-top:1px solid var(--vp-hair)}
-.vp-specs>div{display:flex;justify-content:space-between;align-items:baseline;
-  gap:calc(10px * var(--vp-k));min-width:0}
-.vp-specs span{flex:0 0 auto;font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
-.vp-specs b{font-family:var(--num);font-weight:400;line-height:1.4;
-  font-size:calc(12px * var(--vp-k));font-variant-numeric:tabular-nums;color:var(--vp-value);
+/* 参数沉在最底下，一项一枚小牌子：原先是三栏对齐的表格，「模型」和「Seedance 2.5」
+   左右分站两头，中间那段空白要眼睛自己搭过去。一枚牌子里键和值贴着站，
+   扫过去是几个独立的小块，不是一张要对着行读的表；项数变了也只是这一排长短不同。 */
+/* 整排收窄到能挤进一行：五项（横片那一栏只有四百出头的宽度）排开不换行，
+   参数就还是「一条脚注」；一折行它就占了两层，读起来像又开了一块内容。
+   字、牌高、内衬一起收，只收字号会让每枚牌子空得像个没填满的框。
+   ──
+   整排再往右让出 8px，让这排脚注从提示词那口井的字底下起步，而不是贴着井的外框 ——
+   井里的话缩进 18，这排贴着 0，眼睛把井的字边读成这一栏的字边，这排就成了往左探出去的一截。
+   ──
+   牌与牌之间给到 8：四五枚牌子紧挨着排开，中间那点缝小过牌子自己的内衬，整排就读成了一条灰带，
+   得停下来数一遍才知道是四项还是五项；缝比内衬宽一档，才断得出「这是一枚一枚的」。
+   代价说清楚：横片的源片那一栏只有 466 宽，五项连缩进要 482 —— 放不下就折到第二行。
+   这是有意换的：一排挤成灰带天天都在，折行只在「横片 ＋ 五项」这一种情形下发生，
+   而且折下来的那行也跟着这 8px 的行距，看着是有意的两行，不是被挤下去的一截。
+   竖片那一栏六百七十多宽，一行永远排得下。 */
+.vp-specs{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:calc(8px * var(--vp-k));
+  margin-top:calc(18px * var(--vp-k));padding-left:calc(8px * var(--vp-k))}
+.vp-specs>span{display:inline-flex;align-items:center;gap:calc(5px * var(--vp-k));
+  height:calc(30px * var(--vp-k));padding:0 calc(9px * var(--vp-k));
+  border-radius:calc(9px * var(--vp-k));max-width:100%;
+  background:var(--vp-tag);border:1px solid var(--vp-tag-line)}
+/* 比提示词那段话小两档：这排是查证用的，扫一眼对上就行，不该和正文抢同一个字号 */
+.vp-specs i{flex:none;font-style:normal;font-size:calc(12px * var(--vp-k));color:var(--vp-ink-2)}
+.vp-specs b{font-weight:400;font-size:calc(12px * var(--vp-k));
+  font-variant-numeric:tabular-nums;color:var(--vp-ink);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 浮层自己的标题，不是行内小标签：给到和面板 Tab 同一档字号，一眼看出这块弹出来说的是什么 */
-.popover-heading{font-size:15px;font-weight:650;color:var(--ink-0);
-  display:flex;align-items:center;justify-content:space-between;padding:6px 6px 12px}
-.popover-heading button{display:flex;padding:4px;margin:-4px;border-radius:8px;color:var(--ink-2);
-  transition:color .2s,background .2s}
-.popover-heading button:hover{color:var(--ink-0);background:var(--fill-2)}
 /*
  * 打一个 @ 呼出的素材面板：一条竖列，从光标那一点长出来。
  * 每行只有缩略图、名字、时长三样 —— 名字多半是一串读不出东西的 id，
@@ -719,11 +1441,25 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mark-veil{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:6px;padding:20px;
   text-align:center;background:rgba(8,9,9,.84);backdrop-filter:blur(3px)}
 .mark-veil strong{font-size:13.5px;font-weight:500;color:var(--ink-0)}
-.mark-veil small{font-size:12px;color:var(--ink-3)}
 
 /* ── 节点上的编辑台 ── */
 /* 画面顶着节点的上沿（圆角交给节点体裁），下面两截各自缩进来 */
 .mark-board .mark-stage{border-radius:0}
+/*
+ * 这块编辑台上的两行开关（画面下面的「框选 / 画笔 / 只改指定片段」、浮在画面上的笔刷那行）
+ * 和节点名同一个规矩，见 tokens.css 的 --zk：缩小时跟着画面一起缩，占画面多大一块不变；
+ * 放大过 100% 之后只跟一半 —— 一块两倍大的画面配一排两倍大的「框选 / 画笔」，
+ * 先看见的就成了那排开关，而这块台子上要盯的是画面、和画在画面上的那几个框。
+ *
+ * 这里用 zoom，不用「font-size × --zk，里头一律改写成 em」那一套（.nd-head / .vhud 走的是那条路）：
+ * 这两行里每个数都是按手感调出来的 —— 开关 32×19、滑杆 52、圆键 28、分隔线高 20 ——
+ * 折成 em 会把它们全变成读不出来的小数，往后再想调一格就得先做一次除法。
+ * zoom 把整行连同间距一起等比缩，调过的那套比例一个都不动；它只作用在这一层上，
+ * 里头那些按比例算的手势（轨道、画面上的框）都在这两行之外，碰不着。
+ *
+ * 时间轴那一截（.mark-track-wrap）不跟：它上面大半是缩略图，那是画面，不是标签。
+ */
+.mark-tools,.mark-float{zoom:var(--zk)}
 
 /*
  * 压在画面底边的浮动工具行：管的全是「手上这一下」—— 笔刷多粗、上一下不算数、全部重来。
@@ -867,25 +1603,38 @@ button:disabled{opacity:.4;cursor:not-allowed}
   background:rgba(0,0,0,.62);font:12px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--ink-0)}
 
 /* ── 提示词（无边框） ── */
-/* 上面是一排图，下面是一句话，两件事：留的气口得比一排图里方块之间的缝（12px）明显宽，
+/* 上面是模式和素材那一行，下面是一句话，两件事：留的气口得比那一行里方块之间的缝（12px）明显宽，
    否则句首的缩略图标签会和上面那排贴成一片，看着像同一排东西被挤成了两行 */
 /*
- * 这一块一律按最高的那一档留着（--ptools 是工具行连它的上边距，--prow 是素材行连它的上边距）：
- * 换个 Tab 就整块往上蹿一截，读起来像换了个界面 —— 高度统一，换的只是里面的内容。
- * 没有工具行的那几个模式，多出来的高度归可编辑区，不是一条空带子：多出来的地方点下去就是打字。
- */
-.prompt-editor{margin-top:20px;--pline:28px;--ptools:38px;--prow:0px;
-  display:flex;flex-direction:column;min-height:calc(var(--pline)*3 + var(--ptools) + var(--prow))}
-/*
- * 文生视频上面没有素材行 —— 那一截（一个方块加它的上边距）也归可编辑区，
- * 于是从别的 Tab 切过来，面板的上下沿都不动，动的只是里面的内容。
+ * 高度按「三行字 + 素材行搬进 Tab 行之后空出来的那一截（--prow）」留：
+ * 有素材的那几个模式之间换 Tab，面板高度不动，换的只是里面的内容；
+ * 多出来的高度归可编辑区，不是一条空带子 —— 那块地方点下去就是打字。
  * 句子照旧从最上面一行起头：空出来的地方补在下面，不是把这句话推到半空。
+ *
+ * 原先还留着一份 --ptools（工具行 38px）—— 标记和方向开关搬到节点上之后，
+ * 那一行谁都不再渲染了，这 38px 就成了每个模式头上一条空带子。已经去掉。
  */
-.prompt-editor.rowless{--prow:calc(var(--tile) + 11px)}
+.prompt-editor{--pgap:20px;--pline:28px;--prow:calc(var(--tile) + 11px);
+  margin-top:var(--pgap);display:flex;flex-direction:column;min-height:calc(var(--pline)*3 + var(--prow))}
+/*
+ * 文生视频这一档：球浮起来之后这一句自己顶到面板最上面，往下让 6px 透口气。
+ * 右边那 76px 是给球留的巷子，整块可编辑区都让着它 ——
+ * 球钉在素材行那一档的高度上（见 .gp-tabrow），压着的是第一、二行的行末，不是只有第一行。
+ *
+ * 高度仍然钉在「有素材行」那一档上 —— 少掉的素材行、少掉的气口，连同自己让出去的那 6px，
+ * 一起加回可编辑区：切模式时面板上下沿一动不动，那块地方也不是空带子，点下去就是打字。
+ */
+.gp-tabrow:not(:has(.material-row)) + .prompt-editor{margin-top:6px;padding-right:172px;
+  min-height:calc(var(--mrow) + var(--pgap) - 6px + var(--pline)*3 + var(--prow))}
 /*
  * 光标压在这句话上就得是「能改」的样子。可编辑区不是 input/textarea，浏览器不会替它挑光标，
  * 而面板整体写着 cursor:default —— 不明写这一条，箭头会一路继承进来，字看着就像不能动。
  * 空白处也给 text：点那儿本来就会把光标送进句尾。
+ */
+/*
+ * 写字的地方不画框。一整句话直接落在面板这张纸上，和上面那排缩略图同一个左边界 ——
+ * 框起来会多出一个「输入控件」的身份，而这里从来不是一个输入框，是这次任务的那句话本身。
+ * 「正在写」这件事交给光标说（caret-color 是青的，那一档留给它），不靠一圈描边点亮。
  */
 .prompt-field{position:relative;cursor:text;flex:1;display:flex}
 /*
@@ -894,8 +1643,17 @@ button:disabled{opacity:.4;cursor:not-allowed}
  * 行高留得比标签高一点，一行里有没有标签，行距都一样。
  */
 .prompt-input{display:block;width:100%;flex:1;min-height:calc(var(--pline)*3);max-height:260px;overflow-y:auto;
+  transition:min-height .28s var(--ease-soft),max-height .28s var(--ease-soft);
   outline:none;font-size:17px;line-height:var(--pline);color:var(--ink);caret-color:var(--teal);
   white-space:pre-wrap;word-break:break-word;cursor:text}
+/*
+ * 撑大之后：可编辑区长到视窗的 44%（十来行）。贴进来一整段脚本、或者一句话里嵌了七八枚标签的时候，
+ * 三行的窗口里只能一边写一边滚，读不到自己刚写的上一句。
+ * 高度按视窗给而不是按行数给：按行数加出来的那几十像素，在这块 800px 宽的板子上几乎看不出变化 ——
+ * 「撑大了」这件事得一眼看得出来，否则用户会以为这枚键没反应。
+ * 撑的只是这块可编辑区，面板其余部分一概不动；面板自己有 max-height 和滚动，撑过头也不会顶出屏幕。
+ */
+.prompt-editor.big .prompt-input{min-height:min(44vh,400px);max-height:min(44vh,400px)}
 /* 标签是整枚原子，不是可改的字：I 形光标会骗人说这里能插字 */
 .prompt-input .mark-chip{cursor:default}
 /*
@@ -948,7 +1706,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   color:var(--ink-0);font-size:13.5px;font-weight:500;transition:background .22s}
 .source-chip:hover{background:var(--seg-on)}
 /* 悬浮联动画布连线时，标签这一头也亮起来 —— 亮的是一档灰，不是彩色：
-   这一屏的青色留给「生成」和被改的那段视频，标签抢了这个颜色就读成「这里要出东西」 */
+   这一屏的青色留给被改的那段视频和画面上的标记，标签抢了这个颜色就读成「这里要出东西」 */
 .source-chip.lit{background:var(--seg-on)}
 .source-chip-shot{position:relative;flex:none;width:20px;height:20px;border-radius:5px;overflow:hidden;background:#000}
 .source-chip-shot img{display:block;width:100%;height:100%;object-fit:cover}
@@ -957,141 +1715,195 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .source-chip-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;
   align-items:center;justify-content:center;width:11px;height:11px;border-radius:50%;
   background:rgba(10,12,11,.5);box-shadow:0 0 0 1px rgba(255,255,255,.2);backdrop-filter:blur(3px)}
-/*
- * 工具行一直占着位：有素材可引用时，打一个 @ 不该把整块面板往上顶一截。
- * 空着也留一行的高度 —— 框的高度是用户正在打字的那块地方，不能跟着内容跳。
- */
-.prompt-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;min-height:28px}
-/* 引用标签比句子里的那枚小一档：它是句子底下的一行注脚，不跟正文抢；图和字的比例照旧 */
-.prompt-tools .source-chip{height:22px;padding:0 10px 0 4px;font-size:13px;gap:7px}
-.prompt-tools .source-chip-shot{width:15px;height:15px;border-radius:4px}
-
 /* ── 提示与提交 ── */
 /* @ 选单里的空态说明，中性灰；「做不成」的话一律不落在面板上，只挂在置灰控件的悬浮说明里 */
 .helper{font-size:12.5px;color:var(--ink-3);line-height:1.6}
 
 /* ── 底栏 ── */
+/*
+ * 底栏那道分隔线：从通宽的一条直线换成两头淡出、中段最亮的一道 ——
+ * 和工具栏里亮块顶上那道线是同一个手法。通宽的直线是「画上去的一条规矩」，
+ * 淡出的这道读起来是「光落在这儿」，也不会在两侧顶着面板的圆角戳出两个硬点。
+ *
+ * 底色从 var(--surface) 换成 #121414：面板现在是渐变底，
+ * 平色的 sticky 底栏压上去会在它自己的上沿留一道横向色阶 —— 那正是渐变下缘的颜色。
+ */
 .gp-bot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:44px;font-size:13px;color:var(--ink);
-  padding-top:14px;border-top:1px solid var(--line);margin-top:14px;position:sticky;bottom:-18px;
-  background:var(--surface);z-index:5;padding-bottom:4px}
+  padding-top:14px;margin-top:14px;position:sticky;bottom:-18px;
+  background:#121414;z-index:5;padding-bottom:4px}
+.gp-bot:before{content:'';position:absolute;top:0;left:0;right:0;height:1px;pointer-events:none;
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.15) 16%,
+    rgba(255,255,255,.15) 84%,rgba(255,255,255,0))}
 .gp-botL{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
 .gp-botR{display:flex;align-items:center;gap:14px;white-space:nowrap;flex:none;margin-left:auto}
-.setting-trigger,.gp-model,.gp-chip{display:flex;align-items:center;gap:9px;padding:10px 15px;
-  border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--fill);font-size:14px;
-  color:var(--ink-1);white-space:nowrap;cursor:pointer;
-  transition:border-color .22s,background .22s,color .22s,transform .22s}
-.setting-trigger:hover,.gp-model:hover,.gp-chip:hover{border-color:var(--line-dash);background:var(--fill-2);
-  color:var(--ink-1);transform:translateY(-1px)}
-.model-trigger,.gp-model{font-size:14.5px;font-weight:600;color:var(--ink)}
-.model-dot{width:7px;height:7px;border-radius:50%;background:var(--teal-deep);flex:none}
-.setting-trigger .sep{color:var(--ink-sep);font-style:normal}
-.setting-trigger em{color:var(--teal);font-style:normal}
-.setting-trigger>svg,.gp-model>svg{opacity:.85}
-.gp-sep{width:1px;height:18px;background:var(--line-2);flex:none}
-/* 价钱是这一行里要读的数，不是脚注：跟旁边的模型名、参数条一档字号，数字再大半档 */
-.gp-cost{display:flex;align-items:center;gap:7px;font-size:14.5px;color:var(--ink-3)}
-.gp-cost b{font-size:16px;color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 /*
- * 这一行末尾的「发出去」：常驻一个圆。方角的框圈着一架斜飞的纸飞机，
- * 四个角空着、机头又顶着一条边，圈和图形各说各的；圆的边到哪儿都跟机身等距，
- * 才像是把飞机端在手里的那一圈，而不是给它套了个盒子。
+ * 底栏这排是「字段」，模式 Tab 是「此刻在做哪件事」—— 两者必须一眼分得开。
+ * 过去两边都是一枚有底有边的药丸，只差半档字号，同一块板子上摆着，
+ * 得逐个读上面的字才知道哪个是开关、哪个是设置。现在按三处分：
+ *   有没有身子：Tab 是一颗浮起来的玻璃球（自带模糊和投影），字段静止时连底都没有 ——
+ *               几枚图标和数字直接躺在板子上，面板底下这一排本来就不该是十一块小板子；
+ *   形状：模型那枚是整圆的药丸，参数三格是方角（10px）；
+ *   颜色：等级色只落在模型徽章那一圈环上，参数三格一律中性灰。
+ * 「能按」这件事只在鼠标进来时说（底色抬半档），静止态一句也不说 ——
+ * 常驻在提示词底下的一排淡底，除了跟正文抢视线之外什么也没做。
  */
-.gp-send{width:46px;height:46px;flex:none;border-radius:50%;border:0;
-  background:var(--send-disc);display:grid;place-items:center;color:var(--teal-pale);
-  transition:background .24s,color .24s,transform .24s}
-/* 悬浮时这一圈提亮一档、顺手放大一点，手感上更像「按得下去」 */
+.gp-set{display:flex;align-items:center;gap:2px;min-width:0}
+/*
+ * 模型：等级徽章 + 型号名 + 身份胶囊。它是这一排里唯一带颜色的东西，
+ * 所以形状也收成整圆（参数那三格是方角）—— 看不清字的距离上就已经认得出「最左边那枚是模型」。
+ * 和参数之间空出 10px：它们不是同一类东西，靠间距断句，不靠一根竖线。
+ */
+.gp-mdl{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 4px;margin-right:10px;
+  border-radius:var(--r-pill);background:transparent;color:var(--ink);white-space:nowrap;
+  cursor:pointer;transition:background .2s}
+.gp-mdl-name{font-size:14px;font-weight:500}
+.gp-mdl:hover{background:var(--fill)}
+.gp-mdl.on{background:var(--fill-2)}
+/* 专注态锁死型号：点不开，也就不该在鼠标底下亮起来 —— 一个点不动的东西亮起来，是在撒谎 */
+.gp-mdl[aria-disabled=true]{cursor:not-allowed}
+.gp-mdl[aria-disabled=true]:hover{background:transparent}
+/*
+ * 一格参数：一枚图标 + 此刻的取值。图标说的是「这是哪一格」，数字说的是「这会儿是多少」——
+ * 两样凑起来就不必再写「清晰度」三个字，一行里也就摆得下三格。
+ */
+.gp-field{display:flex;align-items:center;gap:6px;height:34px;padding:0 9px 0 7px;
+  border-radius:10px;background:transparent;font-size:13px;color:var(--ink-1);
+  white-space:nowrap;cursor:pointer;transition:background .2s,color .2s}
+.gp-field-ic{display:grid;place-items:center;width:16px;height:16px;flex:none;
+  color:var(--ink-2);transition:color .2s}
+.gp-field:hover{background:var(--fill);color:var(--ink-0)}
+.gp-field:hover .gp-field-ic,.gp-field.on .gp-field-ic{color:var(--ink-0)}
+.gp-field.on{background:var(--fill-2);color:var(--ink-0)}
+/* 锁死的那一格（跟随原片）：读得了改不了，所以不给指针也不给 hover，为什么改不了挂在悬浮说明上 */
+.gp-field[aria-disabled=true],.gp-field[aria-disabled=true]:hover{cursor:default;
+  background:transparent;color:var(--ink-2)}
+.gp-field[aria-disabled=true]:hover .gp-field-ic{color:var(--ink-2)}
+/* 声音只有开和关两头，没有可列的取值：格子收成正方，里面只摆一枚会哑掉的喇叭 */
+.gp-field.ic{width:34px;padding:0;justify-content:center}
+.gp-field.ic.off{color:var(--ink-3)}
+/*
+ * 画幅那一枚：框本身就是那个比例，换比例时框跟着变形 ——
+ * 「16:9 → 9:16」这四个字换个次序看不出发生了什么，一块横框立起来就看得出。
+ */
+.ratio-box{display:block;box-sizing:border-box;border:1.4px solid currentColor;border-radius:2.5px;
+  transition:width .2s var(--ease-soft),height .2s var(--ease-soft)}
+/* 锁死时形状还没定：实线框会读成「就是这个比例」，虚的才是「等原片说了算」 */
+.ratio-box[data-loose]{border-style:dashed}
+/*
+ * 等级环：一圈等级色描边围着一块暗底，中间一枚实心徽记。
+ * 不发光、也不做成一块实心色牌 —— 这枚东西常驻在面板底下，满色的牌子会一直和「生成」抢视线。
+ * 圆心用比面板更暗的那一格（--sunk）：亮边围暗底读起来才是「镶了一道边」，
+ * 整枚都着色的话，抽屉里十一行就是十一颗彩色圆点，谁也不比谁要紧。
+ */
+.mdl-ring{flex:none;display:block;box-sizing:border-box;width:var(--d);height:var(--d);
+  border-radius:50%;padding:1.5px;background:var(--ring-free)}
+.mdl-ring[data-tier=vip]{background:var(--ring-vip)}
+.mdl-ring-in{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;
+  background:var(--sunk);color:var(--tier-free)}
+.mdl-ring[data-tier=vip] .mdl-ring-in{color:var(--tier-vip)}
+/*
+ * 身份胶囊：会员。免费档不挂 —— 一列里人人一枚牌子，等于一枚也没有。
+ * 顶上补一道白：这一小块是有厚度的一枚牌，不是印在纸上的一块色。
+ */
+.mdl-tier{flex:none;display:flex;align-items:center;height:16px;padding:0 6px;border-radius:8px;
+  font:700 9px/1 var(--num);letter-spacing:.06em;font-style:normal;
+  background:var(--pill-vip);color:var(--pill-vip-ink);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34)}
+/*
+ * 文本 / 图片面板里那几枚静止的占位字段（是 div，点不动）：跟着视频面板这排走同一套长相。
+ * 同一块板子上两种字段长得不一样，会被读成「这两处不是一回事」。
+ */
+.gp-model,.gp-chip{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;
+  border-radius:10px;font-size:13px;color:var(--ink-1);white-space:nowrap;cursor:default}
+.gp-model{padding-left:8px;border-radius:var(--r-pill);font-size:14px;font-weight:500;color:var(--ink)}
+.gp-model>svg,.gp-chip>svg{color:var(--ink-2)}
+.model-dot{width:7px;height:7px;border-radius:50%;background:var(--teal-deep);flex:none}
+.gp-sep{width:1px;height:18px;background:var(--line-2);flex:none}
+/*
+ * 价钱：一颗水晶 + 一个数 + 量词。数排在量词前面（「188 星钻」而不是「星钻 188」）——
+ * 这一格要读的是那个数，「星钻」两个字只是它的单位，跟在后面才不会抢在数前面被读到。
+ * 数给到最亮的一档、等宽数字；单位退到 --ink-3：它每次都一样，不必每次都读一遍。
+ */
+.gp-cost{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-3);letter-spacing:.02em}
+.gp-cost b{font-size:14px;color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+.gp-cost>svg{flex:none}
+/*
+ * 这一行末尾的「生成」：一枚浅色的实心药丸，写着字。
+ *
+ * 过去是一个青色圆盘里圈着一架纸飞机 —— 纸飞机说的是「发出去」，可这一下真正发生的是
+ * 「开始生成一条视频」，得用户自己在心里把「发送」翻译一遍。写字就不必翻译。
+ * 颜色反过来走浅色：这一屏从上到下是一整片深色，唯一该被一眼找到的就是这一枚，
+ * 而青色在这块板子上已经被「可以改的地方」（光标、勾、标记）占着了 ——
+ * 再拿它做主按钮，「重要」和「可编辑」就成了同一个颜色。
+ * 底下压一道暗边（inset 0 -1px）：一块纯平的白在深底上会飘，压一道就坐住了。
+ */
+.gp-send{display:flex;align-items:center;justify-content:center;gap:7px;flex:none;
+  height:36px;padding:0 20px;border:0;border-radius:var(--r-pill);
+  background:var(--go);color:var(--go-ink);font-size:13.5px;font-weight:500;letter-spacing:.06em;
+  box-shadow:inset 0 -1px 0 rgba(0,0,0,.12),0 2px 10px rgba(0,0,0,.35);
+  transition:background .2s,transform .2s,box-shadow .2s}
+/* 悬浮再白半档、抬起一点点：这一枚已经是全屏最亮的东西，只能靠「更近了」来说「在鼠标底下」 */
 .gp-send:not([aria-disabled=true]):hover,
-.gp-send:not([aria-disabled=true]):focus-visible{background:var(--send-disc-on);
-  color:var(--teal-on);transform:scale(1.08)}
-/* 圈是静止的，飞机就不好再飘 3px —— 那一档幅度在 40px 的圈里看着是没对齐，不是有生气 */
-@keyframes gp-send-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
-.gp-send-ic{display:grid;place-items:center;animation:gp-send-float 4.5s ease-in-out infinite}
+.gp-send:not([aria-disabled=true]):focus-visible{background:var(--go-on);transform:translateY(-1px);
+  box-shadow:inset 0 -1px 0 rgba(0,0,0,.12),0 6px 16px rgba(0,0,0,.45)}
 .gp-send.busy{cursor:default}
-.spin{width:16px;height:16px;border-radius:50%;border:2px solid rgba(94,234,212,.22);border-top-color:var(--teal);
-  animation:sp .8s linear infinite}
+/* 转圈压在浅底上：深色的一圈，不是那枚青的 —— 青的落在这块白上几乎看不见 */
+.gp-send .spin{border-color:rgba(0,0,0,.16);border-top-color:rgba(0,0,0,.62)}
+.spin{width:14px;height:14px;flex:none;border-radius:50%;border:2px solid rgba(94,234,212,.22);
+  border-top-color:var(--teal);animation:sp .8s linear infinite}
 
 /* ── 模型与参数浮层 ── */
 /*
- * 模型列表。一行三件事：左边一枚方牌认出这是谁家的型号，中间是名字和它的取值域，
- * 行末一枚勾说明「现在用的就是这一个」。
+ * 参数抽屉：贴着那一格从底下长出来的一小片，整片只有一列取值。
+ * 不给标题也不给关闭键 —— 标题要说的那句话（「清晰度」）已经画在它正下方那枚图标上了，
+ * 再摆一行「清晰度」就是把同一件事说两遍，还得为它多留一整行的高。
+ */
+.gp-drop{padding:5px;border-radius:12px;min-width:104px}
+.gp-drop button{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  width:100%;height:32px;padding:0 9px;border-radius:7px;font-size:13px;color:var(--ink-1);
+  cursor:pointer;transition:background .16s,color .16s}
+.gp-drop button>span{display:flex;align-items:center;gap:8px;min-width:0}
+.gp-opt-ic{display:grid;place-items:center;width:16px;height:16px;flex:none;color:var(--ink-2)}
+.gp-drop button:hover{background:var(--fill-2);color:var(--ink-0)}
+.gp-drop button:hover .gp-opt-ic,.gp-drop .on .gp-opt-ic{color:var(--ink-0)}
+.gp-drop .on{color:var(--ink-0);font-weight:500}
+/* 行末那枚勾是这一列里唯一着青的东西：它说的是「现在用的就是这一个」 */
+.gp-drop button>svg{flex:none;color:var(--teal)}
+/*
+ * 模型抽屉。一行四件事：等级徽章、型号名 + 身份胶囊、这个型号的取值域、行末一枚勾。
  * 取值域常驻，不再等悬浮才淡进来 —— 挑型号时要比的正是这行小字，
  * 把它藏起来等于逼着人把十一个型号逐个悬浮一遍。
  */
-.model-popover{width:376px;padding:10px}
-.model-option{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
-  padding:9px 12px;border-radius:14px;transition:background .2s,box-shadow .2s}
-.model-icon{display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex:none;
-  border-radius:10px;background:var(--fill-2);color:var(--ink-2);transition:color .2s}
-.model-option:hover .model-icon,.model-option.selected .model-icon{color:var(--ink)}
-.model-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
-.model-name{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--ink)}
-/* 新一代的那枚小牌：实心青底、近黑的字，一眼是个标签，不是名字的一部分 */
-.model-new{flex:none;font:700 10px/1 var(--num);letter-spacing:.06em;font-style:normal;
-  padding:3px 6px;border-radius:6px;background:var(--teal-solid);color:var(--teal-ink)}
-.model-option small{font-size:12px;line-height:1.45;color:var(--ink-3);
+.mdl-drop{width:344px;padding:7px;border-radius:16px}
+.mdl-row{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+  padding:7px 9px;border-radius:11px;cursor:pointer;transition:background .18s,box-shadow .18s}
+.mdl-row-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.mdl-row-name{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:550;color:var(--ink)}
+.mdl-row small{font-size:11.5px;line-height:1.45;color:var(--ink-3);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.model-check{flex:none;color:var(--teal)}
-.model-option:hover{background:var(--fill-2)}
+.mdl-row:hover{background:var(--fill-2)}
 /*
  * 选中不着青底：这一列里着青的只有行末那枚勾。一行青底再加一枚青勾是把同一件事说两遍，
  * 整块色还会压过名字本身 —— 中性的一块底 + 一圈细边，说的就是「停在这一行」。
  */
-.model-option.selected{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--line-2)}
-.model-option[aria-disabled=true]{opacity:.45;cursor:not-allowed}
-.model-option[aria-disabled=true]:hover{background:transparent}
+.mdl-row.on{background:var(--fill-2);box-shadow:inset 0 0 0 1px var(--line-2)}
+.mdl-row[aria-disabled=true]{opacity:.45;cursor:not-allowed}
+.mdl-row[aria-disabled=true]:hover{background:transparent}
+.mdl-tick{flex:none;color:var(--teal)}
+/* 新一代的那枚小牌：实心青底、近黑的字，一眼是个标签，不是名字的一部分 */
+.mdl-new{flex:none;font:700 9.5px/1 var(--num);letter-spacing:.06em;font-style:normal;
+  padding:3px 5px;border-radius:5px;background:var(--teal-solid);color:var(--teal-ink)}
 /* Seedance 是自家的一串型号，排在最前；一条细线之后才是别家的 */
-.model-split{display:block;height:1px;margin:9px 12px;background:var(--line)}
+.mdl-split{display:block;height:1px;margin:7px 10px;background:var(--line)}
 /* 视频节点上的入口：接不了这段视频时灰掉，理由挂在悬浮说明上 */
 .vtool button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
-/* 视频节点上的时长角标：走查时一眼看出这段能做哪些任务 */
-.nd-dur{position:absolute;left:8px;bottom:8px;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.55);
-  font:500 11px/1.4 var(--num);font-variant-numeric:tabular-nums;color:#fff;letter-spacing:.03em;pointer-events:none}
-.params-popover{width:376px;padding:16px 18px 14px}
-/*
- * 一节参数 = 一行标题 + 一排选项。标题行左边是这一节的名字、右边是此刻的取值 ——
- * 三节读下来就是「720p / 5s / 16:9」，不必先在下面那排里认出哪一枚是亮的。
- */
-.param-sec{margin:14px 0 20px}
-.param-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
-.param-head span{font-size:13px;color:var(--ink-2)}
-.param-head b{font-size:13px;font-weight:500;color:var(--ink-1)}
-/* 清晰度：一条连着的分段控件。这几档是同一把刻度上的位置，散成几枚标签就看不出先后 */
-.seg-row{display:flex;gap:4px;padding:4px;border-radius:14px;background:var(--fill)}
-.seg-row button{flex:1;min-width:0;height:32px;border-radius:10px;font-size:13.5px;color:var(--ink-2);
-  transition:background .2s,color .2s,box-shadow .2s}
-.seg-row button:hover{color:var(--ink-0)}
-.seg-row .selected,.seg-row .selected:hover{background:var(--fill-3);color:var(--ink-0);font-weight:600;
-  box-shadow:inset 0 0 0 1px var(--line-2)}
-/* 时长与比例：一枚一枚分开的选项，数目不定、要换行，所以不连成一条 */
-.chip-row{display:flex;flex-wrap:wrap;gap:8px}
-.chip-row button{display:flex;align-items:center;justify-content:center;gap:7px;min-width:48px;height:34px;
-  padding:0 13px;border-radius:12px;border:1px solid var(--line-2);background:transparent;
-  font-size:13.5px;color:var(--ink-2);transition:background .2s,border-color .2s,color .2s}
-.chip-row button:hover{color:var(--ink-0);border-color:var(--line-dash)}
-.chip-row .selected,.chip-row .selected:hover{background:var(--fill-3);border-color:var(--line-dash);
-  color:var(--ink-0);font-weight:600}
-.sound-setting{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);
-  padding-top:16px;margin-bottom:6px}
-.sound-setting>span{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink)}
-.sound-setting>span>svg{color:var(--ink-2)}
-/*
- * 开着的样子量自设计稿：底不是满色青，是 --teal 压到两成的一层薄底，外面描一圈 --teal-ring ——
- * 它常驻在面板底下，一枚满色的滑块在余光里会一直喊。滑块是带一点青的白，不是纯白：
- * 落在那层绿底上，纯白像是另外贴上去的一块。关着时描一圈透明的边，两个状态才不会差一圈尺寸。
- */
-.sound-switch{width:40px;height:24px;border-radius:var(--r-pill);background:rgba(255,255,255,.14);
-  border:1px solid transparent;padding:3px;display:flex;align-items:center;
-  transition:background .22s,border-color .22s}
-.sound-switch span{width:16px;height:16px;border-radius:50%;background:#fff;
-  transition:transform .22s var(--ease),background .22s}
-.sound-switch.on{background:rgba(94,234,212,.2);border-color:var(--teal-ring)}
-.sound-switch.on span{transform:translateX(16px);background:#e5fbf4}
 
 @media(max-width:700px){
-  .gp{padding:14px 16px}.gp-tab{padding:8px 10px 10px;font-size:13.5px}.material-row{gap:10px}
+  .gp{padding:14px 16px}.material-row{gap:10px}
   .source-material{padding-right:10px;gap:6px}.source-material>span{display:none}
   .gp-bot{bottom:-14px;gap:8px}.gp-botL{flex:1}.gp-botR{gap:10px}
-  .setting-trigger,.gp-model,.gp-chip{padding:9px 12px;font-size:13px}
+  .gp-set{gap:0}.gp-mdl{margin-right:6px}
+  .gp-model,.gp-chip{height:30px;padding:0 8px;font-size:12.5px}
   .prompt-input{font-size:15.5px}
   .prompt-input .reference-chip{font-size:13px}
   .tb-right{gap:6px}.tb-right .pay,.tb-people,.tb-sync{display:none}
@@ -1102,10 +1914,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .material-wrap:hover .material-tile,.material-wrap:focus-within .material-tile,.material-tile.lit{transform:none}
 }
 @media(max-height:800px){
-  .gp{padding:12px 18px}.gp-tab{padding:6px 14px 8px}.material-row{margin-top:11px}
+  .gp{padding:12px 18px}
   .mark-tools{padding:10px 0 9px}
   .timeline-track{height:30px}.prompt-editor{margin-top:16px}
-  .prompt-editor{--pline:26px;--ptools:34px}
+  .prompt-editor{--pline:26px}
   /* 行高压到 26px，标签也跟着矮一档，留出上下的余量；图和字的比例不变 */
   .prompt-input .reference-chip,.prompt-input .mark-chip,.prompt-input .source-chip{height:22px}
   .prompt-input [data-seg]{vertical-align:-5px}
@@ -1113,15 +1925,17 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .prompt-input .mark-chip-body{font-size:12.5px}
   .prompt-input .mark-chip .mark-shot{--shot:15px}
   .prompt-input .source-chip-shot{width:15px;height:15px;border-radius:4px}
-  .prompt-tools{margin-top:6px}
   .gp-bot{margin-top:10px;padding-top:10px;bottom:-12px;min-height:40px}
 }
 
 /* ---- 置灰与「本次不参与」：灰要能指到具体那一块，并且随时说得出原因 ---- */
-.gp-tab.off, .gp-tab.off:hover { color: var(--ink-3); opacity: .55; cursor: not-allowed; }
+/* 灰掉的那颗球：暗一档、影子也收回去 —— 它没被顶起来，点不动 */
+.gp-orb.off{cursor:not-allowed}
+.gp-orb.off .gp-orb-ic{color:var(--ink-3);opacity:.5}
 
-.gp-send[aria-disabled=true] { opacity: .42; cursor: not-allowed; }
-.gp-send[aria-disabled=true] .gp-send-ic { animation: none; }
+.gp-send[aria-disabled=true] { opacity: .3; cursor: not-allowed; box-shadow: none; }
+/* 正在生成不是「按不了」：那几秒里这枚是全屏唯一在说话的东西，只退半档，字得一直读得出来 */
+.gp-send.busy[aria-disabled=true] { opacity: .62; cursor: default; }
 /* 本次用不上的素材：缩略图灰掉、去饱和，悬浮卡里说清楚为什么 */
 .material-tile.off { filter: grayscale(1); opacity: .42; }
 .material-tile.off .material-play { opacity: .5; }

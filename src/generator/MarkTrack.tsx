@@ -123,7 +123,7 @@ export default function MarkTrack({ mat, range, regions, head, why, onRange, onP
         <span key={t}>{why ? '—' : tickLabel(t, i, all, duration)}</span>)}</div>
       <div className="seg-body">
         <div ref={track} className={`timeline-track${why ? ' disabled' : ''}`} tabIndex={0} aria-disabled={!!why}
-          aria-label={why ? `视频时间轴：${why}` : '视频时间轴：按下并拖动选取一段时间'} {...tip(why || undefined)}
+          aria-label={why ? `视频时间轴：${why}` : '视频时间轴：拖动选取一段时间'} {...tip(why || undefined)}
           onPointerDown={(e) => down(e)} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
           onKeyDown={(e) => { e.stopPropagation(); if (why) return; if (e.key === 'Enter') { e.preventDefault(); onBegin(); onRange(dragRange(Math.round(head), Math.round(head), duration)); onPicked() } }}>
           <div className="timeline-frames" aria-hidden="true">

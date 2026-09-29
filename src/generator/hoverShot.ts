@@ -10,15 +10,22 @@ export function useHover() {
   const closeTimer = useRef<ReturnType<typeof setTimeout>>()
   const [on, setOn] = useState(false)
   useEffect(() => () => { clearTimeout(openTimer.current); clearTimeout(closeTimer.current) }, [])
+  const shut = () => { clearTimeout(openTimer.current); closeTimer.current = setTimeout(() => setOn(false), 180) }
   return {
     on,
-    close: () => setOn(false),
+    close: () => { clearTimeout(openTimer.current); clearTimeout(closeTimer.current); setOn(false) },
     bind: {
       onMouseEnter: () => { clearTimeout(closeTimer.current); clearTimeout(openTimer.current); openTimer.current = setTimeout(() => setOn(true), 300) },
-      onMouseLeave: () => { clearTimeout(openTimer.current); closeTimer.current = setTimeout(() => setOn(false), 180) },
+      onMouseLeave: shut,
       onFocus: () => setOn(true),
       onBlur: () => setOn(false),
     },
+    /**
+     * 挂在弹出来的那张卡自己身上：鼠标从标签挪到卡上的这一路，那 180ms 的关闭计时正在走 ——
+     * 进了卡就把它掐掉，卡才留得住；从卡上离开再重新起一遍。
+     * 没有这一对，卡就只能看不能碰：手一往上抬，它在半路上自己收了。
+     */
+    stay: { onMouseEnter: () => clearTimeout(closeTimer.current), onMouseLeave: shut },
   }
 }
 /**

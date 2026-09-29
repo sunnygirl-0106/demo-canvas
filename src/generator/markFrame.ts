@@ -21,6 +21,18 @@ function shoot(video: HTMLVideoElement, w = SHOT_W): string | null {
   canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
   return canvas.toDataURL('image/jpeg', w > SHOT_W ? 0.86 : 0.72)
 }
+/**
+ * 从正在播的那块画面上直接拓一张：它此刻就停在这一帧，drawImage 是一毫秒的事，
+ * 不必再离屏解码一遍（那要几百毫秒，点下去到出图之间会空一拍）。
+ * 拓下来的同时顺手存进缓存 —— 同一帧别处再要，就不用再解一遍。
+ * 画面还没解出来（videoWidth 为 0）就返回 null，由调用方退回离屏那条路。
+ */
+export function grabFrame(video: HTMLVideoElement | null | undefined, src: string, w = SHOT_W): string | null {
+  if (!video) return null
+  const shot = shoot(video, w)
+  if (shot) cache.set(key(src, video.currentTime, w), Promise.resolve(shot))
+  return shot
+}
 /** 离屏解一遍视频，抓第 t 秒。抓不出来就 reject，调用方退回封面 —— 这是装饰，不报错。 */
 export function captureFrame(src: string, t: number, w = SHOT_W): Promise<string> {
   const k = key(src, t, w)

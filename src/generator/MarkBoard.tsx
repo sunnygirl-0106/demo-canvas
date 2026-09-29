@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCanvas } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { mediaFailure, MEDIA_FAIL, type Mat } from './materialLayout'
 import { sourceError } from './videoTask'
@@ -45,7 +46,27 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
   const aspect = useAspect(mat.thumb)
   const loading = !broken && !mat.error && (mat.ready === false || mat.dur == null)
   const why = broken || (mat.error ? mediaFailure('视频', mat.name, mat.error) : '')
-    || sourceError(mat.dur, mat.ready, 'edit', gen?.model ?? 'sd2.5', mat.name) || ''
+    || sourceError(mat.dur, mat.ready, gen?.model ?? 'sd2.5', mat.name) || ''
+
+  /**
+   * 这块屏自己把源片读出来了，就以眼前这一份为准回填源节点：时长、读没读到、以及那条错。
+   *
+   * 「读不出来 / 还在读」这两件事原本只有源节点自己那枚 <video> 说得出口
+   *（VideoNode 的 onLoadedMetadata / onError），而那枚元素只在节点以普通形态摆在画布上时才在：
+   * 它要是错过了那一次 —— 浏览器把整个标签页挪到后台（后台页的 video 干脆不开始加载）、
+   * 元素在读到一半时被换掉、或者只是一次偶然的加载失败 —— 那个判断就永远停在错的那一档上：
+   * mediaError 一旦写进去，只有它自己再读成功一次才擦得掉，而进了局部编辑它已经不在画面上了，
+   * 于是「无法读取，可尝试重新上传」会一直糊在这块屏上，哪怕源片本身好好的。
+   *
+   * 这块屏用的是同一个 src，而且是 preload=auto —— 它读成功这件事，就是最新、最直接的证据。
+   */
+  const ready = useCallback((d: number) => {
+    setBroken('')
+    const n = useCanvas.getState().nodes.find((x) => x.id === mat.id)
+    // 三样都已经是对的就不写：updateNode 会换掉整份 nodes，白写一次全画布都跟着重渲染一遍
+    if (!n || (n.data.mediaReady === true && n.data.mediaError == null && n.data.dur === d)) return
+    useCanvas.getState().updateNode(mat.id, { dur: d, mediaReady: true, mediaError: undefined })
+  }, [mat.id])
 
   /** 源能读就自动播起来：进来先看一遍，比让用户自己按播放更快找到要改的那一帧 */
   useEffect(() => { if (!why) void video.current?.play().catch(() => undefined) }, [why])
@@ -181,10 +202,10 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
       </label>
       <i className="mark-sep" aria-hidden />
     </>}
-    <button className="mark-round" aria-label="撤回上一步" aria-disabled={noStep}
-      {...tip(noStep ? '还没有可撤回的一步' : undefined)} onClick={back}><IcUndo size={14} /></button>
+    <button className="mark-round" aria-label="撤销" aria-disabled={noStep}
+      {...tip(noStep ? '暂无可撤销的操作' : '撤销上一步操作')} onClick={back}><IcUndo size={14} /></button>
     <button className="mark-round" aria-label="清除全部标记" aria-disabled={noMark}
-      {...tip(noMark ? '这次还没有标记' : '清除这次的全部标记')} onClick={clearAll}><IcTrash size={14} /></button>
+      {...tip(noMark ? '暂无可清除的标记' : '清除全部标记')} onClick={clearAll}><IcTrash size={14} /></button>
   </>
 
   return <div className="nd-board mark-board nodrag nowheel" onPointerUp={settle} onPointerCancel={settle}>
@@ -193,7 +214,7 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
       onTogglePlay={togglePlay} onBegin={begin} onDraft={(d, i) => { apply(d); setActive(i) }} onCancel={cancel} />
     {/* video 的事件绑在 MarkStage 渲染出来的那个元素上，这里只挂回调 */}
     <VideoWiring video={video} range={draft.range} duration={duration} src={mat.src} name={mat.name}
-      onHead={setHead} onPlaying={setPlaying} onSecond={setSecond} onBroken={setBroken} />
+      onHead={setHead} onPlaying={setPlaying} onSecond={setSecond} onBroken={setBroken} onReady={ready} />
     <div className="mark-tools">
       <div className="mark-toolpick">
         <button aria-pressed={tool === 'box'} className={tool === 'box' ? 'selected' : ''} onClick={() => setTool('box')}><IcFrame size={14} />框选</button>
@@ -207,7 +228,7 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
       */}
       <button role="switch" aria-checked={!!draft.range} aria-disabled={!!why}
         className={`mark-switch${draft.range ? ' on' : ''}`}
-        {...tip(why || '只播放、也只在所选片段内标记；关掉就是改整条')}
+        {...tip(why || '仅播放所选片段，也仅在该片段内标记')}
         onClick={() => setScope(!draft.range)}><i aria-hidden />只改指定片段</button>
       {/* 没选片段时这里什么都不写：开关本身已经说了「改的是整条」，再补一句「整段 00:00–00:10」
           只是把同一件事说第二遍，还占掉这一行最后那块地方 —— 那块地方留给真选了片段时的时间码 */}
@@ -221,10 +242,12 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
   </div>
 }
 /** 播放状态与播放头：video 元素在 MarkStage 里，这里只负责把它的事件接出来。 */
-function VideoWiring({ video, range, duration, src, name, onHead, onPlaying, onSecond, onBroken }: {
+function VideoWiring({ video, range, duration, src, name, onHead, onPlaying, onSecond, onBroken, onReady }: {
   video: React.RefObject<HTMLVideoElement>; range: { start: number; end: number } | null; duration: number
   src?: string; name: string
   onHead: (t: number) => void; onPlaying: (v: boolean) => void; onSecond: (t: number) => void; onBroken: (v: string) => void
+  /** 这块屏把源片读出来了，时长报上去 —— 谁在等这一句，见 MarkBoard 里的 ready */
+  onReady: (dur: number) => void
 }) {
   const box = useRef({ range, duration, src }); box.current = { range, duration, src }
   useEffect(() => {
@@ -241,12 +264,17 @@ function VideoWiring({ video, range, duration, src, name, onHead, onPlaying, onS
     // 暂停到的每一秒顺手存一张干净帧：句子里的 chip 立刻就有图，不用再解一遍视频
     const seeked = () => { if (box.current.src) warmFrame(v, box.current.src, Math.round(v.currentTime)) }
     const fail = () => onBroken(mediaFailure('视频', name, MEDIA_FAIL.read))
+    /* 挂上来时元素可能已经读完了（换个源、组件重挂）—— 那就不会再有 loadedmetadata 可等，当场报一次 */
+    const meta = () => { if (Number.isFinite(v.duration)) onReady(v.duration) }
+    meta()
     v.addEventListener('play', play); v.addEventListener('pause', pause); v.addEventListener('timeupdate', time)
     v.addEventListener('ended', ended); v.addEventListener('seeked', seeked); v.addEventListener('error', fail)
+    v.addEventListener('loadedmetadata', meta)
     return () => {
       v.removeEventListener('play', play); v.removeEventListener('pause', pause); v.removeEventListener('timeupdate', time)
       v.removeEventListener('ended', ended); v.removeEventListener('seeked', seeked); v.removeEventListener('error', fail)
+      v.removeEventListener('loadedmetadata', meta)
     }
-  }, [video, name, onHead, onPlaying, onSecond, onBroken])
+  }, [video, name, onHead, onPlaying, onSecond, onBroken, onReady])
   return null
 }

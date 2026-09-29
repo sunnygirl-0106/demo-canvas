@@ -17,7 +17,7 @@ export default function TextNode({ id, data, selected }: NodeProps<CNode>) {
     <NodeShell
       id={id} kind="text" name={data.name} selected={!!selected}
       action={<IcExpand size={13} />}
-      foot="双击文本进入编辑 · 点右上角 ⛶ 展开大屏编辑"
+      foot="双击编辑 · ⛶ 大屏编辑"
       panel={<GeneratorPanel visible={!!selected}><TextPanel nodeId={id} /></GeneratorPanel>}
     >
       {editing ? (
@@ -34,7 +34,7 @@ export default function TextNode({ id, data, selected }: NodeProps<CNode>) {
           className={'nd-text' + (data.text ? '' : ' ph')}
           onDoubleClick={() => { setDraft(data.text ?? ''); setEditing(true) }}
         >
-          {data.text || '双击开始编辑...'}
+          {data.text || '双击编辑'}
         </div>
       )}
       {busy && <div className="nd-busy"><span className="spin" />生成中…</div>}

@@ -1,10 +1,23 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type MouseEventHandler, type PointerEventHandler, type ReactNode } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { useCanvas, type NodeKind } from '../store/canvas'
 import { useActiveConn } from '../canvas/hooks'
 import { IcImage, IcPlus, IcText, IcVideo } from '../ui/icons'
 
 const KIND_ICON = { text: IcText, image: IcImage, video: IcVideo }
+
+/**
+ * 节点左右那枚 ⊕：一层向外荡的波纹 + 一枚圆。波纹不接事件，事件全落在外层，好往 handle 冒泡。
+ * linked = 这一侧真有一条线接着 —— 圆于是穿上线的颜色，见 .h-plus.linked。
+ */
+const Plus = ({ linked, ...p }: {
+  linked?: boolean; onPointerDown?: PointerEventHandler; onClick?: MouseEventHandler
+}) => (
+  <div className={'h-plus' + (linked ? ' linked' : '')} {...p}>
+    <i className="h-plus-wave" />
+    <span className="h-plus-btn"><IcPlus size={14} sw={1.9} /></span>
+  </div>
+)
 
 interface Props {
   id: string
@@ -31,6 +44,8 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
   const snapshot = useCanvas((s) => s.snapshot)
   const conn = useActiveConn()
   const spawn = useCanvas((s) => s.spawnDownstream)
+  // 只有选中的节点才画 ⊕，所以这两个也只在那一个节点上真的用得上
+  const edges = useCanvas((s) => s.edges)
   const down = useRef({ x: 0, y: 0 })
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(name)
@@ -51,20 +66,23 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
     <div data-kind={kind}
       className={'nd' + (selected ? ' sel' : '') + (hl ? ' hl' : '') + (dim ? ' dim' : '') + (focus ? ' focus' : '')}>
       {toolbar}
+      {/* 图标 + 名字包成一团：这一团整个反向缩回缩放，画布缩到多小，这行字还是这么大（见 .nd-label） */}
       <div className="nd-head">
-        <span className="ic"><Icon size={13} /></span>
-        {editing ? (
-          <span className="nd-name">
-            <input
-              autoFocus value={draft} className="nodrag"
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={commit}
-              onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
-            />
-          </span>
-        ) : (
-          <span className="nd-name" onDoubleClick={() => { setDraft(name); setEditing(true) }}>{name}</span>
-        )}
+        <span className="nd-label">
+          <span className="ic"><Icon size={13} /></span>
+          {editing ? (
+            <span className="nd-name">
+              <input
+                autoFocus value={draft} className="nodrag"
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+              />
+            </span>
+          ) : (
+            <span className="nd-name" onDoubleClick={() => { setDraft(name); setEditing(true) }}>{name}</span>
+          )}
+        </span>
         {action && <span className="act">{action}</span>}
       </div>
 
@@ -79,24 +97,31 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
         {foot && <div className="nd-foot">{foot}</div>}
       </div>
 
+      {/*
+        * handle 一直挂着（连线的锚点得一直在，不然已有的连线会掉回节点中心），
+        * 露在外面那枚 ⊕ 只在选中时才画：见 .h-plus。
+        * 加号本身用 24 格的图标凑设计稿里 16 格那一枚的观感：
+        * 那枚是 11px 画 10/16 的十字、线宽 1.6，落到屏上是 6.9px 的十字 / 1.1px 的线；
+        * 这边 14px 画 12/24，十字 7px、线宽 1.9 折出来也是 1.1px。
+        */}
       {kind !== 'text' && (
         <Handle type="target" position={Position.Left} id="in" isConnectableStart={false}>
-          <div className="h-plus"><IcPlus size={11} sw={2.2} /></div>
+          {selected && <Plus linked={edges.some((e) => e.target === id)} />}
         </Handle>
       )}
       {/* 拖出去 = 连线；原地点一下 = 右侧 360px 直接新建一个空视频节点并连上 */}
       <Handle type="source" position={Position.Right} id="out">
-        <div
-          className="h-plus"
-          onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
-          onClick={(e) => {
-            if (Math.abs(e.clientX - down.current.x) + Math.abs(e.clientY - down.current.y) > 6) return
-            e.stopPropagation()
-            spawn(id)
-          }}
-        >
-          <IcPlus size={11} sw={2.2} />
-        </div>
+        {selected && (
+          <Plus
+            linked={edges.some((e) => e.source === id)}
+            onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
+            onClick={(e) => {
+              if (Math.abs(e.clientX - down.current.x) + Math.abs(e.clientY - down.current.y) > 6) return
+              e.stopPropagation()
+              spawn(id)
+            }}
+          />
+        )}
       </Handle>
 
       {panel}
