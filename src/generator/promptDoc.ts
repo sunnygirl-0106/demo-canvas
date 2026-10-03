@@ -70,8 +70,12 @@ export function groupSegs(g: MarkGroup): Seg[] {
     // 后面还跟着几处标记时才补一个「里的」，把两枚标签连起来
     if (g.regions.length) out.push({ t: 'text', v: '里的' })
   }
-  // 标签之间不塞空格：挨着的两枚由排版分开，句子里不留这个字符
-  spotsOf(g.regions).forEach((regions) => out.push({ t: 'mark', k: segKey(), g: g.id, regions }))
+  // 并列的几枚标记之间点一个顿号，和段与段之间（见 replaceMarks）同一个规矩 ——
+  // 读下来是「这几处」，不是靠排版把两枚牌子推开、念出来却糊成一串
+  spotsOf(g.regions).forEach((regions, i) => {
+    if (i) out.push({ t: 'text', v: '、' })
+    out.push({ t: 'mark', k: segKey(), g: g.id, regions })
+  })
   return out
 }
 /**

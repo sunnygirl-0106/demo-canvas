@@ -45,7 +45,8 @@ describe('提示词框里那句话是一份可编辑的文档', () => {
     const doc = replaceMarks(seedDoc('edit'), [group('g1', [box(2), two, box(6)])])
     // 第 2 秒上标了两处，句子里仍然只有两枚标签（00:02 和 00:06）
     expect(doc.filter((s) => s.t === 'mark')).toHaveLength(2)
-    expect(read(doc)).toBe('把 @TARL 中 @标记 00:02 @标记 00:06 的')
+    // 并列的两枚之间点一个顿号，和段与段之间同一个规矩
+    expect(read(doc)).toBe('把 @TARL 中 @标记 00:02、@标记 00:06 的')
     // 删掉 00:02 那一枚：这一秒的两处一起没了
     const cut = doc.filter((s) => !(s.t === 'mark' && s.regions[0].t === 2))
     expect(marksOf(cut)[0].regions).toEqual([box(6)])
