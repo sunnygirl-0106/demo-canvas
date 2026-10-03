@@ -3,7 +3,7 @@ import {
   BRUSH_MAX, BRUSH_MIN, BRUSH_WIDTH, RANGE_MIN, adjustRange, appendPoint, brushOf, brushPct, clampBrush,
   clipRegions, commitDraft, defaultSegment, draftOf, dragRange, dragRect,
   draftEmpty, dropLastChip, groupReading, invalidMark, markScope, marksReading,
-  outOfSource, pinnedBy, rangeAt, rangeBounds, rangeHull, rangesTotal, regionLabel,
+  outOfSource, pinnedBy, rangeAt, rangeBounds, rangeHull, rangesTotal,
   spotDetail, spotLabel, spotsOf, strokeBox, tinyRect,
   type MarkGroup, type MarkRegion, type Stroke,
 } from './marks'
@@ -43,40 +43,40 @@ describe('画面上圈出来的那一块', () => {
 
 describe('标记怎么读：一处就是一处，各报各的时间', () => {
   it('标签上写的是它自己那一帧的时间 —— 三个时间点三处，不折叠成「3 处」', () => {
-    expect(regionLabel(box(3))).toBe('框选 00:03')
-    expect(regionLabel(brush(61, [[[0.5, 0.5]]]))).toBe('画笔 01:01')
+    expect(spotLabel([box(3)])).toBe('标记 00:03')
+    expect(spotLabel([brush(61, [[[0.5, 0.5]]])])).toBe('标记 01:01')
     // 整段视频里在两个时间点各框了一处，读出来就是并列的两处
-    expect(groupReading(group([box(1), box(3)]))).toBe('@框选 00:01、@框选 00:03')
+    expect(groupReading(group([box(1), box(3)]))).toBe('@标记 00:01、@标记 00:03')
   })
   it('指定片段里头尾各一个框，两处都列出来，那一段读作它们的定语', () => {
-    expect(groupReading(group([box(3), box(8)], { start: 3, end: 8 }))).toBe('@00:03–00:08 里的 @框选 00:03、@框选 00:08')
+    expect(groupReading(group([box(3), box(8)], { start: 3, end: 8 }))).toBe('@00:03–00:08 里的 @标记 00:03、@标记 00:08')
     // 只选了一段时间、一处没圈：这一段本身就是那处标记
     expect(groupReading(group([], { start: 1, end: 3 }))).toBe('@00:01–00:03')
     expect(groupReading(group([]))).toBe('整段视频')
   })
   it('几次标记连读成一句，组与组之间用分号断开', () => {
     expect(marksReading([group([box(1)]), { ...group([box(3), box(8)], { start: 3, end: 8 }), id: 'g2' }]))
-      .toBe('@框选 00:01；@00:03–00:08 里的 @框选 00:03、@框选 00:08')
+      .toBe('@标记 00:01；@00:03–00:08 里的 @标记 00:03、@标记 00:08')
   })
-  it('同一时间点只出一枚标签：两种工具都用过时按框选报，明细里补上处数', () => {
+  it('同一时间点只出一枚标签，一律读作「标记 MM:SS」—— 不分框还是笔，明细里补上处数', () => {
     // 同一秒圈两个框再涂一笔，说的是「这一帧上要改的地方」—— 一枚标签，不是三枚
     expect(spotsOf([box(3), brush(3, [[[0.5, 0.5]]]), box(8)]).map((rs) => rs.length)).toEqual([2, 1])
-    expect(spotLabel([brush(5, [[[0.5, 0.5]]]), box(5)])).toBe('框选 00:05')
-    expect(spotLabel([brush(61, [[[0.5, 0.5]]])])).toBe('画笔 01:01')
-    expect(spotDetail([box(3)])).toBe('框选 00:03')
-    expect(spotDetail([box(3), box(3)])).toBe('框选 00:03 2 处')
+    // 哪支工具画的不进标签：送进模型的东西两支本来也是同一样（画笔交出去的是它的外接框）
+    expect(spotLabel([brush(5, [[[0.5, 0.5]]]), box(5)])).toBe('标记 00:05')
+    expect(spotDetail([box(3)])).toBe('标记 00:03')
+    expect(spotDetail([box(3), box(3)])).toBe('标记 00:03 2 处')
   })
   it('保存下来的是这次圈的那一套，深拷一份，外面再改不动它', () => {
     const draft = { regions: [box(1), box(3)], ranges: [{ start: 1, end: 4 }] }
     const saved = commitDraft(draft)
-    expect(marksReading(saved)).toBe('@00:01–00:04 里的 @框选 00:01、@框选 00:03')
+    expect(marksReading(saved)).toBe('@00:01–00:04 里的 @标记 00:01、@标记 00:03')
     draft.regions[0].rect[0] = 0.9
     expect(saved[0].regions[0].rect[0]).toBe(0.2)
   })
   it('选了好几段：一段一组，每一处标记归罩着它的那一段', () => {
     const saved = commitDraft({ regions: [box(1), box(3), box(8)], ranges: [{ start: 1, end: 4 }, { start: 7, end: 9 }] })
     expect(saved.map((g) => g.id)).toEqual(['g1', 'g2'])
-    expect(marksReading(saved)).toBe('@00:01–00:04 里的 @框选 00:01、@框选 00:03；@00:07–00:09 里的 @框选 00:08')
+    expect(marksReading(saved)).toBe('@00:01–00:04 里的 @标记 00:01、@标记 00:03；@00:07–00:09 里的 @标记 00:08')
     // 一段都没选就是「整段视频」那一组；一处也没圈就一组都没有
     expect(commitDraft({ regions: [box(1)], ranges: [] }).map((g) => g.range)).toEqual([null])
     expect(commitDraft({ regions: [], ranges: [] })).toEqual([])
@@ -104,10 +104,10 @@ describe('作用范围由标记推出来，不再是一个开关', () => {
     const two = [group([box(1), box(2)], { start: 1, end: 3 }), { ...group([box(8)], { start: 8, end: 9 }), id: 'g2' }]
     // 先删最后一组的那一处标记
     const a = dropLastChip(two)
-    expect(marksReading(a)).toBe('@00:01–00:03 里的 @框选 00:01、@框选 00:02；@00:08–00:09')
+    expect(marksReading(a)).toBe('@00:01–00:03 里的 @标记 00:01、@标记 00:02；@00:08–00:09')
     // 再按一次删掉它的时间段，这一组就空了，整组消失
     const b = dropLastChip(a)
-    expect(marksReading(b)).toBe('@00:01–00:03 里的 @框选 00:01、@框选 00:02')
+    expect(marksReading(b)).toBe('@00:01–00:03 里的 @标记 00:01、@标记 00:02')
     // 一路删到空
     expect(dropLastChip(dropLastChip(dropLastChip(b)))).toEqual([])
     expect(dropLastChip([])).toEqual([])

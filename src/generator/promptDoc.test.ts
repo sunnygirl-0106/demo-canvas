@@ -25,13 +25,13 @@ describe('提示词框里那句话是一份可编辑的文档', () => {
       group('g1', [box(1)], { start: 1, end: 3 }),
       group('g2', [box(8)], { start: 7, end: 9 }),
     ])
-    expect(read(doc)).toBe('把 @TARL 中 @00:01–00:03 里的 @框选 00:01、@00:07–00:09 里的 @框选 00:08 的')
+    expect(read(doc)).toBe('把 @TARL 中 @00:01–00:03 里的 @标记 00:01、@00:07–00:09 里的 @标记 00:08 的')
     expect(marksOf(doc).map((g) => g.range)).toEqual([{ start: 1, end: 3 }, { start: 7, end: 9 }])
     // 并列用的那个顿号是替用户写的，不算他提过要求
     expect(docWritten(doc)).toBe('')
     // 少了一段：句子里那一串整段换掉，不会留下上一次的尾巴
     const one = replaceMarks(doc, [group('g1', [box(8)], { start: 7, end: 9 })])
-    expect(read(one)).toBe('把 @TARL 中 @00:07–00:09 里的 @框选 00:08 的')
+    expect(read(one)).toBe('把 @TARL 中 @00:07–00:09 里的 @标记 00:08 的')
   })
   it('起头那几个字不算用户写过要求，写了才算', () => {
     const doc = replaceMarks(seedDoc('edit'), [group('g1', [box(1)], { start: 1, end: 2 })])
@@ -45,7 +45,7 @@ describe('提示词框里那句话是一份可编辑的文档', () => {
     const doc = replaceMarks(seedDoc('edit'), [group('g1', [box(2), two, box(6)])])
     // 第 2 秒上标了两处，句子里仍然只有两枚标签（00:02 和 00:06）
     expect(doc.filter((s) => s.t === 'mark')).toHaveLength(2)
-    expect(read(doc)).toBe('把 @TARL 中 @框选 00:02 @框选 00:06 的')
+    expect(read(doc)).toBe('把 @TARL 中 @标记 00:02 @标记 00:06 的')
     // 删掉 00:02 那一枚：这一秒的两处一起没了
     const cut = doc.filter((s) => !(s.t === 'mark' && s.regions[0].t === 2))
     expect(marksOf(cut)[0].regions).toEqual([box(6)])

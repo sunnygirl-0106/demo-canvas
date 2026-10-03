@@ -78,22 +78,16 @@ export function appendPoint(strokes: Stroke[], x: number, y: number): Stroke[] |
 }
 
 /**
- * 一处标记怎么读：是框还是笔，以及它自己那一帧的时间。
- * 时间是这处标记的身份，任何地方都不能省 —— 三个框落在三个时间点就是三处，
- * 不是「3 处」这么一个数字。
+ * 一个时间点上标的那些东西，合起来读作一枚标签：「标记 00:05」。
  *
- * 工具用「框选 / 画笔」两个字，不用符号。早先这里是 ⬚ 和 ✎ ——
- * 这两个字符系统字体里多半没有，到了用户机器上就是一枚豆腐块（□），
- * 一句「把 00:03 这处改成红色」读出来成了「把 □ 00:03 改成红色」。
- * 一个画不出来的符号不如两个一定画得出来的字。
+ * 不写是框还是笔。那是他拿哪支工具画出来的，而这一句要说的是「这一帧上有一处要改的地方」——
+ * 送进模型的东西两支工具本来也是同一样（画笔交出去的同样是它的外接框，见 MarkRegion）。
+ * 分成两个词，用户还得先知道「框选」和「画笔」在这里有没有区别，而答案是没有。
+ *
+ * 时间是这处标记的身份，任何地方都不能省 —— 三处落在三个时间点就是三枚标签，
+ * 不是「3 处」这么一个数字。同一秒圈两个框、再涂一笔说的是同一件事，所以只出一枚。
  */
-export const regionLabel = (r: MarkRegion) => spotLabel([r])
-/**
- * 同一个时间点上的那几处标记合起来读作一枚标签：同一秒圈两个框、再涂一笔，说的都是「这一帧上要改的地方」，
- * 句子里写成三枚标签就像是三件事。两种工具都用过时按框选报 —— 框是默认那一支，也是模型真正收到的东西。
- */
-export const spotLabel = (rs: MarkRegion[]) =>
-  `${rs.some((r) => r.tool === 'box') ? '框选' : '画笔'} ${timecode(rs[0]?.t ?? 0)}`
+export const spotLabel = (rs: MarkRegion[]) => `标记 ${timecode(rs[0]?.t ?? 0)}`
 /** 读出声的版本：标签上写不下的处数放这里，给 aria 和悬浮卡用。 */
 export const spotDetail = (rs: MarkRegion[]) =>
   `${spotLabel(rs)}${rs.length > 1 ? ` ${rs.length} 处` : ''}`
@@ -114,7 +108,7 @@ export const rangeLabel = (r: TimeRange) => `${timecode(r.start)}–${timecode(r
  * 读的人认得，模型也认得，还不挑字体 —— 比任何一个符号都稳。
  *
  * 只给念出来的那一份加。标签自己在屏幕上不写 @（那是「怎么把它选进来的」，不是它是什么），
- * aria 和悬浮卡读的是 regionLabel / rangeLabel 这一层，也不该多出一个念成「at」的符号。
+ * aria 和悬浮卡读的是 spotLabel / rangeLabel 这一层，也不该多出一个念成「at」的符号。
  */
 export const tag = (s: string) => `@${s}`
 /**

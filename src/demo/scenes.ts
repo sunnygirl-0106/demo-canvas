@@ -275,7 +275,7 @@ const extendDoc = (text: string): Seg[] =>
   [{ t: 'text', v: '从' }, { t: 'mat', k: segKey() }, { t: 'dur', k: segKey() }, { t: 'text', v: `，${text}` }]
 const refDoc = (text: string): Seg[] => [{ t: 'text', v: text }]
 const boxAt = (t: number): MarkRegion => ({ t, tool: 'box', rect: [0.32, 0.36, 0.3, 0.28] })
-/** 带一枚标记标签的那一句：「把 @客厅沙发 中 @框选 00:02 的…」 */
+/** 带一枚标记标签的那一句：「把 @客厅沙发 中 @标记 00:02 的…」 */
 const markDoc = (text: string, t: number): Seg[] => [
   { t: 'text', v: '把' }, { t: 'mat', k: segKey() }, { t: 'text', v: '中' },
   { t: 'mark', k: segKey(), g: 'g1', regions: [boxAt(t)] }, { t: 'text', v: `的${text}` },
