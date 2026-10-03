@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useReactFlow, useStore } from '@xyflow/react'
 import { useCanvas } from '../store/canvas'
 import { heldBy, useVersions, versionGroups, type VersionRecord, type VersionTask } from '../store/versions'
-import { MODEL_CAPABILITIES, fmt } from '../generator/materialLayout'
+import { MODEL_CAPABILITIES, fmt, ratioNear } from '../generator/materialLayout'
 import { docText } from '../generator/promptDoc'
 import { gradOf } from '../demo/assets'
 import { IcArrowL, IcCheck, IcClose, IcCopy, IcOpenOut, IcPencil, IcPlay, IcPlusBox, IcTiles, IcToEnd, IcVideo, IcZoomIn } from '../ui/icons'
@@ -35,9 +35,16 @@ const when = (t: number) => {
   const d = new Date(t), hm = `${no2(d.getHours())}:${no2(d.getMinutes())}`
   return d.toDateString() === new Date().toDateString() ? `今天 ${hm}` : `${no2(d.getMonth() + 1)}-${no2(d.getDate())} ${hm}`
 }
-/** 画幅在提交那一刻就被锁成了 adaptive，读回来得还原成「随的是谁」 */
-const ratioOf = (t: VersionTask) =>
-  t.params.ratio !== 'adaptive' ? t.params.ratio : t.mode === 'frames' ? '随首帧' : '随原片'
+/**
+ * 画幅读的是这一版画面自己的比例。
+ *
+ * 提交那一刻编辑 / 延长 / 首尾帧的画幅被锁成 adaptive —— 那是一条规则（跟着原片 / 跟着首帧），
+ * 当时还没有一个确切的数。可到了这一页，那幅画面就在左边摆着：量一下就有了。
+ * 这一页是来看「这一版是什么」的，「随原片」说的是它当初怎么来的 ——
+ * 旁边那行「基于〔缩略图〕修改」已经把这件事说完了，参数栏里该给一个数。
+ */
+const ratioOf = (t: VersionTask, ratio?: number) =>
+  t.params.ratio !== 'adaptive' ? t.params.ratio : ratio && ratio > 0 ? ratioNear(ratio) : ''
 /**
  * 这一版最终多长，以它自己那段画面为准 —— 延长任务的 params.duration 说的是新增那一截，
  * 不是产出的总长，拿它当「时长」会把一条 13 秒的片子写成 5 秒。
@@ -49,12 +56,12 @@ const durOf = (r: VersionRecord) =>
  * 参数区读什么。编辑 / 延长锁死的那几项已经在提交时定死，这里只负责把它们读回人话；
  * 没有配音开关的型号不摆「音频」那一行 —— 一栏恒为「无声」说的不是这次任务，是这个型号。
  */
-const specsOf = (r: VersionRecord): [string, string][] => {
+const specsOf = (r: VersionRecord, ratio?: number): [string, string][] => {
   if (!r.task) return ([['时长', durOf(r)]] as [string, string][]).filter(([, v]) => v)
   const cap = MODEL_CAPABILITIES[r.task.model]
   const rows: [string, string][] = [
     ['模型', cap.label], ['清晰度', r.task.params.resolution],
-    ['画幅', ratioOf(r.task)], ['时长', durOf(r)],
+    ['画幅', ratioOf(r.task, ratio)], ['时长', durOf(r)],
   ]
   if (cap.hasAudioToggle) rows.push(['音频', r.task.params.sound ? '有声' : '无声'])
   return rows.filter(([, v]) => v)
@@ -289,10 +296,13 @@ export default function VersionsDialog({ nodeId, name, onClose }:
 
   const host = current ? nodes.find((n) => n.id === current.nodeId) : undefined
   /**
-   * 这一版那块屏按什么比例摆。节点还在，就读它量过的那个数；节点被删了，那个数跟着它一起没了 ——
-   * 就地拿这一版的封面再量一次，横片照旧摆成横的，不被塞进一个竖框里裁掉两边。
+   * 这一版是横的还是竖的 —— 量的是**这一版自己**那张封面，不读节点身上那个数：
+   * 节点量的是它现在挂着的那一版，而这一页翻的可能是更早的一版，两者未必同一个朝向。
+   * 量出来之前（和节点被删、封面也读不出来时）先借节点那个数顶一下，别让这块屏先摆错一帧。
+   * 这一个数同时管两处：那块屏按它摊开（stillBox），参数栏里的画幅也读它（ratioOf）。
    */
-  const shotRatio = useAspect(host || !current ? undefined : current.media.poster)
+  const shotRatio = useAspect(current?.media.poster)
+  const shownRatio = shotRatio ?? (typeof host?.data.ratio === 'number' ? host.data.ratio : undefined)
   // 「还在画布上吗」问的是「这个节点现在挂的是不是这一条记录」——
   // 不能比画面文件：演示里编辑产出复用原片，同一个节点的 V1、V2 的 src 一样，两版都会被当成在画布上
   const onCanvas = !!current && heldBy(records, current.nodeId)?.id === current.id
@@ -396,7 +406,7 @@ export default function VersionsDialog({ nodeId, name, onClose }:
         <div className="vp-body">
           {/* 按原片比例摊开的一块屏（见 stillBox）：竖片是竖的，横片是横的。
               鼠标压上来就放，底边那条轴常驻 —— 这一页只有一块屏，不用像一屏卡片那样把轴收起来 */}
-          <VersionShot className="vp-still" style={stillBox(host?.data.ratio ?? shotRatio ?? undefined)}
+          <VersionShot className="vp-still" style={stillBox(shownRatio)}
             media={current.media} grad={gradOf(current.id)} corner={corner(current)} />
           <div className="vp-info">
             {/*
@@ -452,7 +462,7 @@ export default function VersionsDialog({ nodeId, name, onClose }:
               再挂一个总名等于把同一件事说两遍，还多占一行。
             */}
             <div className="vp-specs">
-              {specsOf(current).map(([k, v]) => <span key={k}><i>{k}</i><b>{v}</b></span>)}
+              {specsOf(current, shownRatio).map(([k, v]) => <span key={k}><i>{k}</i><b>{v}</b></span>)}
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeIds, allocate, assign, emptySlots, tabStates, modeAvailable, modeBlockedReason, modelUnusableReason, sourceEntryReason, fallbackMode, supportsRange, locksRatio, locksDuration, MODEL_CAPABILITIES, type Mat, type MatGet, type Mode } from './materialLayout'
+import { activeIds, allocate, assign, emptySlots, tabStates, modeAvailable, modeBlockedReason, modelUnusableReason, ratioNear, sourceEntryReason, fallbackMode, supportsRange, locksRatio, locksDuration, MODEL_CAPABILITIES, type Mat, type MatGet, type Mode } from './materialLayout'
 const mats: Mat[] = [
   { id: 'a', name: 'ABCD', kind: 'image', grad: '' }, { id: 'b', name: 'EFGH', kind: 'image', grad: '' },
   { id: 'v', name: 'IJKL', kind: 'video', dur: 15.1, grad: '' }, { id: 'w', name: 'MNOP', kind: 'video', dur: 4, grad: '' },
@@ -41,6 +41,15 @@ describe('模式能力与有效素材', () => {
       expect(locksDuration('edit')).toBe(true)
       expect(supportsRange(m)).toBe(m === 'sd2.5')
     }
+  })
+  it('量出来的比例读作最近的那一档标准画幅，横竖对称', () => {
+    expect(ratioNear(1280 / 720)).toBe('16:9')
+    expect(ratioNear(720 / 1280)).toBe('9:16')
+    expect(ratioNear(1)).toBe('1:1')
+    expect(ratioNear(1920 / 816)).toBe('21:9')
+    // 按差值算的话这一档会被认成 1:1（竖的那半边刻度疏），按比值的对数算才落在 3:4
+    expect(ratioNear(0.75)).toBe('3:4')
+    expect(ratioNear(1.34)).toBe('4:3')
   })
   it('时长档位不跳过 6 秒', () => {
     for (const m of ['sd2.5', 'sd2.0'] as const) expect(MODEL_CAPABILITIES[m].durations).toContain(6)

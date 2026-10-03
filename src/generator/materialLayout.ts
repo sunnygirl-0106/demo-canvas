@@ -58,7 +58,17 @@ export type Tier = 'free' | 'vip'
  * 一个型号只会拥有其中一个，另一个根本不出现在 Tab 行上（见 tabStates）。
  */
 const ALL_MODES: Mode[] = ['text', 'frames', 'ref', 'edit', 'extend']
-const RATIOS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
+export const RATIOS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
+/**
+ * 一个量出来的比例读作哪一档标准画幅：取最接近的那一个。
+ * 距离按比值的对数算 —— 横竖对称，16:9 和 9:16 离 1:1 一样远；
+ * 按差值算的话，宽的那半边刻度密、竖的那半边刻度疏，一段 3:4 的片子会被认成 1:1。
+ */
+export function ratioNear(r: number): string {
+  const value = (s: string) => { const [w, h] = s.split(':').map(Number); return w / h }
+  return RATIOS.reduce((best, x) =>
+    Math.abs(Math.log(value(x) / r)) < Math.abs(Math.log(value(best) / r)) ? x : best)
+}
 /**
  * 2.0 系列共用一套取值域：产出 4–15 秒、9 图 / 3 视频 / 3 音频、不锁定、不响应秒数。
  * 输入视频这一栏按文档是「单个 4–15 秒、最多 3 个、合计 ≤15 秒」，编辑 / 参考生成 / 延长三种任务一视同仁。
