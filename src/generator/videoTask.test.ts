@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { sourceError, taskPayload, taskError, marksBlockModel } from './videoTask'
 import { freshGen } from '../store/generator'
 import { tabStates, type MatGet } from './materialLayout'
+import { seedDoc, type Seg } from './promptDoc'
 import type { MarkGroup, TimeRange } from './marks'
 /** 一组标记：圈了 n 处（都在第 t 秒），可选再带一段时间。 */
 const marks = (t: number, n = 1, range: TimeRange | null = null): MarkGroup[] =>
@@ -32,22 +33,26 @@ describe('任务参数', () => {
     expect(spot).toMatchObject({ scope: 'whole', range: null, rangeMeaning: '作用域' })
     expect(spot.marks[0].regions[0].t).toBe(3)
   })
-  it('读作那句话就是这次任务的全部意思', () => {
-    expect(taskPayload({ ...edit(), marks: marks(3, 2, { start: 3, end: 8 }) }, get).reads)
-      .toBe('把「视频 ABCD」中 00:03–00:08 里的 ⬚ 00:03、⬚ 00:03 的 将椅子改成红色')
-    expect(taskPayload(edit(), get).reads).toBe('把「视频 ABCD」的 将椅子改成红色')
+  it('提交的就是框里那一句：标签念出来挂 @，名字按它现在的叫法现念', () => {
+    const doc: Seg[] = [...seedDoc('edit'), { t: 'text', v: '将椅子改成红色' }]
+    expect(taskPayload({ ...edit(), doc }, get).prompt).toBe('把 @ABCD 的将椅子改成红色')
+    // 提交那一刻连标签一起存下来：详情页和「复制」都拿它再念一遍
+    expect(taskPayload({ ...edit(), doc }, get).doc.map((s) => s.t)).toEqual(['text', 'mat', 'text', 'text'])
+    // 没有句子的那几个面板退回存着的那一串
+    expect(taskPayload(edit(), get).prompt).toBe('将椅子改成红色')
   })
-  it('不响应范围的型号，只要标了东西就提交不了 —— 哪怕只圈了一个框、没选时间段', () => {
-    const g = { ...edit(), model: 'sd2.0' as const, marks: marks(3) }
-    expect(taskError(g, (id) => ({ ...get(id)!, dur: 10 }))).toContain('不支持局部编辑')
-    // 已经标了东西时只多一句解除办法，不重复标了几处
-    expect(marksBlockModel(g, 'sd2.0')).toBe('Seedance 2.0 不支持局部编辑，移除标记后可切换')
-    expect(marksBlockModel(g, 'sd2.5')).toBe('')
-    // 标记为空时它就不再挡路了
-    expect(marksBlockModel({ ...g, marks: [] }, 'sd2.0')).toBe('')
+  it('2.0 不支持的只是「指定片段」：光圈了画面照旧放行，选了片段才拦', () => {
+    const short: MatGet = (id) => ({ ...get(id)!, dur: 10 })
+    const spot = { ...edit(), model: 'sd2.0' as const, marks: marks(3) }
+    expect(taskError(spot, short)).toBeNull()
+    expect(marksBlockModel(spot, 'sd2.0')).toBe('')
+    const seg = { ...spot, marks: marks(3, 1, { start: 3, end: 8 }) }
+    expect(taskError(seg, short)).toBe('Seedance 2.0 不支持指定片段编辑')
+    expect(marksBlockModel(seg, 'sd2.0')).toBe('Seedance 2.0 不支持指定片段编辑')
+    expect(marksBlockModel(seg, 'sd2.5')).toBe('')
   })
   it('提示词空着也让他生成；标记指向的秒数超出原片才拦下', () => {
-    const g = { ...edit(), marks: marks(3, 1, { start: 3, end: 7 }), prompt: '@ABCD ' }
+    const g = { ...edit(), marks: marks(3, 1, { start: 3, end: 8 }), prompt: '@ABCD ' }
     // 只有自动前缀和一个引用、一句要求都没写：这是他的选择，不是缺一步没做完
     expect(taskError(g, get)).toBe(null)
     expect(taskError({ ...g, doc: [], prompt: '' }, get)).toBe(null)
@@ -122,11 +127,11 @@ describe('任务参数', () => {
     // 去掉那段参考视频就在上限内
     expect(taskError({ ...g, conn: ['v'], tray: [] }, long)).toBeNull()
   })
-  it('提交记录与界面参数一致：2.0 不锁比例，没有声音开关的模型不夹带 sound', () => {
+  it('提交记录与界面参数一致：编辑的画幅一律随原片，没有声音开关的模型不夹带 sound', () => {
     const short: MatGet = (id) => ({ ...get(id)!, dur: 10 })
-    // 2.0 编辑可以手选 9:16，提交就得是 9:16；时长仍随原片
+    // 画幅锁定是模式的事，不是型号的事（§5.3）：2.0 上手选过 9:16 也照旧锁成随原片
     expect(taskPayload({ ...edit(), model: 'sd2.0' as const, params: { ...edit().params, ratio: '9:16' } }, short).params)
-      .toMatchObject({ ratio: '9:16', duration: 10 })
+      .toMatchObject({ ratio: 'adaptive', duration: 10 })
     const kling = { ...freshGen(), mode: 'ref' as const, model: 'kling-video-o1' as const, conn: ['v'], tray: ['v'], prompt: '海边日落' }
     expect(kling.params.sound).toBe(true)
     expect(taskPayload(kling, short).params.sound).toBe(false)

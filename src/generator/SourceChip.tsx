@@ -52,7 +52,8 @@ export default function SourceChip({ mat, role, label }: { mat: Mat; role: strin
         {/* 视频才有这一枚：正中一个三角就是「按这儿开始放」。
             图片不给任何角标 —— 它就是一张画，压一枚图标只是挡着它（鼠标形状和那点推近已经说了能点） */}
         {mat.kind === 'video' && <span className="material-card-cue" aria-hidden><IcPlay size={16} /></span>}
-        <span className="material-card-meta"><strong>{mat.name}</strong>{dur && <span>{dur}</span>}</span>
+        {/* 暗角里只写名字，不写时长 —— 和素材方块那张悬浮卡是同一条（见 MaterialRow） */}
+        <span className="material-card-meta"><strong>{mat.name}</strong></span>
       </button>
     </Overlay>}
     {preview && <MediaPreview mat={mat} onClose={() => setPreview(false)} />}

@@ -18,10 +18,12 @@ interface Draft extends Slots {
   /** 标记组取代了原来的 scope + range：作用范围由每一组自己带着，整体范围推得出来 */
   marks: MarkGroup[]
   direction: 'before' | 'after' | null; sourceSrc: string | null; sourceId: string | null; references: Record<string, string>
+  /** 已经把哪个文本节点的内容倒进提示词框了（§5.1）：同一个节点只倒一次，用户删掉也不再送回来 */
+  textFrom: string | null
 }
 export interface TaskRecord { id: string; status: 'running' | 'complete'; createdAt: number; payload: TaskPayload }
 export interface GenState extends Draft { mode: Mode; conn: string[]; tasks: TaskRecord[] }
-const freshDraft = (): Draft => ({ ...emptySlots(), model: 'sd2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, doc: [], seeded: false, marks: [], direction: 'after', sourceSrc: null, sourceId: null, references: {} })
+const freshDraft = (): Draft => ({ ...emptySlots(), model: 'sd2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, doc: [], seeded: false, marks: [], direction: 'after', sourceSrc: null, sourceId: null, references: {}, textFrom: null })
 export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], tasks: [] })
 function sourceSync(d: Draft, get: MatGet): Draft {
   const mat = d.slotEdit ? get(d.slotEdit) : null
@@ -99,15 +101,21 @@ function switchMode(g: GenState, mode: Mode, get: MatGet): GenState {
   if (mode === g.mode) return g
   return { ...g, ...sourceSync({ ...g, ...allocate(g, g.conn, mode, get) }, get), mode }
 }
+/**
+ * 空节点接进第一份素材时切到这个型号（§5.1 前两条）：它的能力最全，
+ * 接什么都接得住 —— 第一份素材不该因为画布上一个还没用过的型号就落进一个做不成的 Tab。
+ */
+const FRESH_MODEL: Model = 'sd2.5'
 interface GenStore {
   map: Record<string, GenState>; get1: (id: string) => GenState
-  syncConn: (id: string, conn: string[], get: MatGet) => void
+  /** focus = 快捷入口创建、还没出片的那个子节点：模式与型号锁死，只把新素材重新分配一遍（§3.2.1） */
+  syncConn: (id: string, conn: string[], get: MatGet, focus?: boolean) => void
   syncSources: (id: string, get: MatGet) => void
   setMode: (id: string, mode: Mode, get: MatGet) => void
   setModel: (id: string, model: Model, get: MatGet) => void
   applyDrop: (id: string, matId: string, zone: Zone, idx: number | null, get: MatGet) => void
   swapFrames: (id: string) => void
-  patch: (id: string, patch: Partial<Draft>) => void
+  patch: (id: string, patch: Partial<GenState>) => void
   submit: (id: string, get: MatGet) => string
   complete: (id: string, taskId: string) => void
   reset: () => void
@@ -119,11 +127,18 @@ export const useGenerator = create<GenStore>((set, get) => {
   })
   return {
     map: {}, get1: (id) => get().map[id] ?? freshGen(),
-    syncConn: (id, conn, matGet) => edit(id, (g) => {
+    syncConn: (id, conn, matGet, focus) => edit(id, (g) => {
       const added = conn.filter((mid) => !g.conn.includes(mid))
+      /**
+       * 快捷入口那个子节点在出片之前只做一件事，模式和型号都不是它自己的选择 ——
+       * 再接一段视频进来，那段视频就是参考素材，不该把人从这件事上带走（§5.1 表中的注释）。
+       */
+      if (focus) return { ...g, ...sourceSync({ ...g, ...allocate(g, conn, g.mode, matGet, added) }, matGet), conn }
+      // 空节点接进第一份素材：先落到能力最全的那个型号上，再按同一套规则求解模式
+      const fresh = !g.conn.length && conn.length > 0
       // 先让「再接一段视频」把人从编辑 / 延长带去参考，再走落位与模型自动求解（都在 land 里）
-      const base = leaveSource(g, conn, added, matGet)
-      const { mode, model } = land(base, conn, matGet, !g.conn.length)
+      const base = leaveSource(fresh ? { ...g, model: FRESH_MODEL } : g, conn, added, matGet)
+      const { mode, model } = land(base, conn, matGet, fresh)
       const jumped = mode !== g.mode
       // 换了型号，参数取值域跟着换：落在集合外的静默收敛到最近的合法值，和 setModel 同一条
       const params = model === g.model ? g.params : fitParams(model, g.params)

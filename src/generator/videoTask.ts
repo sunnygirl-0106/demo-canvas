@@ -1,6 +1,7 @@
 import type { GenState } from '../store/generator'
 import { MODEL_CAPABILITIES, fmt, refModeOf, activeIds, inputLimits, isRef, matBlockedReason, modeBlockedReason, supportsRange, rangeBlockedReason, locksRatio, connInfo, modeAvailable, modelUnusableReason, durRange, readingDuration, TAB_REQUIREMENT, type MatGet, type Model, TABS } from './materialLayout'
-import { invalidMark, markScope, marksReading, rangeHull, type MarkGroup } from './marks'
+import { invalidMark, markScope, rangeHull, type MarkGroup } from './marks'
+import { docText, type Seg } from './promptDoc'
 // 时间范围的类型与算法都下沉到 marks.ts（标记组自己带着范围），这里原样转出去，调用方不用改 import
 export { RANGE_MIN, timecode, adjustRange, type TimeRange } from './marks'
 export function sourceError(d?: number, ready = true, model: Model = 'sd2.5', name = ''): string | null {
@@ -48,16 +49,17 @@ export function taskError(g: GenState, get: MatGet): string | null {
     const error = sourceError(m.dur, m.ready, g.model, m.name)
     if (error) return error
     // 延长一律整条进：原片从哪一头接由方向决定，没有「接哪一段」这回事
-    // 只要标了东西就是在指范围 —— 每一处标记都带着一个整数秒，不带时间段的框也一样要模型认秒数
+    // 2.0 系列做得了标记式编辑，只是不响应整数秒区间 —— 拦的是「指定片段」，光圈了画面照旧放行（§5.2）
     if (g.mode === 'edit' && g.marks.length) {
-      if (!supportsRange(g.model)) return rangeBlockedReason(g.model)
+      if (markScope(g.marks) === 'segment' && !supportsRange(g.model)) return rangeBlockedReason(g.model)
       if (invalidMark(g.marks, Math.floor(m.dur!))) return TODO.badRange
     }
     if (g.mode === 'extend' && !g.direction) return TODO.direction
   }
   const badRef = referenceError(g, ids, get)
   if (badRef) return badRef
-  const invalid = Object.entries(g.references).find(([name, id]) => mentions(g.prompt, name) && !ids.includes(id))
+  const said = promptOf(g, get)
+  const invalid = Object.entries(g.references).find(([name, id]) => mentions(said, name) && !ids.includes(id))
   // 连着也可能不参与：不一定是「重新添加素材」能解决的
   if (invalid) return `引用 @${invalid[0]} 未参与本次生成，可移除引用或调整素材`
   // 提示词不设门槛：一句话都不写也让他生成 —— 空句子是他的选择，不是缺一步没做完
@@ -107,14 +109,13 @@ function modeBlocksModel(g: GenState, model: Model, get: MatGet): string {
   return mine ? '' : TAB_REQUIREMENT[g.mode](connInfo(g.conn, get, model, g.slotEdit))
 }
 /**
- * 切到不响应范围的模型会让用户标的东西全部失效，所以拦住它，并给出解除办法。
- * 注意只拦、不清：标记是手画出来的，比一个开关贵得多，换个型号不该把它们抹掉 ——
- * 要放大成整条有「移除标记，改整条」这个明确的出口。
+ * 切到不认秒数的型号会让已经选好的片段失效，所以拦住它。
+ * 注意只拦、不清：片段和标记是手选、手画出来的，换个型号不该把它们抹掉。
  */
 export function marksBlockModel(g: GenState, model: Model): string {
-  if (g.mode !== 'edit' || !g.marks.length || supportsRange(model)) return ''
-  // 理由和标记入口上挂的是同一句，只多一条解除办法；标了几处不用在这里重复
-  return `${rangeBlockedReason(model)}，移除标记后可切换`
+  // 光在画面上圈了几处不拦：2.0 系列照旧改得了那几块地方，它接不住的只有「这几秒」这件事
+  return g.mode === 'edit' && markScope(g.marks) === 'segment' && !supportsRange(model)
+    ? rangeBlockedReason(model) : ''
 }
 /**
  * 句子里真的提到了这枚引用。名字带编号（视频节点1、视频节点11），
@@ -127,6 +128,17 @@ function mentions(prompt: string, name: string) {
   }
   return false
 }
+/**
+ * 这一句提示词现在念作什么。标签念出来挂 @（见 promptDoc 的 segText），
+ * 而里面那几枚指着别的节点 —— 名字是能改的，所以每次要用这一句时现念一遍，
+ * 不读提交前存下的那份字符串（§4.1：所有显示该节点名称的地方都同步新名字）。
+ */
+export function promptOf(g: GenState, get: MatGet): string {
+  if (!g.doc.length) return g.prompt.trim()
+  const source = g.slotEdit ? get(g.slotEdit) : null
+  return docText(g.doc, { name: source?.name, direction: g.direction, duration: g.params.duration,
+    nameOf: (id) => get(id)?.name }).trim()
+}
 export function taskPayload(g: GenState, get: MatGet) {
   const error = taskError(g, get)
   if (error) throw new Error(error)
@@ -134,12 +146,18 @@ export function taskPayload(g: GenState, get: MatGet) {
   const ids = activeIds(g, g.mode)
   const source = (g.mode === 'edit' || g.mode === 'extend') && g.slotEdit ? get(g.slotEdit) : null
   const marks: MarkGroup[] = g.mode === 'edit' ? g.marks : []
+  const said = promptOf(g, get)
   return {
-    mode: g.mode, model: g.model, prompt: g.prompt.trim(), inputIds: ids,
+    mode: g.mode, model: g.model, prompt: said, inputIds: ids,
+    /**
+     * 提交那一刻的那一句，连标签一起（深拷一份）。「全部版本」的详情页念的就是这一份 ——
+     * 存成一串死文字的话，原视频改了名，历史里那一句就还在叫旧名字。
+     */
+    doc: g.doc.map((s): Seg => (s.t === 'mark' ? { ...s, regions: s.regions.map((r) => ({ ...r })) } : { ...s })),
     inputs: ids.map((id) => { const m = get(id)!; return { id, name: m.name, kind: m.kind, src: m.src, duration: m.dur } }),
     scope: g.mode === 'edit' ? markScope(marks) : g.mode === 'extend' ? 'whole' : null,
     roles: { source: source?.id ?? null, firstFrame: g.mode === 'frames' ? g.slotFirst : null, lastFrame: g.mode === 'frames' ? g.slotLast : null, references: g.mode === 'text' || g.mode === 'frames' ? [] : [...g.tray] },
-    references: Object.fromEntries(Object.entries(g.references).filter(([name, id]) => ids.includes(id) && mentions(g.prompt, name))),
+    references: Object.fromEntries(Object.entries(g.references).filter(([name, id]) => ids.includes(id) && mentions(said, name))),
     sourceId: source?.id ?? null, sourceSrc: source?.src ?? null, sourceDuration: source?.dur ?? null,
     /** 摘要用的外包络；逐组的精确范围在 marks 里，只有一组时两者读起来一样 */
     range: rangeHull(marks),
@@ -149,11 +167,6 @@ export function taskPayload(g: GenState, get: MatGet) {
     rangeMeaning: marks.length ? '作用域' : null,
     // 深拷贝：提交记录是那一刻的快照，之后改标记不能倒着改写已经交出去的任务
     marks: marks.map((x): MarkGroup => ({ ...x, range: x.range && { ...x.range }, regions: x.regions.map((r) => ({ ...r, rect: [...r.rect], strokes: r.strokes?.map((st) => st.map((pt) => [...pt] as [number, number])) })) })),
-    /** 读作：这一整句提示词最终是什么意思，对着它就能验收 */
-    reads: g.mode === 'edit' && source
-      // 一句要求都没写时不留一个吊着的「的」：读到哪算哪
-      ? `把「视频 ${source.name}」${marks.length ? `中 ${marksReading(marks)} 的 ` : '的 '}${g.prompt.trim()}`.trimEnd().replace(/的$/, '').trimEnd()
-      : null,
     direction: g.mode === 'extend' ? g.direction : null,
     // 提交记录必须和界面显示的参数一致：界面能手选比例的模型（2.0 不锁定）就照手选值提交，
     // 参数里没有配音开关的模型不能夹带 sound。

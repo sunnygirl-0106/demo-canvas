@@ -119,11 +119,12 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
    * 一上一下同时摊开，屏幕上就有两件事同时在等回答，而这会儿人正在翻旧版本，
    * 那块还空着的提示词框只是在占地方。关掉气泡它就回来，中间什么也没丢。
    *
-   * 状态摆在节点这一层、不放在工具栏里：工具栏在节点不选中时整个卸掉，状态跟着丢，
-   * 而「面板收不收」是节点自己的事。节点一旦不选中，气泡也跟着工具栏走了，所以这儿也一并复位。
+   * 状态摆在 canvas store 上、不放在工具栏里：工具栏在节点不选中时整个卸掉，状态跟着丢，
+   * 而「面板收不收」是节点自己的事；放在 store 上，示例场景也能直接把这只气泡打开。
+   * 节点一旦不选中，气泡也跟着工具栏走了，所以这儿也一并复位。
    */
-  const [versions, setVersions] = useState(false)
-  useEffect(() => { if (!selected) setVersions(false) }, [selected])
+  const versions = useCanvas((s) => s.openVersions === id)
+  useEffect(() => { if (!selected && versions) useCanvas.getState().setOpenVersions(null) }, [selected, versions])
 
   /**
    * 画面右上角那枚放大：开一张居中的大图，不再把浏览器推进全屏。
@@ -136,7 +137,9 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
   const [preview, setPreview] = useState(false)
   const selfMat = matOf(focus ? origin ?? undefined : self ?? undefined)
 
-  const opIcon = mode === 'extend' ? <IcPlus size={14} sw={1.7} /> : <IcWriting size={22} />
+  /* 两枚都不在这儿定尺寸：标题栏上的东西一律按字号走（.nd-op svg / .nd-op .ic-writing），
+     好跟着画布缩放一起缩 —— 写死 px 的那枚缩到 60% 时会比旁边的字还大 */
+  const opIcon = mode === 'extend' ? <IcPlus sw={1.7} /> : <IcWriting />
   const opLabel = mode === 'extend' ? '延长中' : '编辑中'
   return (
     <NodeShell
@@ -152,7 +155,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
             : <b>{[...opLabel].map((ch, i) => <em key={i}>{ch}</em>)}</b>}</span>
         : undefined}
       toolbar={<VideoToolbar nodeId={id} visible={!!selected && has && !focus} src={data.src} name={data.name} dur={data.dur}
-        versions={versions} setVersions={setVersions} />}
+        versions={versions} />}
       panel={<GeneratorPanel visible={!!selected && !versions}><VideoPanel nodeId={id} docVer={docVer} onBump={bump} /></GeneratorPanel>}
     >
       {preview && selfMat && <MediaPreview mat={selfMat} onClose={() => setPreview(false)} />}

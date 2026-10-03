@@ -1,4 +1,4 @@
-import { rangeLabel, regionLabel, type MarkGroup, type MarkRegion, type TimeRange } from './marks'
+import { rangeLabel, spotLabel, spotsOf, tag, type MarkGroup, type MarkRegion, type TimeRange } from './marks'
 /**
  * 提示词框里的那句话，就是一份可编辑的文档：文字段和标签交替排列。
  *
@@ -14,8 +14,12 @@ export type Seg =
   | { t: 'dur'; k: string }
   /** 某一次圈选选的那一段时间 */
   | { t: 'range'; k: string; g: string; range: TimeRange }
-  /** 某一次圈选里的一处标记 */
-  | { t: 'mark'; k: string; g: string; region: MarkRegion }
+  /**
+   * 一个时间点上标的那些东西。同一秒圈两个框、再涂一笔都归这一枚 ——
+   * 它们说的是「这一帧上要改的地方」，句子里拆成三枚标签就读成了三件事。
+   * 删掉这一枚，这一秒的全部区域连同那张标记参考图一起没有。
+   */
+  | { t: 'mark'; k: string; g: string; regions: MarkRegion[] }
   /** 打 @ 引来的另一段素材 */
   | { t: 'ref'; k: string; id: string; name: string }
 export type Chip = Exclude<Seg, { t: 'text' }>
@@ -32,20 +36,24 @@ export const segKey = () => `s${++seq}`
  * 而且是 execCommand 真肯插进去的字符 —— U+0000 会被浏览器直接丢掉，读回来就找不着了。
  */
 export const CARET = '\uFEFF'
-/** 把一枚标签放到占位字符那一点，顺手把占位字符吃掉。找不到就接在句尾。 */
-export function putAtCaret(doc: Seg[], chip: Chip): Seg[] {
+/**
+ * 把一枚标签（或粘进来的一整串「文字 + 标签」）放到占位字符那一点，顺手把占位字符吃掉。
+ * 找不到就接在句尾。
+ */
+export function putAtCaret(doc: Seg[], add: Chip | Seg[]): Seg[] {
+  const segs = Array.isArray(add) ? add : [add]
   const out: Seg[] = []
   let done = false
   for (const s of doc) {
     if (done || s.t !== 'text' || !s.v.includes(CARET)) { out.push(s); continue }
     const i = s.v.indexOf(CARET)
     if (s.v.slice(0, i)) out.push({ t: 'text', v: s.v.slice(0, i) })
-    out.push(chip)
+    out.push(...segs)
     const rest = s.v.slice(i + CARET.length)
     if (rest) out.push({ t: 'text', v: rest })
     done = true
   }
-  return done ? out : [...doc, chip]
+  return done ? out : [...doc, ...segs]
 }
 
 /** 替用户起的头。删光了不会自动送回来 —— 它只是开头，不是模板。 */
@@ -63,17 +71,20 @@ export function groupSegs(g: MarkGroup): Seg[] {
     if (g.regions.length) out.push({ t: 'text', v: '里的' })
   }
   // 标签之间不塞空格：挨着的两枚由排版分开，句子里不留这个字符
-  g.regions.forEach((region) => out.push({ t: 'mark', k: segKey(), g: g.id, region }))
+  spotsOf(g.regions).forEach((regions) => out.push({ t: 'mark', k: segKey(), g: g.id, regions }))
   return out
 }
 /**
- * 把当前这一套标记写回句子里。节点上的控件是常驻的，用户改的永远是同一组，
- * 所以这里是「换」不是「追加」：句子里已有的那几枚整段换掉（连中间那个「里的」一起），
+ * 把当前这一套标记写回句子里。节点上的控件是常驻的，用户改的永远是这一套，
+ * 所以这里是「换」不是「追加」：句子里已有的那几枚整段换掉（连中间那几个「里的」一起），
  * 一枚都还没有就接在素材标签后面（用「中」连）—— 素材标签也被删掉了，就补在句尾。
  * 插完之后用户照样可以把这些字改掉，这里只负责给一个读得通的起点。
+ *
+ * 选了好几段时间就是好几组，段与段之间用顿号并列：读下来是「这几截里的这几处」，
+ * 而不是把它们糊成一个大区间 —— 中间没选的那几截不该跟着被改。
  */
-export function replaceGroup(doc: Seg[], g: MarkGroup): Seg[] {
-  const own = (s: Seg) => (s.t === 'mark' || s.t === 'range') && s.g === g.id
+export function replaceMarks(doc: Seg[], groups: MarkGroup[]): Seg[] {
+  const own = (s: Seg) => s.t === 'mark' || s.t === 'range'
   const flags = doc.map(own)
   /**
    * 沿用原来那几枚标签的身份证。圈好的框拖着改大小时，句子里的标签念出来还是同一句 ——
@@ -81,15 +92,17 @@ export function replaceGroup(doc: Seg[], g: MarkGroup): Seg[] {
    */
   const reuse = doc.filter(own).map((s) => (s as { k: string }).k)
   let n = 0
-  const segs: Seg[] = groupSegs(g).map((s) => {
-    if (s.t === 'text') return s
-    const k = reuse[n++]
-    return k ? { ...s, k } : s
-  })
+  const segs: Seg[] = groups
+    .flatMap((g, i): Seg[] => i ? [{ t: 'text', v: '、' }, ...groupSegs(g)] : groupSegs(g))
+    .map((s) => {
+      if (s.t === 'text') return s
+      const k = reuse[n++]
+      return k ? { ...s, k } : s
+    })
   const first = flags.indexOf(true)
   if (first >= 0) {
     const head = doc.slice(0, first)
-    // 整组摘光了（切回「整段视频」）：把当初为它补的那个「中」一起带走，句子不留一个悬着的连接词
+    // 整套摘光了（切回「整段视频」）：把当初为它补的那个「中」一起带走，句子不留一个悬着的连接词
     const prev = head[head.length - 1]
     if (!segs.length && prev?.t === 'text' && prev.v.endsWith('中')) head[head.length - 1] = { t: 'text', v: prev.v.slice(0, -1) }
     return [...head, ...segs, ...doc.slice(flags.lastIndexOf(true) + 1)]
@@ -114,7 +127,7 @@ export function marksOf(doc: Seg[]): MarkGroup[] {
   }
   for (const s of doc) {
     if (s.t === 'range') grab(s.g).range = s.range
-    else if (s.t === 'mark') grab(s.g).regions.push(s.region)
+    else if (s.t === 'mark') grab(s.g).regions.push(...s.regions)
   }
   return out
 }
@@ -123,19 +136,34 @@ export const stripMarks = (doc: Seg[]): Seg[] => doc.filter((s) => s.t !== 'mark
 /** 一个字、一枚标签都没有：这时候才轮到占位文案出场。 */
 export const docEmpty = (doc: Seg[]) => !doc.some((s) => s.t !== 'text' || s.v.trim())
 
-interface Ctx { name?: string; direction?: 'before' | 'after' | null; duration?: number }
+interface Ctx {
+  name?: string; direction?: 'before' | 'after' | null; duration?: number
+  /**
+   * @ 引用那一枚现在该念谁的名字。引用绑的是节点 id，而名字是能改的 ——
+   * 句子存下来之后原视频改了名，这一句也得跟着改口（§4.1）。
+   * 问不到（节点已删除）就退回句子里存着的那一份旧名。
+   */
+  nameOf?: (id: string) => string | undefined
+}
 /** 标签读成什么。任务记录里存的那句 prompt，就是把这一句原样念出来。 */
 export function segText(s: Seg, ctx: Ctx): string {
   switch (s.t) {
     case 'text': return s.v
-    case 'mat': return `视频 ${ctx.name ?? ''}`.trim()
+    /*
+     * 每一枚标签念出来都挂 @（见 marks.ts 的 tag）：纯文字里它是唯一还认得出「这一截是枚标签」的记号。
+     *
+     * 源素材只写名字，前面不再加「视频」两个字：加了就是 @视频 客厅沙发 —— 读的人得先跨过一个类别词
+     * 才够到真正指认它的那几个字，而 @ 引用一向是 @客厅沙发 这么写的。同样一段素材在同一句话里
+     * 该是同一种写法，前头那个「视频」只是在说一件缩略图早就说过的事。
+     * 名字空着（还没选源）才退回「@视频」：总得有个东西指着，不能只剩一个光杆 @。
+     */
+    case 'mat': return tag(ctx.name?.trim() || '视频')
     // 方向还没选的时候不替用户说「向后」：句子不能白纸黑字写着一个他没点过的选择
-    case 'dur': return `${ctx.direction === 'before' ? '向前延长' : ctx.direction === 'after' ? '向后延长' : '延长'} ${ctx.duration ?? 0}s`
-    case 'range': return rangeLabel(s.range)
-    case 'mark': return regionLabel(s.region)
-    // 标签上不写 @（那是「怎么把它选进来的」，不是它是什么），念出来要写：
-    // @名字 是这句话交给模型时指认素材的写法，任务记录里也按它对上是哪一段
-    case 'ref': return `@${s.name}`
+    case 'dur': return tag(`${ctx.direction === 'before' ? '向前延长' : ctx.direction === 'after' ? '向后延长' : '延长'} ${ctx.duration ?? 0}s`)
+    case 'range': return tag(rangeLabel(s.range))
+    case 'mark': return tag(spotLabel(s.regions))
+    // @名字 这一枚本来就是这么打出来的：标签上不写 @（那是「怎么把它选进来的」），念出来写
+    case 'ref': return tag(ctx.nameOf?.(s.id)?.trim() || s.name)
   }
 }
 /**
@@ -164,7 +192,7 @@ export function docText(doc: Seg[], ctx: Ctx): string {
  * 去掉它们和 @ 引用之后还剩字，才叫「说清楚了要改什么」。
  * 顺带把这几个字从他自己写的句子里也削掉：判空而已，剩一个字就够，不必精确还原。
  */
-const FILLER = ['时间段里的', '时间段', '里的', '把', '从', '中', '和', '的', '，', ',']
+const FILLER = ['时间段里的', '时间段', '里的', '把', '从', '中', '和', '的', '、', '，', ',']
 export function docWritten(doc: Seg[], fallback = ''): string {
   // 还没起头的那些模式（文生视频、首尾帧…）句子就是一段纯文字，退回去看那一段
   let t = doc.length ? doc.filter((s) => s.t === 'text').map((s) => (s as { v: string }).v).join(' ') : fallback

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { NodeToolbar, Position } from '@xyflow/react'
 import { IcDownload, IcHistory, IcPencil, IcPlus } from '../ui/icons'
-import { connOf, focusWidthFor, isFocusNode, opName, useCanvas } from '../store/canvas'
+import { connOf, focusWidthFor, useCanvas } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { useVersions, versionsOf } from '../store/versions'
 import { matOf } from '../demo/assets'
@@ -17,25 +17,17 @@ import VersionsDialog from './VersionsDialog'
  */
 const HEAD_CLEAR = 24 + 8
 
-/** 为源视频创建独立下游任务，原素材保留。已经出过结果的那个节点不再复用，再进一次就长一个新的。 */
-export default function VideoToolbar({ nodeId, visible, src, name, dur, versions, setVersions }: {
+/** 为源视频创建独立下游任务，原素材保留。每次点击都新长一个子节点，先前那个照旧留在画布上。 */
+export default function VideoToolbar({ nodeId, visible, src, name, dur, versions }: {
   nodeId: string; visible: boolean; src?: string; name: string; dur?: number
-  /** 「全部版本」那只气泡开着没有。状态存在节点身上 —— 它还管着底下那块面板收不收（见 VideoNode） */
-  versions: boolean; setVersions: (open: boolean) => void
+  /** 「全部版本」那只气泡开着没有。状态在 canvas store 上（openVersions），示例场景也摆得进去 */
+  versions: boolean
 }) {
   /** 接不住这段视频的入口直接灰掉，理由挂在悬浮说明上 */
   const { tip, node: tipNode } = useTip()
   const records = useVersions((s) => s.records)
-  /**
-   * 全部版本挂在**节点**身上，不是挂在这枚按钮上：气泡有半屏高，贴着工具栏那枚小按钮居中摆，
-   * 一半会被视窗顶出去。指着节点说「这段视频有这些版本」，尖角落在画面中间，也是它本来的意思。
-   */
-  const anchor = useRef<HTMLElement | null>(null)
+  const setVersions = (open: boolean) => useCanvas.getState().setOpenVersions(open ? nodeId : null)
   const count = versionsOf(records, nodeId).length
-  const openVersions = () => {
-    anchor.current = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`)
-    setVersions(true)
-  }
   /**
    * 上传进来、示例场景带进来的原视频从没走过生成，也该有「V1」。
    * 和 record() 里调的是同一个幂等函数：有画面的视频节点就有第一版。
@@ -45,21 +37,22 @@ export default function VideoToolbar({ nodeId, visible, src, name, dur, versions
     const store = useCanvas.getState()
     const source = store.nodes.find((n) => n.id === nodeId)
     if (!source) return
-    // 已经出过结果的那个不算「还能接着用」：把新的一次编辑塞回去会顶掉它的产物，
-    // 源视频也就只可能有一个 v2。留着还没出结果的那个可复用，是为了点了编辑又改主意点延长时不留一串空节点。
-    const existing = store.nodes.find((n) => n.data.operationSource === nodeId && isFocusNode(n))
-    // 还没出结果的节点从编辑改口成延长时跟着改名，用户手打过的不改。
-    const label = existing?.data.renamed ? null : opName(store.nodes, mode, existing?.id)
+    /**
+     * 每点一次就长一个新的「编辑视频N / 延长视频N」（§3.2.1），先前那个原样留着 ——
+     * 塞回同一个节点只会让它一会儿是编辑一会儿是延长，而用户点第二次要的多半是「这一段再改一处」。
+     * 不要的那个他自己删；源视频一删、连线一剪，还没出片的那些跟着走（见 canvas 的 deleteSelection）。
+     */
+    const label = store.claimName(mode)
     // 专注态节点要在自己身上摆下画面 + 框选层 + 时间轴，比普通节点宽一截；
     // 宽多少跟着源片的朝向走 —— 横片摊开成横的，别硬塞进竖片那一档（见 focusWidthFor）
-    const id = existing?.id ?? store.spawnDownstream(nodeId, label ?? undefined, focusWidthFor(source.data.ratio))
+    const id = store.spawnDownstream(nodeId, label, focusWidthFor(source.data.ratio))
     if (!id) return
-    store.updateNode(id, { operationSource: nodeId, ...(existing && label ? { name: label, assetName: label } : {}) })
+    store.updateNode(id, { operationSource: nodeId })
     const next = useCanvas.getState()
     next.onNodesChange(next.nodes.map((n) => ({ type: 'select', id: n.id, selected: n.id === id })))
     const get = (mid: string) => matOf(useCanvas.getState().nodes.find((n) => n.id === mid))
     const gs = useGenerator.getState()
-    gs.syncConn(id, connOf(next.edges, id).filter((mid) => !!get(mid)), get)
+    gs.syncConn(id, connOf(next.edges, id).filter((mid) => !!get(mid)), get, true)
     gs.setMode(id, mode, get)
     if (!gs.get1(id).slotEdit) gs.applyDrop(id, nodeId, 'edit', null, get)
     /**
@@ -90,11 +83,11 @@ export default function VideoToolbar({ nodeId, visible, src, name, dur, versions
     {/* 只有一版（或一版都没有）就不摆这个数：「全部版本 1」说的是「这里只有一个」，
         而这枚入口本来就是「点进去看有哪些」—— 一个数写出来反倒像在提醒「没什么可看的」。
         两版起才有「有几版」这件事可说。 */}
-    <button aria-expanded={versions} onClick={() => (versions ? setVersions(false) : openVersions())}>
+    <button aria-expanded={versions} onClick={() => setVersions(!versions)}>
       <IcHistory size={19} sw={1.7} />全部版本
       {count > 1 && <b>{count}</b>}</button>
     <a href={src} download={`${name}.mp4`}><IcDownload size={19} sw={1.7} />下载</a>
     {tipNode}
-    {versions && <VersionsDialog nodeId={nodeId} name={name} anchor={anchor} onClose={() => setVersions(false)} />}
+    {versions && <VersionsDialog nodeId={nodeId} name={name} onClose={() => setVersions(false)} />}
   </div></div></NodeToolbar>
 }

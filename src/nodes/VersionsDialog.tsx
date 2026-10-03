@@ -1,14 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useReactFlow, useStore } from '@xyflow/react'
 import { useCanvas } from '../store/canvas'
-import { heldBy, useVersions, versionsOf, type VersionRecord } from '../store/versions'
+import { heldBy, useVersions, versionGroups, type VersionRecord, type VersionTask } from '../store/versions'
 import { MODEL_CAPABILITIES, fmt } from '../generator/materialLayout'
-import type { TaskPayload } from '../generator/videoTask'
+import { docText } from '../generator/promptDoc'
 import { gradOf } from '../demo/assets'
-import { IcArrowL, IcCheck, IcClose, IcCopy, IcOpenOut, IcPencil, IcPlusBox, IcTiles, IcToEnd, IcVideo, IcZoomIn } from '../ui/icons'
+import { IcArrowL, IcCheck, IcClose, IcCopy, IcOpenOut, IcPencil, IcPlay, IcPlusBox, IcTiles, IcToEnd, IcVideo, IcZoomIn } from '../ui/icons'
 import Overlay from '../generator/Overlay'
 import { useTip } from '../generator/useTip'
 import MediaPreview from '../generator/MediaPreview'
+import { shotBox, useAspect, useHover } from '../generator/hoverShot'
 import VersionShot from './VersionShot'
 
 /**
@@ -28,34 +29,34 @@ const no2 = (n: number) => String(n).padStart(2, '0')
 /** 便签和筛选是同一个词：这一版是怎么产出的 */
 type Op = '生成' | '编辑' | '延长' | '上传'
 const opOf = (r: VersionRecord): Op =>
-  !r.payload ? '上传' : r.payload.mode === 'edit' ? '编辑' : r.payload.mode === 'extend' ? '延长' : '生成'
+  !r.task ? '上传' : r.task.mode === 'edit' ? '编辑' : r.task.mode === 'extend' ? '延长' : '生成'
 /** 今天的只写时分，其余写月日 */
 const when = (t: number) => {
   const d = new Date(t), hm = `${no2(d.getHours())}:${no2(d.getMinutes())}`
   return d.toDateString() === new Date().toDateString() ? `今天 ${hm}` : `${no2(d.getMonth() + 1)}-${no2(d.getDate())} ${hm}`
 }
 /** 画幅在提交那一刻就被锁成了 adaptive，读回来得还原成「随的是谁」 */
-const ratioOf = (p: TaskPayload) =>
-  p.params.ratio !== 'adaptive' ? p.params.ratio : p.mode === 'frames' ? '随首帧' : '随原片'
+const ratioOf = (t: VersionTask) =>
+  t.params.ratio !== 'adaptive' ? t.params.ratio : t.mode === 'frames' ? '随首帧' : '随原片'
 /**
  * 这一版最终多长，以它自己那段画面为准 —— 延长任务的 params.duration 说的是新增那一截，
  * 不是产出的总长，拿它当「时长」会把一条 13 秒的片子写成 5 秒。
  */
 const durOf = (r: VersionRecord) =>
   r.media.dur != null && Number.isFinite(r.media.dur) ? fmt(r.media.dur)
-    : r.payload ? fmt(r.payload.params.duration) : ''
+    : r.task ? fmt(r.task.params.duration) : ''
 /**
  * 参数区读什么。编辑 / 延长锁死的那几项已经在提交时定死，这里只负责把它们读回人话；
  * 没有配音开关的型号不摆「音频」那一行 —— 一栏恒为「无声」说的不是这次任务，是这个型号。
  */
 const specsOf = (r: VersionRecord): [string, string][] => {
-  if (!r.payload) return ([['时长', durOf(r)]] as [string, string][]).filter(([, v]) => v)
-  const cap = MODEL_CAPABILITIES[r.payload.model]
+  if (!r.task) return ([['时长', durOf(r)]] as [string, string][]).filter(([, v]) => v)
+  const cap = MODEL_CAPABILITIES[r.task.model]
   const rows: [string, string][] = [
-    ['模型', cap.label], ['清晰度', r.payload.params.resolution],
-    ['画幅', ratioOf(r.payload)], ['时长', durOf(r)],
+    ['模型', cap.label], ['清晰度', r.task.params.resolution],
+    ['画幅', ratioOf(r.task)], ['时长', durOf(r)],
   ]
-  if (cap.hasAudioToggle) rows.push(['音频', r.payload.params.sound ? '有声' : '无声'])
+  if (cap.hasAudioToggle) rows.push(['音频', r.task.params.sound ? '有声' : '无声'])
   return rows.filter(([, v]) => v)
 }
 
@@ -63,10 +64,14 @@ const specsOf = (r: VersionRecord): [string, string][] => {
  * 四档照原型：全部 / 本视频 / 编辑 / 延长 —— 后两档说的是别人拿我这幅画面做出来的东西。
  * 每档前面挂一枚图标：四个词都是两三个汉字，光排成一行得读完才分得开，
  * 一枚图形先把「这一档是干什么的」说了，眼睛扫过去就断得开。
+ *
+ * 后两档各带一句悬浮说明：「编辑」「延长」单看是两个动作，像是点下去就能做这件事，
+ * 而它们在这儿说的是「谁从我这儿做出去的」—— 一句话把这层关系说破，比把词改长管用。
+ * 前两档不带：「全部」「本视频」说的就是字面那件事，再补一句只是重复。
  */
 const TABS = [
-  ['all', '全部', IcTiles], ['own', '本视频', IcVideo],
-  ['edit', '编辑', IcPencil], ['extend', '延长', IcToEnd],
+  ['all', '全部', IcTiles, ''], ['own', '本视频', IcVideo, ''],
+  ['edit', '编辑', IcPencil, '从本视频编辑出的视频'], ['extend', '延长', IcToEnd, '从本视频延长出的视频'],
 ] as const
 
 /**
@@ -89,6 +94,42 @@ const stillBox = (ratio?: number) => {
 }
 
 /**
+ * 信息行末尾那枚来源缩略图：这一版是拿哪一幅改出来的。
+ *
+ * 三段和素材栏那枚方块一模一样（见 MaterialRow / SourceChip）：小图认出是哪一幅 →
+ * 悬浮按真实比例铺开、暗角里写「名字 · V几」→ 点开看全。同一个动作在这个产品里
+ * 只该有一种长相：一枚缩略图点下去就是大图，而不是在这儿换成「跳到另一页」——
+ * 20 像素的方块本来就看不清它是哪一幅，先看清楚才是这一下要的东西。
+ *
+ * 开着的那张卡要报给外面（card）：它是另一层 portal，落在气泡外面，
+ * 点它会被气泡的「点外面就关」撞上 —— 和全屏那一层同一回事，理由写在 zoomed 旁边。
+ */
+function SourceShot({ poster, label, card, onOpen }:
+  { poster?: string; label: string; card: (on: boolean) => void; onOpen: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null)
+  const hover = useHover()
+  const ratio = useAspect(poster)
+  useEffect(() => { card(hover.on); return () => card(false) }, [hover.on, card])
+  const open = () => { hover.close(); card(false); onOpen() }
+  return <>
+    <button ref={ref} className="vp-src" aria-label={`放大查看来源 ${label}`} {...hover.bind} onClick={open}>
+      <img src={poster} alt="" />
+    </button>
+    {hover.on && <Overlay passive center label={label} anchor={ref} className="shot-pop" onClose={hover.close}
+      onMouseEnter={hover.stay.onMouseEnter} onMouseLeave={hover.stay.onMouseLeave}>
+      <button className="material-card-shot video" style={shotBox(ratio)} aria-label={`放大查看 ${label}`} onClick={open}>
+        {poster && <img src={poster} alt="" />}
+        {/* 正中一个三角就是「按这儿开始放」—— 和素材栏那张悬浮卡同一枚 */}
+        <span className="material-card-cue" aria-hidden><IcPlay size={16} /></span>
+        {/* 暗角里写「名字 · V几」：缩略图旁边没写出来的正是这个 —— 裁成 20 像素的方块，
+            认不出是谁的第几版。时长不写，和素材栏那张卡同一条规矩 */}
+        <span className="material-card-meta"><strong>{label}</strong></span>
+      </button>
+    </Overlay>}
+  </>
+}
+
+/**
  * 这个节点承载过的、以及直接从它派生出去的那一层版本，挂在节点侧边的一枚气泡里。
  *
  * 气泡内分两页：先是一屏卡片（这个节点做出过哪几幅画面），点进去才是那一版的细节。
@@ -98,14 +139,20 @@ const stillBox = (ratio?: number) => {
  * 主操作不按 kind 分支，只问一句「这一版现在还挂在那个节点上吗」——
  * 挂着就带你过去看，被后来那次生成顶掉了就重新摆一个出来。
  */
-export default function VersionsDialog({ nodeId, name, anchor, onClose }:
-  { nodeId: string; name: string; anchor: RefObject<HTMLElement>; onClose: () => void }) {
+export default function VersionsDialog({ nodeId, name, onClose }:
+  { nodeId: string; name: string; onClose: () => void }) {
   const records = useVersions((s) => s.records)
   const nodes = useCanvas((s) => s.nodes)
   /**
-   * 来源那枚缩略图上的悬浮说明。走项目自己那套（useTip）而不是原生 title：
-   * 原生的要等半秒才出、样式跟这块浮层不是一路，而这一句正是缩略图旁边没写出来的东西 ——
-   * 裁成方块之后更认不出是哪一段，「是谁的第几版」得有地方问。
+   * 气泡挂在**节点**身上，不是挂在那枚入口按钮上：气泡有半屏高，贴着工具栏那枚小按钮居中摆，
+   * 一半会被视窗顶出去。指着节点说「这段视频有这些版本」，尖角落在画面中间，也是它本来的意思。
+   * 打开那一刻就地按 nodeId 找一次 —— 示例场景直接把它打开时，没人替它先把这个锚点存好。
+   */
+  const anchor = useRef<HTMLElement | null>(null)
+  anchor.current ??= document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`)
+  /**
+   * 「编辑」「延长」两档上那句悬浮说明。走项目自己那套（useTip）而不是原生 title：
+   * 原生的要等半秒才出，样式也跟这块浮层不是一路。
    */
   const { tip, node: tipNode } = useTip()
   const { setCenter, getZoom, getViewport, setViewport } = useReactFlow()
@@ -116,21 +163,24 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
    */
   const transform = useStore((s) => s.transform)
   const [pick, setPick] = useState<(typeof TABS)[number][0]>('all')
-  /**
-   * 看过的记录 id，最后一个是当前这一页。点来源会跳到别的节点的那一版，所以这条路径
-   * 不只在本节点的列表里走 —— 返回键因此写得出「回到哪儿」，而不是只有一个「返回」。
-   */
-  const [trail, setTrail] = useState<string[]>([])
+  /** 正在看哪一版的详情。空着就是那一屏卡片 —— 气泡里只有这两页，来源看的是大图，不另开一页 */
+  const [open, setOpen] = useState<string | null>(null)
   /**
    * 这一次换页是往里走还是往回走。只用来定入场的方向：往里走的内容从右边进来，
    * 往回走的从左边进来 —— 「深了一层」和「退回一层」于是分得开，
    * 不然两次换页长得一模一样，动效就只剩「有东西闪了一下」。
    */
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd')
-  /** 往里走一层：卡片进详情、详情里点来源再进另一版 —— 都是同一个方向 */
-  const dive = (t: string[]) => { setDir('fwd'); setTrail(t) }
   /** 正在全屏看的那一版。气泡不关：看完大图退回来，还站在刚才那一页上 */
   const [zoomed, setZoomed] = useState<string | null>(null)
+  /**
+   * 来源那枚缩略图的悬浮放大卡开着没有。
+   * 那张卡和全屏那一层一样是另一层 portal，落在这只气泡外面 ——
+   * 气泡的「点外面就关」挂在 document 的捕获期，卡里的 stopPropagation 拦不住它。
+   * 所以卡开着的这段时间气泡自己不接关闭：否则点一下那张卡，底下的气泡先关掉，
+   * 挂在它里面的大图跟着一起消失。
+   */
+  const [srcCard, setSrcCard] = useState(false)
   /** 抄完那一下：按钮自己说一句「已复制」，一秒半后退回去 —— 不另弹一条 toast */
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -144,20 +194,22 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
    * 一版画面叫什么：产出它的那个节点当下叫什么，它就叫什么。节点被删了就退回记录里存着的那份旧名。
    * 名字只负责区分（编辑视频1、编辑视频2），版本号是同一条视频上的序数，两件事分开说。
    */
-  const nameOf = (r: VersionRecord) => String(nodes.find((n) => n.id === r.nodeId)?.data.name ?? r.name) || '未命名'
+  /**
+   * 这个节点现在叫什么。节点被删了就退回记录里存着的那份旧名 ——
+   * 句子里那几枚标签（源素材、@ 引用）念出来的名字都走这一句：改了名，历史跟着改口（§4.1）。
+   */
+  const nameAt = (id: string) => String(nodes.find((n) => n.id === id)?.data.name
+    ?? records.find((r) => r.nodeId === id)?.name ?? '')
+  const nameOf = (r: VersionRecord) => nameAt(r.nodeId) || r.name || '未命名'
   /** 指认某一版用的那个称呼：卡片、全屏、来源三处同一种写法，不各写一套 */
   const verOf = (r: VersionRecord) => `${nameOf(r)} · V${r.no}`
 
-  // versionsOf 的结果本来就是时间先后，倒过来即新的在前
-  const mine = versionsOf(records, nodeId)
-  const own = mine.filter((r) => r.nodeId === nodeId).reverse()
-  const der = mine.filter((r) => r.nodeId !== nodeId).reverse()
+  // 次序（当下这一版排头、其次本视频、最后衍生视频）归 versionGroups 管，这儿只按类型分档
+  const { own, derived: der } = versionGroups(records, nodeId)
   const groups = { all: [...own, ...der], own, edit: der.filter((r) => opOf(r) === '编辑'), extend: der.filter((r) => opOf(r) === '延长') }
   const list = groups[pick]
 
-  // 详情页认的是全体记录，不是本节点这一屏 —— 点来源会跳到别的节点的那一版
-  const current = records.find((r) => r.id === trail[trail.length - 1]) ?? null
-  const prev = records.find((r) => r.id === trail[trail.length - 2]) ?? null
+  const current = records.find((r) => r.id === open) ?? null
   /** 当前这一版是从哪一版做出来的：来源节点当时那一版，不是它现在最新那一版 */
   const src = current && current.sourceNodeId
     ? records.find((r) => r.nodeId === current.sourceNodeId && r.no === current.baseNo) : undefined
@@ -173,8 +225,8 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
    * 所以旧高度留一手：换页那一帧量到新高度，就地从旧的补到新的，再把里面的分层入场摆进这段时间里，
    * 读起来是「这一页展开了」，而不是「换了一只气泡」。
    *
-   * 认的是高度本身而不是「哪一页」：详情里点来源跳到另一版，两页都是 528，
-   * 量出来一样高就不动 —— 一段补到自己的过渡，只会让内容白白停一下。
+   * 认的是高度本身而不是「哪一页」：量出来一样高就不动 ——
+   * 一段补到自己的过渡，只会让内容白白停一下。
    */
   const pageRef = useRef<HTMLDivElement>(null)
   const page = current?.id ?? 'list'
@@ -236,6 +288,11 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
   </>
 
   const host = current ? nodes.find((n) => n.id === current.nodeId) : undefined
+  /**
+   * 这一版那块屏按什么比例摆。节点还在，就读它量过的那个数；节点被删了，那个数跟着它一起没了 ——
+   * 就地拿这一版的封面再量一次，横片照旧摆成横的，不被塞进一个竖框里裁掉两边。
+   */
+  const shotRatio = useAspect(host || !current ? undefined : current.media.poster)
   // 「还在画布上吗」问的是「这个节点现在挂的是不是这一条记录」——
   // 不能比画面文件：演示里编辑产出复用原片，同一个节点的 V1、V2 的 src 一样，两版都会被当成在画布上
   const onCanvas = !!current && heldBy(records, current.nodeId)?.id === current.id
@@ -248,16 +305,22 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
     setCenter(host.position.x + (host.measured?.width ?? 320) / 2, host.position.y + (host.measured?.height ?? 220) / 2,
       { zoom: getZoom(), duration: 420 })
   }
-  // 同一层的另一个版本，不是它的下游产物，所以不连线
+  // 同一层的另一个版本，不是它的下游产物，所以不连线（位置与版本号见 versions 的 addToCanvas）
   const add = () => {
-    if (!host || !current) return
+    if (!current) return
     onClose()
-    useCanvas.getState().addNode('video', { x: host.position.x, y: host.position.y + 260 },
-      { ...current.media, mediaReady: true })
+    useVersions.getState().addToCanvas(current.id)
   }
 
-  /** 编辑任务的 reads 是这句提示词最终读作什么，比原始输入更接近「我当时要的是什么」 */
-  const prompt = current?.payload?.reads || current?.payload?.prompt || ''
+  /**
+   * 这一版提交的就是这一句（§3.5.2）。现念一遍而不是读一串存下来的死文字：
+   * 句子里的标签指着别的节点，而名字是能改的 —— 原视频改名之后，这一句也得跟着改口。
+   */
+  const task = current?.task
+  const prompt = task ? docText(task.doc, {
+    name: task.sourceId ? nameAt(task.sourceId) : undefined,
+    direction: task.direction, duration: task.params.duration, nameOf: nameAt,
+  }).trim() : ''
   /**
    * 抄走这段话。不走 navigator.clipboard —— 它在一部分环境里会卡在权限询问上，
    * 既不成也不败，按钮就永远停在「复制」两个字上，用户只当是点了没反应。
@@ -300,11 +363,11 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
   <Overlay side sideLock sideAlign="top" tailNear={ic(44)} onShift={shove} track={transform}
     anchor={anchor} className="versions-pop"
     label={current ? `全部版本 · V${current.no}` : `${name} · 全部版本`}
-    onClose={() => { if (!zoomed) onClose() }}>
+    onClose={() => { if (!zoomed && !srcCard) onClose() }}>
     {/*
-      key 跟着「现在看的是哪一版」走：详情里点来源跳到另一版，React 认得这还是同一棵树，
-      只把里面的字换掉 —— 入场动效是挂在元素身上的，不重挂一次就不会再放。
-      重挂一次，那一版的画面和文字才跟着重新走一遍入场，和从卡片点进来是同一下。
+      key 跟着「现在看的是哪一版」走。两页都是同一个位置上的一个 div，不给 key 的话
+      React 认得这还是同一棵树，只把里面的字换掉 —— 入场动效是挂在元素身上的，
+      不重挂一次就不会再放。重挂一次，那一版的画面和文字才跟着走一遍入场。
     */}
     {current ? (
       <div className="vp-detail" key={current.id} ref={pageRef} data-dir={dir}>
@@ -313,11 +376,17 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
             返回是一枚方底的箭头 + 一行落点的名字：箭头那块底说「这是能按的」，
             名字说「按下去回到哪儿」—— 不是一个光秃秃的「返回」。整条都点得中，
             不是只有那枚方块能点：一行字摆在按钮旁边却点不动，是最容易踩空的一种。
+            落点只有一个：这只气泡里就两页，详情退回去就是那一屏卡片。
           */}
-          <button className="vp-back" onClick={() => { setDir('back'); setTrail((t) => t.slice(0, -1)) }}>
-            <i><IcArrowL size={ic(17)} sw={1.6} /></i>{prev ? nameOf(prev) : '全部版本'}</button>
+          <button className="vp-back" onClick={() => { setDir('back'); setOpen(null) }}>
+            <i><IcArrowL size={ic(17)} sw={1.6} /></i>全部版本</button>
           <div className="vp-acts">
-            {/* 挂着它的那个节点已经被删了，两条路都无处可指，就不摆 */}
+            {/*
+              挂着它的那个节点已经被删了：「在画布中查看」「添加到画布」两条路都无处可指 ——
+              前者没有节点可定位，后者没有节点可挂在下面。所以这一处什么也不摆（§3.5.2），
+              右上角只剩关闭。历史不跟着节点一起消失：这一版照旧放得出来、来源照旧看得见、
+              提示词照旧抄得走 —— 删掉的是画布上那一格，不是这段视频做过什么的记录。
+            */}
             {host && (onCanvas
               ? <button className="vp-link" onClick={locate}><IcOpenOut size={ic(15)} sw={1.5} />在画布中查看</button>
               : <button className="vp-link" onClick={add}><IcPlusBox size={ic(15)} sw={1.5} />添加到画布</button>)}
@@ -327,7 +396,7 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
         <div className="vp-body">
           {/* 按原片比例摊开的一块屏（见 stillBox）：竖片是竖的，横片是横的。
               鼠标压上来就放，底边那条轴常驻 —— 这一页只有一块屏，不用像一屏卡片那样把轴收起来 */}
-          <VersionShot className="vp-still" style={stillBox(host?.data.ratio)}
+          <VersionShot className="vp-still" style={stillBox(host?.data.ratio ?? shotRatio ?? undefined)}
             media={current.media} grad={gradOf(current.id)} corner={corner(current)} />
           <div className="vp-info">
             {/*
@@ -336,18 +405,21 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
               原来这四样摆成两行（眉批压在名字上方），可它们说的是同一件事的四个侧面，
               分了两行就得读两遍才拼得回来。
               来源跟在最后说完：「基于〔缩略图〕修改」—— 一枚缩略图比一串「视频节点1 · V2」
-              更快认出是拿哪一幅改的；读不出是哪一版也没关系，点进去那一页自己会写。
+              更快认出是拿哪一幅改的；20 像素里看不清的那部分，悬浮上去铺开，点一下看全
+              （见 SourceShot，和素材栏那枚方块是同一套看法）。
               nameOf 读节点当下的名字，原视频改名后读屏那句跟着改口，指向的那一版（baseNo）不变。
+
+              版本号只在「这是本视频的第几版」时才写：在源视频的这一屏里翻到一条衍生视频，
+              它的 V2 数的是它自己那个节点上的第二版 —— 摆在这儿会被读成本视频的第二版。
+              它是谁的第几版，点「在画布中查看」过去，或者在它自己那一屏里看。
             */}
             <p className="vp-rel">
               <strong>{nameOf(current)}</strong>
-              <b>V{current.no}</b><em>{opOf(current)}</em><i>·</i><span>{when(current.createdAt)}</span>
+              {current.nodeId === nodeId && <b>V{current.no}</b>}
+              <em>{opOf(current)}</em><i>·</i><span>{when(current.createdAt)}</span>
               {src && <span className="vp-srcline">基于
-                <button className="vp-src" {...tip(`查看来源 ${verOf(src)}`)}
-                  aria-label={`查看来源 ${verOf(src)}`}
-                  onClick={() => dive([...trail, src.id])}>
-                  <img src={src.media.poster} alt="" />
-                </button>
+                <SourceShot poster={src.media.poster} label={verOf(src)} card={setSrcCard}
+                  onOpen={() => setZoomed(src.id)} />
                 {opOf(current) === '延长' ? '延长' : '修改'}</span>}
             </p>
             {/*
@@ -363,9 +435,14 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
                   {copied ? <IcCheck size={ic(12)} sw={2} /> : <IcCopy size={ic(12)} sw={1.7} />}
                   {copied ? '已复制' : '复制'}</button>}
               </p>
+              {/*
+                上传进来、示例带进来的那一版没有「这次要什么」可言，框里就空着 ——
+                写一句「无生成记录」是在替一件本来就不存在的事做解释，而框空着这件事自己看得见。
+                生成过、只是没写提示词的那一版不同：那是用户当时真的没写，得说一句。
+              */}
               {prompt
                 ? <p className="vp-prompt">{prompt}</p>
-                : <p className="vp-blank">{current.payload ? '本次未填写提示词' : '画布原视频，无生成记录'}</p>}
+                : current.task ? <p className="vp-blank">本次未填写提示词</p> : null}
             </div>
             {/*
               参数沉在最底下，一项一枚小牌子：原先是三栏对齐的表格，
@@ -377,7 +454,6 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
             <div className="vp-specs">
               {specsOf(current).map(([k, v]) => <span key={k}><i>{k}</i><b>{v}</b></span>)}
             </div>
-            {tipNode}
           </div>
         </div>
       </div>
@@ -398,10 +474,11 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
           一条都没有的那一档点不了：点进去是一片没有解释的空白，不如灰着。
         */}
         <div className="vp-filters" role="group" aria-label="按类型筛选">
-          {TABS.map(([k, label, Ic]) => {
+          {TABS.map(([k, label, Ic, hint]) => {
             const empty = !groups[k].length
             // 置灰用 aria-disabled 而不是 disabled：后者拿不到焦点，读屏就听不见这一档还在、只是空着
             return <button key={k} className={pick === k ? 'selected' : ''} aria-pressed={pick === k}
+              {...tip(hint || undefined)}
               aria-disabled={empty || undefined} onClick={() => { if (!empty) { setDir('fwd'); setPick(k) } }}>
               <Ic size={ic(20)} sw={1.8} />{label}<b>{groups[k].length}</b></button>
           })}
@@ -416,11 +493,14 @@ export default function VersionsDialog({ nodeId, name, anchor, onClose }:
           {list.map((r) => <VersionShot key={r.id} className="vp-card" media={r.media} grad={gradOf(r.id)}
             corner={corner(r, true)}
             wrap={(shot) => <button className="vp-open" aria-label={`${cap(r)}，${opOf(r)}`}
-              onClick={() => dive([r.id])}>{shot}</button>} />)}
+              onClick={() => { setDir('fwd'); setOpen(r.id) }}>{shot}</button>} />)}
           {!list.length && <p className="vp-blank">暂无版本记录</p>}
         </div>
       </div>
     )}
+    {/* 两页共用这一只说明气泡：详情页挂在来源缩略图上，列表页挂在「编辑」「延长」两档上。
+        它自己是一层 portal，摆在哪一页里都一样，所以摆在两页外面，换页不打断它 */}
+    {tipNode}
   </Overlay>
   </>
 }

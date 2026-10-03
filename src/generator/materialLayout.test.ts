@@ -36,7 +36,8 @@ describe('模式能力与有效素材', () => {
     for (const m of ['sd2.5', 'sd2.0', 'sd2.0-1080p', 'sd2.0-4k', 'sd2.0-fast', 'sd2.0-mini'] as const) {
       // 连着一段视频，所以文生视频和首尾帧这两个不算数
       expect(tabStates(['w', 'a', 'b'], get, m).every((t) => t.k === 'text' || t.k === 'frames' || t.enabled)).toBe(true)
-      expect(locksRatio('edit', m)).toBe(m === 'sd2.5')
+      // 画幅锁定不再看型号：编辑的产出与原片同一个画幅，换哪个型号都一样（§5.3）
+      expect(locksRatio('edit', m)).toBe(true)
       expect(locksDuration('edit')).toBe(true)
       expect(supportsRange(m)).toBe(m === 'sd2.5')
     }
@@ -117,13 +118,14 @@ describe('模式能力与有效素材', () => {
     expect(tabStates(['v'], long, 'sd2.0').find((t) => t.k === 'edit')!.enabled).toBe(true)
     // 入口那句话说的是「锁死的 2.5 接不接得住」，区间就是 2.5 自己那一条
     expect(sourceEntryReason(20, 'IJKL')).toBe('')
-    expect(sourceEntryReason(31, 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
+    // 这一句挂在节点自己的操作栏上，只写名字，不冠「视频」（§3.1.2）
+    expect(sourceEntryReason(31, 'IJKL')).toBe('IJKL 的时长需在 4–30 秒之间')
   })
   it('视频节点上的入口：锁死的 2.5 接不住这段时长就灰掉', () => {
     // 下限统一 4 秒、上限按型号，编辑和延长共用同一条：两个入口一起灰，不再分两套
-    expect(sourceEntryReason(2.1, 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
-    expect(sourceEntryReason(1, 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
-    expect(sourceEntryReason(40, 'IJKL')).toBe('视频 IJKL 的时长需在 4–30 秒之间')
+    expect(sourceEntryReason(2.1, 'IJKL')).toBe('IJKL 的时长需在 4–30 秒之间')
+    expect(sourceEntryReason(1, 'IJKL')).toBe('IJKL 的时长需在 4–30 秒之间')
+    expect(sourceEntryReason(40, 'IJKL')).toBe('IJKL 的时长需在 4–30 秒之间')
     // 时长还没读出来，不先拦
     expect(sourceEntryReason(undefined, 'IJKL')).toBe('')
   })

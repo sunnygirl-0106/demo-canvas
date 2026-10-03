@@ -26,7 +26,7 @@ function MaterialTile({ mat, role, size, mark, why }: { mat: Mat; role: string; 
   return <div className={`material-wrap ${size}`} onMouseEnter={enter} onMouseLeave={leave} onFocus={enter} onBlur={leave}>
     <button ref={ref} className={`material-tile${lit ? ' lit' : ''}${why ? ' off' : ''}`} aria-label={info} onClick={showPreview}>
       {mat.thumb && <img src={mat.thumb} alt="" />}
-      {/* 方块上只留两样：视频一个居中的播放三角，首尾帧一个角标。时长是文字，不该压在画面上 —— 交给悬浮卡和读屏 */}
+      {/* 方块上只留两样：视频一个居中的播放三角，首尾帧一个角标。时长是文字，不该压在画面上 —— 交给读屏和参数栏 */}
       {mat.kind === 'video' && <span className="material-play" aria-hidden><IcPlay size={13} /></span>}
       {mark && <span className="material-mark">{mark}</span>}
     </button>
@@ -37,7 +37,10 @@ function MaterialTile({ mat, role, size, mark, why }: { mat: Mat; role: string; 
         {/* 视频才有这一枚：正中一个三角就是「按这儿开始放」。
             图片不给任何角标 —— 它就是一张画，压一枚图标只是挡着它（鼠标形状和那点推近已经说了能点） */}
         {mat.kind === 'video' && <span className="material-card-cue" aria-hidden><IcPlay size={16} /></span>}
-        <span className="material-card-meta"><strong>{mat.name}</strong>{dur && <span>{dur}</span>}
+        {/* 暗角里只写名字：悬浮是为了「把这一幅看清楚」，几秒钟不是这会儿要回答的问题 ——
+            时长在面板的参数栏、@ 列表里都写着，这儿再报一遍只是在画面上多压一行字。
+            用不了的原因还是要说：它决定这一幅这次算不算数，和看不看得清是两件事 */}
+        <span className="material-card-meta"><strong>{mat.name}</strong>
           {why && <small>{why}</small>}</span>
       </button>
     </Overlay>}

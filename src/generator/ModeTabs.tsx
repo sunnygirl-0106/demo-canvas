@@ -257,7 +257,11 @@ export default function ModeTabs({ mode, tabs, onPick, mid, end }: Props) {
           const hv = shown && hot === i
           /* 收起态整条只留当前那一颗：其余的格子被托盘裁掉 —— 是裁掉不是不存在，展开时它们还在原位 */
           const show = shown || on
-          const say = tip(t.enabled ? '' : `${t.label}：${t.reason}`)
+          /*
+           * 能点的那几枚说自己叫什么，点不了的那枚说为什么点不了 —— 同一只气泡、同一个位置。
+           * 当前这枚不说：收起态它身上就写着名字，展开态它底下那点青已经把「是这枚」钉住了。
+           */
+          const say = tip(t.enabled ? (on ? '' : t.label) : `${t.label}：${t.reason}`)
           const style = {
             /*
              * 展开到位该有多宽。收起态当前那一格要把名字一起兜住，所以它单独一个宽度。
@@ -307,8 +311,6 @@ export default function ModeTabs({ mode, tabs, onPick, mid, end }: Props) {
               {on && <span className="gp-orb-name" aria-hidden>{t.label}</span>}
               {/* 当前那枚底下一点青：一排等大的图标里，颜色还不够钉死「哪一枚是现在这枚」 */}
               <span className="gp-orb-dot" aria-hidden />
-              {/* 展开后图标上没地方写字：名字在悬浮时从托盘底下浮出来。灰掉的那枚把名字让给说明气泡 */}
-              {!on && t.enabled && <span className="gp-orb-tip" aria-hidden>{t.label}</span>}
             </button>
           )
         })}

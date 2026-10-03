@@ -141,8 +141,17 @@ export default function VideoHud({ nodeId, video, src, poster, dur, onMenu }: Pr
     store.spawnShot(nodeId, shotName(store.nodes, label, source), shot)
   }
 
+  /*
+   * 还没接上的那两条不置灰，照常是白的。
+   *
+   * 置灰说的是「这一条这会儿轮不到你」——条件不对、东西不在、轮到了就会亮。
+   * 剪辑视频和一键分镜不是这么回事：它们是这个菜单里本来就该有的两件事，
+   * 只是还没接上线。灰着摆在那儿，读出来成了「你这段视频剪不了」，
+   * 可这里要说的明明是「马上就能剪」—— 两句话的意思正好相反。
+   * 该说的那句交给悬浮时那条「即将上线」，不靠把字调暗来说。
+   */
   const item = (icon: ReactNode, label: string, run?: () => void) => (
-    <button role="menuitem" aria-disabled={!run} aria-label={run ? label : `${label}：即将上线`}
+    <button role="menuitem" aria-label={run ? label : `${label}：即将上线`}
       {...tip(run ? undefined : '即将上线')}
       onClick={() => run?.()}>{icon}{label}</button>
   )

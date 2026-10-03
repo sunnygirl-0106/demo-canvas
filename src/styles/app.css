@@ -15,7 +15,11 @@ input,textarea{font:inherit;color:inherit}
 @keyframes sp{to{transform:rotate(360deg)}}
 /* 连出来的那块屏是「刚长出来的」，不是「一直在那儿」：落地那一下要看得见 */
 @keyframes nd-popin{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
-@keyframes gp-flow{to{stroke-dashoffset:-80}}
+/*
+ * 虚线朝落点走。位移必须是一个整节（线段 + 空隙）的整数倍，否则一轮结束那一帧
+ * 虚线会错位、跳一下 —— 这里是 DashedEdge 的 12 9 共 21px 的四节，改一头记得改另一头。
+ */
+@keyframes gp-flow{to{stroke-dashoffset:-84}}
 
 /* ═══ React Flow 覆盖 ══════════════════════════════════════ */
 .react-flow__attribution{background:rgba(0,0,0,.35);color:#5c666d}
@@ -45,7 +49,7 @@ input,textarea{font:inherit;color:inherit}
   width:calc(26px * var(--zk));height:calc(26px * var(--zk));
   min-width:calc(26px * var(--zk));min-height:calc(26px * var(--zk))}
 .react-flow__handle:after{display:none}
-.rf-edgepath{animation:gp-flow 3.4s linear infinite}
+.rf-edgepath{animation:gp-flow 3.6s linear infinite}
 .react-flow__edge.selected .rf-edgepath{stroke-width:2.4}
 /* 连线上的剪刀：悬浮到线上才出现，点一下断开这一条连接（⌘Z 可撤销） */
 .edge-cut{position:absolute;pointer-events:all;width:22px;height:22px;border-radius:50%;
@@ -100,6 +104,29 @@ input,textarea{font:inherit;color:inherit}
 .tb-menu i{display:block;margin-top:3px;font-size:11.5px;line-height:1.55;color:var(--ink-2);font-style:normal}
 .tb-menu code{display:block;margin-top:4px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3)}
 .tb-menu .tb-menu-last{margin-top:5px;padding-top:11px;border-top:1px solid var(--line-2);border-radius:0 0 10px 10px}
+/* 分组抬头：这一组示例问的是哪一类规则。只是一行小字，不画底、不画线 ——
+   菜单里每一项自己就有一块 hover 底，再给组名加一块就成了两层嵌套的盒子 */
+.tb-menu .tb-group{margin:7px 11px 3px;font-size:10.5px;font-weight:600;letter-spacing:.06em;color:var(--ink-3)}
+.tb-menu .tb-group:first-child{margin-top:3px}
+
+/* ═══ 示例要点卡 ═════════════════════════════════════════════
+   钉在顶栏下方、画布左上角：进了某个示例之后要对照的那几条。
+   宽度收在 272 —— 再宽就开始和画布抢地方，而它只是一张便签。 */
+.scene-card{position:absolute;left:78px;top:76px;z-index:12;width:272px;
+  padding:11px 13px 12px;border-radius:14px;background:var(--surface-3);border:1px solid var(--line-2);
+  box-shadow:var(--pop);animation:gp-pop .2s var(--ease-soft) both}
+.scene-card header{display:flex;align-items:flex-start;gap:8px}
+.scene-card h4{flex:1;margin:0;font-size:12.5px;font-weight:600;line-height:1.45;color:var(--ink)}
+.scene-card header button{flex:none;width:20px;height:20px;margin:-2px -3px 0 0;border:0;background:none;
+  border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--ink-3);cursor:pointer;
+  transition:background .15s,color .15s}
+.scene-card header button:hover{background:var(--fill-2);color:var(--ink)}
+.scene-card-lead{margin:9px 0 5px;font-size:10.5px;font-weight:600;letter-spacing:.06em;color:var(--teal)}
+.scene-card ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+/* 每条前面一枚小圆点：几条并列的要点，靠缩进分不开，靠点才读得出是一条一条的 */
+.scene-card li{position:relative;padding-left:11px;font-size:11.5px;line-height:1.6;color:var(--ink-2)}
+.scene-card li::before{content:'';position:absolute;left:2px;top:7px;width:3px;height:3px;border-radius:50%;
+  background:var(--ink-3)}
 
 /* ═══ 左侧工具条 ═══════════════════════════════════════════ */
 .dock{position:absolute;left:18px;top:64px;width:46px;padding:6px;z-index:11;
@@ -230,11 +257,22 @@ input,textarea{font:inherit;color:inherit}
  */
 .nd-corner{position:absolute;right:.64em;top:.64em;width:1.73em;height:1.73em;border-radius:.55em;
   font-size:calc(11px * var(--zk));
-  background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:var(--ink);cursor:pointer;
+  /*
+   * 底是一层毛玻璃，不是一块黑。
+   *
+   * 实心黑（原来是 .6 的黑）在画面上就是一块挖掉的方洞：它不透，所以压住的那一角画面
+   * 是真没了，一张亮色的片子右上角凭空缺一块。半透的白 + 模糊不一样 ——
+   * 底下的画面还在，只是被磨毛了，看着是「盖在画上的一片玻璃」而不是「画上戳的一个洞」。
+   * 和控制条上那枚菜单键按下去时是同一种底（.vhud-more:hover），画面上的小控件统一成一套。
+   * 白的那一档只给到 .16：再厚就又成了一块板，这一层只是把图标托起来。
+   */
+  background:rgba(255,255,255,.16);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;
   opacity:0;transition:opacity .18s,background .2s}
-.nd-corner svg{width:1em;height:1em}
+/* 图标自己带一道贴着轮廓的黑影：底是透的，亮画面上单靠那层白托不住一枚白图标 */
+.nd-corner svg{width:1em;height:1em;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
 .nd-shot:hover .nd-corner,.nd-corner:focus-visible{opacity:1}
-.nd-corner:hover{background:rgba(0,0,0,.8)}
+.nd-corner:hover{background:rgba(255,255,255,.3)}
 /*
  * 悬浮控制条：压在画面底边的一条，鼠标进节点才浮出来。
  * 底下垫一道从透明到黑的渐变，不是一整条实色横杠 ——
@@ -322,7 +360,13 @@ input,textarea{font:inherit;color:inherit}
    * 那道痕半透明：墨落在纸上总比笔尖里浅；一句「正在编辑」的状态，也不该比旁边的正文还响。
    * 笔尖是同一支白、实一档，它是笔的一部分，不是已经写下去的那一笔。
    */
-  --pen-body:var(--teal);  --pen-ink:rgba(244,250,248,.52);  --pen-tip:rgba(244,250,248,.9)}
+  --pen-body:var(--teal);  --pen-ink:rgba(244,250,248,.52);  --pen-tip:rgba(244,250,248,.9);
+  /*
+   * 笔的另外三节：削出来的木头、箍着橡皮的那圈铝、橡皮本身。
+   * 都压得很暗 —— 它们是让人认出「这是一支铅笔」的细节，不是要在标题栏上再点三处颜色；
+   * 只有橡皮那一枚是暖的，整支笔就这一处跳出青色，一眼分得出哪头写字、哪头擦。
+   */
+  --pen-wood:rgba(226,206,172,.8);  --pen-metal:rgba(214,228,226,.66);  --pen-eraser:rgba(232,154,146,.82)}
 /*
  * 「编辑中」拆成单字才好一个一个弹。顺手把它们收紧半格、斜过来 ——
  * 和那支 45° 的笔是一套笔迹，读起来像随手写下的，不像印上去的标签。
@@ -383,6 +427,18 @@ input,textarea{font:inherit;color:inherit}
 }
 .nd-head .nd-op{margin-left:auto}
 .nd-op svg{width:1.27em;height:1.27em}
+/*
+ * 那枚会写字的笔不是方的 —— 它自带一条 26×14 的跑道（笔要从左走到右），
+ * 所以得从上面那条一刀切的方框里摘出来：塞进一个 1.08em 见方的框（.nd-head .act svg 那条），
+ * 26 宽的画面要等比缩到 14 的框里，笔连同它写下的那道痕只剩半个 em 高，
+ * 旁边三个字是 1em —— 它比自己要配的那句话小了一半，
+ * 读起来像角上掉了一枚小标，而不是「正在写的那支笔」。
+ * 改成按高定尺寸、宽照 26/14 自己算：整枚（笔 + 墨痕）和那三个字一样高，两边才一样响。
+ * 跟着 em 走，所以画布缩放时它和那行字一起缩（见 --zk）。
+ * 选择器要带上 .nd-head：这枚状态挂在标题栏的 .act 里，而 .nd-head .act svg 那条也压着它 ——
+ * 少写一个类名就被那条按「两个类 + 一个标签」的权重顶掉，怎么调都不动。
+ */
+.nd-head .nd-op .ic-writing{height:1.38em;width:calc(1.38em * 26 / 14)}
 /*
  * 压在画面上的这几件跟着画面走，不做恒定大小 —— 它们是盖在这幅画上的一层，
  * 画缩小了它们还那么大，一张缩略图就被自己的角标糊住了。恒定的是节点名那一行（.nd-head）。
@@ -728,18 +784,17 @@ button:disabled{opacity:.4;cursor:not-allowed}
     margin-left .5s var(--ease) var(--wait)}
 .gp-tabs.open .gp-orb.on .gp-orb-name{width:0;opacity:0;margin-left:-8px}
 /*
- * 展开后图标上没地方写字：名字在悬浮时从坞底下浮出来，一枚小气泡。
- * 给底不给裸字 —— 它压在提示词第一行上，裸字要靠一层厚字影才读得出，
- * 而那层影子在浅色的字底下会糊成一团；一块自带底的小牌子把两层字彻底分开。
- * 只摆得下一个名字：灰掉的那枚要说一整句原因，那一句归通用的说明气泡（见 ModeTabs 里的 useTip）。
+ * 展开后图标上没地方写字，名字在悬浮时浮出来 —— 和灰掉那枚说原因的是同一只气泡
+ * （.tab-tip，走 ModeTabs 里的 useTip），所以一律浮在坞的上方。
+ *
+ * 早先名字自己在坞底下长了一枚小牌子，于是同一排图标上会冒出两种气泡：
+ * 能点的朝下、点不了的朝上。鼠标横着扫过去，说明忽上忽下地跳 ——
+ * 可这一排说的是同一类事（这枚是哪个模式），没有哪一枚该换个地方说。
+ *
+ * 并到上方而不是下方：下方是提示词的第一行，一块牌子压上去就挡住正文；
+ * 上方是画布，让出来不花什么。再者气泡走的是浮层（Overlay），
+ * 面板自己是 overflow:auto 的，长在里头的牌子往上探会被面板齐齐切掉。
  */
-.gp-orb-tip{position:absolute;top:100%;left:50%;margin-top:11px;padding:5px 9px;
-  border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(22,23,24,.88);
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  box-shadow:0 10px 24px rgba(0,0,0,.5);
-  font-size:12px;line-height:1.35;white-space:nowrap;color:var(--ink-0);pointer-events:none;
-  opacity:0;transform:translate(-50%,-4px);transition:opacity .18s,transform .3s var(--ease)}
-.gp-orb.hot .gp-orb-tip{opacity:1;transform:translate(-50%,0)}
 /*
  * 一道细线把这个角分成两半：左边说「这次要做哪件事」，右边说「这块框怎么看」。
  * 不划这一道，两件不同类的事挤在同一个角上，会被读成一排同类的开关。
@@ -884,11 +939,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
 @media (prefers-reduced-motion:reduce){
   .material-card-shot.image:hover img,.material-card-shot.image:focus-visible img{transform:none}
 }
-/* 名字、时长、用不上的原因都压在画面底部的暗角里：一张图就是一张图，不在它外面再搭一层
-   角色（参考素材 / 源视频）不写 —— 它已经写在这块画面所在的那一栏上了，读屏另有 aria-label */
+/* 名字和用不上的原因压在画面底部的暗角里：一张图就是一张图，不在它外面再搭一层。
+   时长不写（这一下要的是把画面看清楚）、角色（参考素材 / 源视频）也不写 ——
+   它已经写在这块画面所在的那一栏上了；两样都留给读屏的 aria-label */
 .material-card-meta{position:absolute;left:0;right:0;bottom:0;padding:20px 11px 10px;text-align:left;
   background:linear-gradient(180deg,transparent,rgba(0,0,0,.66))}
-.material-card-meta span{display:block;margin-top:3px;font-size:11.5px;color:rgba(255,255,255,.66)}
 .material-card-meta strong{display:block;font-size:13px;font-weight:600;color:#fff;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .material-card-meta small{display:block;margin-top:5px;font-size:11.5px;line-height:1.5;color:#f2d8a2}
@@ -1465,7 +1520,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 画面顶着节点的上沿（圆角交给节点体裁），下面两截各自缩进来 */
 .mark-board .mark-stage{border-radius:0}
 /*
- * 这块编辑台上的两行开关（画面下面的「框选 / 画笔 / 只改指定片段」、浮在画面上的笔刷那行）
+ * 这块编辑台上的两行开关（画面下面的「框选 / 画笔 / 指定片段」、浮在画面上的笔刷那行）
  * 和节点名同一个规矩，见 tokens.css 的 --zk：缩小时跟着画面一起缩，占画面多大一块不变；
  * 放大过 100% 之后只跟一半 —— 一块两倍大的画面配一排两倍大的「框选 / 画笔」，
  * 先看见的就成了那排开关，而这块台子上要盯的是画面、和画在画面上的那几个框。
@@ -1486,8 +1541,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
  */
 .mark-float{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;
   display:flex;align-items:center;gap:3px;padding:5px;border-radius:15px;white-space:nowrap;touch-action:auto;
-  background:rgba(16,18,18,.84);border:1px solid rgba(255,255,255,.11);backdrop-filter:blur(14px);
-  box-shadow:0 14px 34px -16px #000}
+  /* 这一条压在画面上，所以是一层玻璃而不是一块黑板：底下那一帧要透得出来，
+     不然画面正中下方等于被挖掉一块 —— 而用户此刻看的就是这一帧 */
+  background:rgba(22,25,25,.4);border:1px solid rgba(255,255,255,.16);
+  -webkit-backdrop-filter:blur(18px) saturate(1.3);backdrop-filter:blur(18px) saturate(1.3);
+  box-shadow:0 12px 30px -18px #000}
+/* 底下可能是任意一帧画面：浮在玻璃上的字和图标比排在暗底上时亮一档，亮画面上也认得出 */
+.mark-float .mark-round{color:#c5cdcc}
+.mark-float .mark-round:hover{background:rgba(255,255,255,.14);color:#fff}
+.mark-float .mark-round[aria-disabled=true]:hover{background:none;color:#c5cdcc}
+.mark-float .mark-brush{color:#aeb6b5}
 /* 滑杆自带的那套控件在深色里一律走样，所以整条重画：轨是一条细线，走过的那截亮起来，把手是一粒圆点 */
 .mark-brush{display:flex;align-items:center;gap:7px;padding:0 10px 0 8px;font-size:11px;color:#6e7676}
 .mark-brush input{-webkit-appearance:none;appearance:none;width:52px;height:11px;background:none;cursor:pointer}
@@ -1518,7 +1581,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mark-toolpick .selected,.mark-toolpick .selected:hover{background:rgba(255,255,255,.09);color:#f2f5f4;
   font-weight:600}
 /*
- * 「只改指定片段」是开和关两个样子，所以摆成一枚开关 ——
+ * 「指定片段」是开和关两个样子，所以摆成一枚开关 ——
  * 两个并排的按钮得先读完两条文字才知道现在是哪一档，开关自己就说了。
  */
 .mark-switch{display:inline-flex;align-items:center;gap:9px;flex:none;font-size:12.5px;color:#edf1f0;
@@ -1550,6 +1613,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .seg-span i{font-style:normal;color:#4e5555}
 .seg-dur{margin-left:auto;font:11px/1 var(--num);font-variant-numeric:tabular-nums;color:#8b9392;
   border:1px solid rgba(255,255,255,.09);border-radius:6px;padding:1px 6px}
+/* 选了不止一段时才出现：上面那两个时间码说的只是其中一段，不写清是第几段，
+   读的人会以为整条片子就改这一截 */
+.seg-more{margin-left:auto;font:10.5px/1 var(--num);font-variant-numeric:tabular-nums;color:#7d8584}
+.seg-more+.seg-dur{margin-left:8px}
 /* 尺子：高的那几根对着下面那行数字，矮的是它们中间的半格 */
 .seg-ruler{display:flex;justify-content:space-between;align-items:flex-end;height:10px;
   border-bottom:1px solid rgba(255,255,255,.07);pointer-events:none}
@@ -1573,6 +1640,34 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .timeline-selection{position:absolute;top:-3px;bottom:-3px;border:1px solid rgba(232,240,238,.55);
   border-radius:6px;cursor:grab;z-index:1}
 .timeline-selection:active{cursor:grabbing}
+/* 选了好几段：眼下在看的那一段描实，其余的收着一点 ——
+   全都一样亮就分不出播放头这会儿走在哪一段里，而「哪一段」正是圈选落脚的地方 */
+.timeline-selection:not(.on){border-color:rgba(232,240,238,.26)}
+.timeline-selection:not(.on) .selection-edge{opacity:.4}
+.timeline-selection:not(.on) .range-handle::before{opacity:.55}
+/*
+ * 悬到某一段上才露出来的小垃圾桶：它只属于这一段，所以就长在这一段上，浮在它正上方 ——
+ * 压在段里会把这块能拖的地方占掉，窄的一段更是整个被它盖住。
+ * 手从段上抬到桶上仍在同一个元素里，:hover 不会半路断掉。
+ */
+.seg-del{position:absolute;left:50%;bottom:100%;margin-bottom:5px;width:21px;height:21px;
+  transform:translateX(-50%) scale(.82);display:grid;place-items:center;border-radius:6px;
+  background:#1c1e1e;border:1px solid rgba(255,255,255,.14);color:#dbe3e1;
+  box-shadow:0 5px 14px rgba(0,0,0,.6);opacity:0;pointer-events:none;
+  transition:opacity .14s,transform .14s var(--ease-soft),color .14s,border-color .14s,background .14s;z-index:4}
+/*
+ * 段的上沿到桶之间那几像素是空的：手抬上去的半路既不在段上也不在桶上，
+ * :hover 当场断掉，桶跟着收走 —— 于是它永远点不着。这一条透明的桥把那几像素接上，
+ * 桥是桶自己的一部分，所以手走在桥上时，段和桶的 :hover 都还亮着。
+ */
+.seg-del::after{content:'';position:absolute;left:-8px;right:-8px;top:100%;height:9px}
+.timeline-selection:hover .seg-del,.timeline-selection:focus-within .seg-del{
+  opacity:1;transform:translateX(-50%) scale(1);pointer-events:auto}
+/* 手停在桶上就整枚转红：删是不可逆的那一类动作，按下去之前该看得出它是红的 */
+.seg-del:hover{color:var(--danger-ink);border-color:rgba(255,122,122,.55);background:#2a1a1a}
+.seg-del:active{transform:translateX(-50%) scale(.92)}
+.seg-del:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.seg-del{transition:opacity .14s}}
 /* 底边那条青线是「这一段」的签名：选区本身不填色，填了就把缩略图盖住了 */
 .selection-edge{position:absolute;left:0;right:0;bottom:-1px;height:2px;
   background:linear-gradient(90deg,rgba(127,227,203,0),var(--mark),rgba(127,227,203,0))}
@@ -1684,6 +1779,14 @@ button:disabled{opacity:.4;cursor:not-allowed}
  * 小一号的话，打第一个字整句会跳一下。退的只是颜色：暗一档、也更灰，不跟 Tab 抢。
  */
 .prompt-input[data-empty]::after{content:attr(data-ph);color:var(--ink-ph);pointer-events:none}
+/*
+ * 这一行后面摆不下就不摆（data-ph-off 由 PromptBox 量完句尾剩下多少地方后给）。
+ * 它站的是「下一个字落在这里」，折到下一行就成了句子底下另起的半句灰话；
+ * 汉字从任意两字之间都能断开，劈成两截更不像一句话。
+ */
+.prompt-input[data-ph-off]::after{content:none}
+/* 量这截灰字有多宽的影子节点：不换行、不可见、不占地方，字体由 JS 照可编辑区抄一份 */
+.prompt-ph-mea{position:absolute;left:0;top:0;visibility:hidden;pointer-events:none;white-space:pre}
 /*
  * 每一枚标签在句子里落在哪条线上，统一交给外面那层 [data-seg] 决定。
  * 标签本身是 inline-flex，基线取自第一个子项 —— 时间段那一枚的第一个子项是文字，

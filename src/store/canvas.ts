@@ -38,31 +38,29 @@ export const focusSource = (nodes: CNode[], n: CNode) =>
 export const newId = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 4)
 
 export const KIND_NAME: Record<NodeKind, string> = { text: '文本节点', image: '图片节点', video: '视频节点' }
+/** 名字分五本账：三类节点各一本，编辑 / 延长出来的视频各一本（和从谁改出来的无关）。 */
+export type NameKind = NodeKind | 'edit' | 'extend'
+export const NAME_OF: Record<NameKind, string> = { ...KIND_NAME, edit: '编辑视频', extend: '延长视频' }
 /**
  * 画布上按类型从 1 开始编号：视频节点1、视频节点2……
  * 名字就是它当素材时的名字（name 和 assetName 一直是同一个），两处不分家 ——
  * 画布上叫「视频节点1」、面板里却叫另一个名字，等于同一段视频有两个称呼。
- * 取「现有的最大号 + 1」而不是「个数 + 1」：删掉中间一个再新建，不会撞上还在的那个。
+ *
+ * 号由 store 自己数（见 seq / claimName），不去现有的名字里找最大号（§4.1）：
+ * 用户把「视频节点3」改叫「客厅沙发」之后，那个 3 就不在画布上了 ——
+ * 照名字数的话下一个还叫视频节点3，两段视频的编号于是对不上它们出生的先后。
+ * 删掉也不回退：编号是用来区分的，不是一份连号的清单。
  */
-export function nextName(nodes: CNode[], kind: NodeKind) {
-  const re = new RegExp(`^${KIND_NAME[kind]}(\\d+)$`)
-  const max = nodes.reduce((m, n) => {
-    const hit = kindOf(n) === kind ? re.exec(String(n.data.name ?? '')) : null
-    return hit ? Math.max(m, Number(hit[1])) : m
-  }, 0)
-  return `${KIND_NAME[kind]}${max + 1}`
-}
-
-export const OP_NAME: Record<'edit' | 'extend', string> = { edit: '编辑视频', extend: '延长视频' }
-
-/** 编辑 / 延长出来的视频按各自的顺序编号，和从谁改出来的无关。取现有最大号 + 1，selfId 不算占号。 */
-export function opName(nodes: CNode[], mode: 'edit' | 'extend', selfId?: string) {
-  const re = new RegExp(`^${OP_NAME[mode]}(\\d+)$`)
-  const max = nodes.reduce((m, n) => {
-    const hit = n.id !== selfId ? re.exec(String(n.data.name ?? '')) : null
-    return hit ? Math.max(m, Number(hit[1])) : m
-  }, 0)
-  return `${OP_NAME[mode]}${max + 1}`
+export const seqOf = (nodes: CNode[]): Record<NameKind, number> => {
+  const seq = { text: 0, image: 0, video: 0, edit: 0, extend: 0 }
+  for (const n of nodes) {
+    const name = String(n.data.name ?? '')
+    for (const k of Object.keys(seq) as NameKind[]) {
+      const hit = new RegExp(`^${NAME_OF[k]}(\\d+)$`).exec(name)
+      if (hit) seq[k] = Math.max(seq[k], Number(hit[1]))
+    }
+  }
+  return seq
 }
 
 /**
@@ -139,6 +137,8 @@ export const focusWidthFor = (ratio?: number) =>
     Math.round(Math.sqrt(FOCUS_AREA * (ratio && ratio > 0 ? ratio : 9 / 16)))))
 /** 连着截好几帧时，下一张落在上一张下面多远：一个图片节点（200 高 + 标题栏）再留一道缝 */
 const SHOT_GAP = 250
+/** 同一个源视频派生第二个子节点时，下一个落在上一个下面留的那道缝 */
+const DOWN_GAP = 70
 /**
  * 派生出来的节点落在源节点右边多远：从源节点的**右边**起算，留这么一道缝。
  * 不能写成「源节点 x + 360」那样的一个数 —— 视频节点的宽度由素材比例定（200 到 356 都有），
@@ -146,6 +146,32 @@ const SHOT_GAP = 250
  */
 const NEXT_GAP = 160
 const rightOf = (n: CNode) => n.position.x + (Number(n.style?.width) || VIDEO_NODE_W) + NEXT_GAP
+/**
+ * 这个节点的下沿在哪儿。量过就用量出来的（专注态那块屏比普通节点高一大截），
+ * 没量过按它那个比例推一个 —— 写死一个数的话，竖片和专注态的节点都会被压在一起。
+ */
+const bottomOf = (n: CNode) => n.position.y + (n.measured?.height
+  ?? (kindOf(n) === 'video' ? boxFor(Number(n.data.ratio) || EMPTY_VIDEO_RATIO).height : 200))
+/**
+ * 同一个源视频再派生一个子节点时，新的落在哪条线上：已经挂在它右边的那些节点之下。
+ * 和截帧那一套（spawnShot）同一个规矩 —— 点两次「局部编辑」不该叠成一个。
+ */
+function belowKids(nodes: CNode[], edges: Edge[], source: CNode) {
+  const taken = new Set(edges.filter((e) => e.source === source.id).map((e) => e.target))
+  return nodes.reduce((y, n) => (taken.has(n.id) ? Math.max(y, bottomOf(n) + DOWN_GAP) : y), source.position.y)
+}
+/**
+ * 跟着一批节点一起走的那些：快捷入口创建、还没出片的子节点（§3.2.1）。
+ * 它自己没有画面，摆的是源节点那一段 —— 源节点没了，它连要改什么都指不出来。
+ * 已经出过片的不在此列：那是一段独立的视频，删掉源视频不该把它也带走。
+ */
+function withFocusKids(nodes: CNode[], gone: Set<string>) {
+  const out = new Set(gone)
+  for (const n of nodes) {
+    if (isFocusNode(n) && out.has(String(n.data.operationSource))) out.add(n.id)
+  }
+  return out
+}
 
 interface Snap { nodes: CNode[]; edges: Edge[] }
 
@@ -154,9 +180,18 @@ interface CanvasStore {
   edges: Edge[]
   /** hover 联动：素材区 ↔ 画布共用同一个 id */
   hoverMat: string | null
+  /**
+   * 「全部版本」那只气泡开在哪个节点旁边（null = 没开）。
+   *
+   * 摆在这一层而不是节点自己的 state 里：它还管着那个节点底下那块生成面板收不收，
+   * 而示例场景要能直接把它打开 —— 节点内部的 state 从外面摆不进去。
+   */
+  openVersions: string | null
   clipboard: Snap | null
   past: Snap[]
   future: Snap[]
+  /** 五本名字账的当前号（见 seqOf）：只往上走，删节点不回退 */
+  seq: Record<NameKind, number>
 
   onNodesChange: (c: NodeChange<CNode>[]) => void
   onEdgesChange: (c: EdgeChange[]) => void
@@ -181,6 +216,9 @@ interface CanvasStore {
   /** 量出素材真实比例后把节点摆成那个形状（不进撤销栈） */
   shape: (id: string, ratio: number) => void
   setHoverMat: (id: string | null) => void
+  setOpenVersions: (id: string | null) => void
+  /** 发一个新号并占住它：视频节点1、编辑视频2…… */
+  claimName: (kind: NameKind) => string
   setAll: (s: Snap) => void
 }
 
@@ -190,9 +228,11 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
   nodes: [],
   edges: [],
   hoverMat: null,
+  openVersions: null,
   clipboard: null,
   past: [],
   future: [],
+  seq: { text: 0, image: 0, video: 0, edit: 0, extend: 0 },
 
   onNodesChange: (c) => set({ nodes: applyNodeChanges(c, get().nodes) }),
   onEdgesChange: (c) => set({ edges: applyEdgeChanges(c, get().edges) }),
@@ -243,20 +283,16 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
     get().snapshot()
     const map = new Map<string, string>()
     const base = clip.nodes[0].position
-    // 一次粘贴好几个：每个都要避开前面刚排上号的那些，所以拿一份跟着长的名单去要号
-    const pool = [...get().nodes]
     const nodes = clip.nodes.map((n) => {
       const id = newId()
       map.set(n.id, id)
       const position = at
         ? { x: at.x + (n.position.x - base.x), y: at.y + (n.position.y - base.y) }
         : { x: n.position.x + 40, y: n.position.y + 40 }
-      const name = nextName(pool, kindOf(n))
+      const name = get().claimName(kindOf(n))
       // 粘贴出来的是一个新的独立节点：它不是谁的操作节点，名字也是新发的编号而不是手打的那个
-      const copy = { ...n, id, position, selected: true,
+      return { ...n, id, position, selected: true,
         data: { ...n.data, name, assetName: name, renamed: undefined, operationSource: undefined } }
-      pool.push(copy)
-      return copy
     })
     const edges = clip.edges.map((e) => ({
       ...e,
@@ -272,7 +308,7 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
   addNode: (kind, pos, data) => {
     get().snapshot()
     const id = newId()
-    const name = nextName(get().nodes, kind)
+    const name = get().claimName(kind)
     const node: CNode = {
       id, type: kind, position: pos, selected: true,
       style: { width: widthOf(kind, !data?.src) },
@@ -299,10 +335,17 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
 
   deleteSelection: () => {
     const { nodes, edges } = get()
-    const delN = new Set(nodes.filter((n) => n.selected).map((n) => n.id))
     const delE = new Set(edges.filter((e) => e.selected).map((e) => e.id))
-    if (!delN.size && !delE.size) return
+    const gone = new Set(nodes.filter((n) => n.selected).map((n) => n.id))
+    if (!gone.size && !delE.size) return
     get().snapshot()
+    // 删掉的线里有通向还没出片的快捷入口子节点的，子节点跟着一起走（和 disconnect 同一条规矩）
+    for (const e of edges) {
+      if (!delE.has(e.id)) continue
+      const kid = nodes.find((n) => n.id === e.target && isFocusNode(n) && n.data.operationSource === e.source)
+      if (kid) gone.add(kid.id)
+    }
+    const delN = withFocusKids(nodes, gone)
     set({
       nodes: nodes.filter((n) => !delN.has(n.id)),
       edges: edges.filter((e) => !delE.has(e.id) && !delN.has(e.source) && !delN.has(e.target)),
@@ -322,22 +365,34 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
    * 素材从「本次输入」里退出去由 App 那一层跟着连接自己落位（syncConn）。
    */
   disconnect: (edgeId) => {
-    const { edges } = get()
-    if (!edges.some((e) => e.id === edgeId)) return
+    const { nodes, edges } = get()
+    const cut = edges.find((e) => e.id === edgeId)
+    if (!cut) return
     get().snapshot()
-    set({ edges: edges.filter((e) => e.id !== edgeId) })
+    /**
+     * 剪断「源视频 → 还没出片的快捷入口子节点」这条线，子节点跟着一起走（§3.2.1）：
+     * 它自己没有画面，摆的是源节点那一段 —— 线断了，它连要改什么都指不出来。
+     * 和剪线这一下进同一个撤销快照：⌘Z 一次把线和节点一起接回来。
+     */
+    const kid = nodes.find((n) => n.id === cut.target && isFocusNode(n) && n.data.operationSource === cut.source)
+    set({
+      nodes: kid ? nodes.filter((n) => n.id !== kid.id) : nodes,
+      edges: edges.filter((e) => e.id !== edgeId && (!kid || (e.source !== kid.id && e.target !== kid.id))),
+    })
   },
 
   spawnDownstream: (source, named, width) => {
-    const src = get().nodes.find((n) => n.id === source)
+    const { nodes, edges } = get()
+    const src = nodes.find((n) => n.id === source)
     if (!src) return null
     get().snapshot()
     const id = newId()
     // 操作节点带着自己的名字出生：先叫「视频节点12」再改口，等于让编号白走一趟
-    const name = named ?? nextName(get().nodes, 'video')
+    const name = named ?? get().claimName('video')
+    const y = belowKids(nodes, edges, src)
     set((s) => ({
       nodes: [...s.nodes.map((n) => ({ ...n, selected: false })), {
-        id, type: 'video', position: { x: rightOf(src), y: src.position.y },
+        id, type: 'video', position: { x: rightOf(src), y },
         selected: true, style: { width: width ?? widthOf('video', true) }, data: { name, assetName: name },
       }],
       edges: addEdge({ id: `e-${source}-${id}`, source, target: id, type: 'dashed' }, s.edges),
@@ -387,7 +442,15 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
   },
 
   setHoverMat: (id) => set({ hoverMat: id }),
-  setAll: (s) => set({ nodes: s.nodes, edges: s.edges, past: [], future: [], hoverMat: null }),
+  setOpenVersions: (id) => set({ openVersions: id }),
+  claimName: (kind) => {
+    const no = get().seq[kind] + 1
+    set((s) => ({ seq: { ...s.seq, [kind]: no } }))
+    return `${NAME_OF[kind]}${no}`
+  },
+  // 场景自己带着默认名进来（视频节点3、编辑视频1…）：从那儿接着往下数，别和已经摆着的撞号
+  setAll: (s) => set({ nodes: s.nodes, edges: s.edges, past: [], future: [],
+    hoverMat: null, openVersions: null, seq: seqOf(s.nodes) }),
 }))
 
 /** 只能连进视频 / 图片节点；不能自连、不能重复 */

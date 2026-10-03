@@ -30,8 +30,6 @@ export interface ModelCap {
   timestamp: boolean
   /** 是否支持纯音频参考（不搭配图片或视频）。 */
   audioAlone: boolean
-  /** 是否有 adaptive 锁定机制（编辑 / 延长 / 首尾帧强制随原素材）。只有 2.5 有。 */
-  locking: boolean
   /**
    * 每个输入视频的时长区间。下限统一 4 秒，上限按型号：
    * 2.5 收 4–30 秒，2.0 / Fast / Mini 收 4–15 秒。待编辑、待延长、辅助参考视频共用这一条。
@@ -68,7 +66,7 @@ const RATIOS = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
 const sd20 = (label: string, resolutions: string[], tier: Tier = 'vip'): ModelCap => ({
   label, resolutions, durations: [4, 5, 6, 8, 10, 15], ratios: RATIOS, formats: ['mp4'],
   durationRange: [4, 15], quota: { image: 9, video: 3, audio: 3, mediaSeconds: 15 },
-  timestamp: false, audioAlone: false, locking: false, videoSeconds: [4, 15],
+  timestamp: false, audioAlone: false, videoSeconds: [4, 15],
   genModes: ALL_MODES, hasAudioToggle: true, tier,
 })
 /**
@@ -86,7 +84,7 @@ export const MODEL_CAPABILITIES: Record<Model, ModelCap> = {
     resolutions: ['480p', '720p', '1080p'], durations: [4, 5, 6, 8, 10, 15, 20, 30],
     ratios: RATIOS, formats: ['mp4', 'mov'],
     durationRange: [4, 30], quota: { image: 30, video: 10, audio: 10, mediaSeconds: 30 },
-    timestamp: true, audioAlone: true, locking: true, videoSeconds: [4, 30],
+    timestamp: true, audioAlone: true, videoSeconds: [4, 30],
     genModes: ALL_MODES, hasAudioToggle: true, isNew: true, tier: 'vip',
   },
   'sd2.0': sd20('Seedance 2.0', ['480p', '720p', '1080p', '4K']),
@@ -125,7 +123,6 @@ export const refModeOf = (model: Model): Mode | null =>
 
 /** 模式规则：锁定项。任务类型由当前 Tab 决定，不再靠提示词里的触发词推断。 */
 export interface ModeRule {
-  /** 仅当模型 locking 为真时生效 */
   locks: { ratio?: 'adaptive'; duration?: 'source' }
 }
 export const MODE_RULES: Record<Mode, ModeRule> = {
@@ -136,14 +133,18 @@ export const MODE_RULES: Record<Mode, ModeRule> = {
   edit: { locks: { ratio: 'adaptive', duration: 'source' } },
   extend: { locks: { ratio: 'adaptive' } },
 }
-export const locksRatio = (mode: Mode, model: Model) =>
-  MODEL_CAPABILITIES[model].locking && MODE_RULES[mode].locks.ratio === 'adaptive'
-/** 编辑任务整条进、整条出，与模型无关，所以锁定不看 locking 开关。 */
+/**
+ * 画幅锁定是模式的事，不是型号的事（§5.3）：编辑、延长的产出与原片同一个画幅，
+ * 首尾帧与首帧同一个画幅 —— 换哪个型号都改变不了这一条，所以不问型号。
+ */
+export const locksRatio = (mode: Mode, _model?: Model) => MODE_RULES[mode].locks.ratio === 'adaptive'
+/** 编辑任务整条进、整条出：产出与原片同长，和型号无关。 */
 export const locksDuration = (mode: Mode) => MODE_RULES[mode].locks.duration === 'source'
 /** 只有 Seedance 2.5 能把「改这一段 / 从这一段接」表达出去；其余型号拖了也会被忽略。 */
 export const supportsRange = (model: Model) => MODEL_CAPABILITIES[model].timestamp
+/** 2.0 系列做得了编辑，只是不响应整数秒 —— 它不支持的是「指定片段」，不是整个局部编辑（§5.2）。 */
 export const rangeBlockedReason = (model: Model) =>
-  supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不支持局部编辑`
+  supportsRange(model) ? '' : `${MODEL_CAPABILITIES[model].label} 不支持指定片段编辑`
 
 /**
  * 视频节点上的「局部修改 / 延长视频」入口能不能点：进去之后锁死的那个型号接不接得住这段时长。
@@ -153,7 +154,8 @@ export const rangeBlockedReason = (model: Model) =>
 export function sourceEntryReason(dur: number | undefined, name = ''): string {
   if (dur == null || !Number.isFinite(dur)) return ''   // 还在读时长，先不拦
   const [lo, hi] = MODEL_CAPABILITIES[FOCUS_MODEL].videoSeconds
-  return dur >= lo && dur <= hi ? '' : durRange(lo, hi, name)
+  // 这一句挂在节点自己的操作栏上，名字就写在同一行 —— 不再冠一个「视频」（§3.1.2）
+  return dur >= lo && dur <= hi ? '' : `${name ? `${name} ` : ''}的时长需在 ${lo}–${hi} 秒之间`
 }
 /**
  * 提示里的素材描述：「视频 ABCD 」这种「类型或角色 + 名称」的说法。
@@ -368,18 +370,17 @@ export function modelUnusableReason(conn: string[], get: MatGet, model: Model): 
  * 这个型号也容纳不下时继续往下找，一个都承接不了就返回 null ——
  * 那是一条业务规则（换型号，或留在原地由生成按钮说原因），不是出错。
  *
- * fresh 为真是「空节点刚接进第一份素材」这一种落位，接进来的是什么就去做什么：
- * 有视频落编辑视频 —— 空节点上接一段视频，他要做的十有八九是改这段视频，
- * 不是拿它当参考再生成一条新的；只有图片落首尾帧 —— 同一句话的另一半。
+ * fresh 为真是「空节点刚接进第一份素材」这一种落位（§5.1 前两条）：
+ * 一段视频落编辑视频 —— 空节点上接一段视频，他要做的十有八九是改这段视频；
+ * 图片落全能参考 —— 接一张图不等于要做一段「从这张走到那张」的过渡，
+ * 首尾帧是两张图之间的一件特定的事，得由他自己挑。
  * 已经在做别的事的节点不走这一条（新接进来的素材不该把人拽进另一件任务里）。
  */
 export const fallbackMode = (conn: string[], get: MatGet, model: Model, fresh = false): Mode | null => {
   const { total, video } = countConn(conn, get)
-  // 空节点首次接入：只有一段视频时默认去编辑视频（他多半是要改这一段）；
-  // 两段以上视频一起摆进来，要的是让它们互相参考，直接去参考 Tab —— 和「再接一段视频就转参考」是同一条
   const order: Mode[] = !total ? ['text', 'refImage', 'ref']
-    : fresh && video === 1 ? ['edit', 'frames', 'refImage', 'ref', 'text']
-    : fresh ? ['frames', 'refImage', 'ref', 'text'] : ['refImage', 'ref', 'text']
+    : fresh && video === 1 ? ['edit', 'ref', 'refImage', 'text']
+    : fresh ? ['ref', 'refImage', 'text'] : ['refImage', 'ref', 'text']
   return order.find((m) => modeAvailable(m, conn, get, model)) ?? null
 }
 
@@ -463,12 +464,18 @@ function remove(prev: Slots, id: string): Slots {
     tray: prev.tray.filter((mid) => mid !== id), unused: [...new Set([...prev.unused, id])] }
 }
 export type PromptSeg = { t: string }
-export function promptHint(mode: Mode, hasLast = false): PromptSeg[] {
+/**
+ * 句尾那一截灰字。`empty` 为真是「一个字、一枚标签都没有」那一档（§3.2.4、§3.3.3）——
+ * 这时候编辑和延长要多说一句「留空会怎样」：句首也被删光了，光写「描述你想要修改的内容」
+ * 看不出不写也能生成。起过头之后只接半句，前面那句话已经把要做的事说了。
+ */
+export function promptHint(mode: Mode, hasLast = false, empty = false, duration = 5): PromptSeg[] {
   const hints: Record<Mode, string> = {
     text: '描述你想要生成的画面', frames: hasLast ? '描述从首帧到尾帧之间发生的变化' : '描述从首帧开始的动作与镜头变化',
     ref: '描述你想要生成的画面，输入 @ 引用参考素材',
-    refImage: '描述你想要生成的画面，输入 @ 引用参考图', edit: '描述你想要修改的内容',
-    extend: '描述延长部分的画面与动作',
+    refImage: '描述你想要生成的画面，输入 @ 引用参考图',
+    edit: empty ? '描述你想要修改的内容，留空将按原视频重新生成' : '描述你想要修改的内容',
+    extend: empty ? `描述延长部分的画面与动作，留空将自动延续原视频 ${duration}s` : '描述延长部分的画面与动作',
   }
   return [{ t: hints[mode] }]
 }

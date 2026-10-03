@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CARET, docText, docWritten, marksOf, putAtCaret, replaceGroup, seedDoc, segKey, stripMarks, type Seg } from './promptDoc'
+import { CARET, docText, docWritten, marksOf, putAtCaret, replaceMarks, seedDoc, segKey, stripMarks, type Seg } from './promptDoc'
 import type { MarkGroup, MarkRegion } from './marks'
 const box = (t: number): MarkRegion => ({ t, tool: 'box', rect: [0.2, 0.3, 0.2, 0.2] })
 const group = (id: string, regions: MarkRegion[], range: MarkGroup['range'] = null): MarkGroup => ({ id, regions, range })
@@ -8,24 +8,47 @@ const read = (doc: Seg[]) => docText(doc, ctx)
 
 describe('提示词框里那句话是一份可编辑的文档', () => {
   it('替用户起的头读下来就是一句话', () => {
-    expect(read(seedDoc('edit'))).toBe('把 视频 TARL 的')
-    expect(read(seedDoc('extend'))).toBe('从 视频 TARL 向后延长 5s，')
+    expect(read(seedDoc('edit'))).toBe('把 @TARL 的')
+    expect(read(seedDoc('extend'))).toBe('从 @TARL @向后延长 5s，')
   })
   it('句子就是标记的唯一出处：删掉哪一枚标签，这次任务里就没有它', () => {
-    const doc = replaceGroup(seedDoc('edit'), group('g1', [box(1), box(2)], { start: 1, end: 3 }))
+    const doc = replaceMarks(seedDoc('edit'), [group('g1', [box(1), box(2)], { start: 1, end: 3 })])
     expect(marksOf(doc)).toEqual([{ id: 'g1', range: { start: 1, end: 3 }, regions: [box(1), box(2)] }])
     // 用户在框里退格删掉了第二枚标记
-    const cut = doc.filter((s) => !(s.t === 'mark' && s.region.t === 2))
+    const cut = doc.filter((s) => !(s.t === 'mark' && s.regions[0].t === 2))
     expect(marksOf(cut)).toEqual([{ id: 'g1', range: { start: 1, end: 3 }, regions: [box(1)] }])
     // 时间段那一枚也删了，这一组就不剩什么了
     expect(marksOf(stripMarks(doc))).toEqual([])
   })
+  it('选了好几段就是好几组，句子里用顿号并列，中间没选的那几截不跟着被改', () => {
+    const doc = replaceMarks(seedDoc('edit'), [
+      group('g1', [box(1)], { start: 1, end: 3 }),
+      group('g2', [box(8)], { start: 7, end: 9 }),
+    ])
+    expect(read(doc)).toBe('把 @TARL 中 @00:01–00:03 里的 @框选 00:01、@00:07–00:09 里的 @框选 00:08 的')
+    expect(marksOf(doc).map((g) => g.range)).toEqual([{ start: 1, end: 3 }, { start: 7, end: 9 }])
+    // 并列用的那个顿号是替用户写的，不算他提过要求
+    expect(docWritten(doc)).toBe('')
+    // 少了一段：句子里那一串整段换掉，不会留下上一次的尾巴
+    const one = replaceMarks(doc, [group('g1', [box(8)], { start: 7, end: 9 })])
+    expect(read(one)).toBe('把 @TARL 中 @00:07–00:09 里的 @框选 00:08 的')
+  })
   it('起头那几个字不算用户写过要求，写了才算', () => {
-    const doc = replaceGroup(seedDoc('edit'), group('g1', [box(1)], { start: 1, end: 2 }))
+    const doc = replaceMarks(seedDoc('edit'), [group('g1', [box(1)], { start: 1, end: 2 })])
     expect(docWritten(doc)).toBe('')
     expect(docWritten([...doc, { t: 'text', v: '把右侧的沙发改成红色' }])).toContain('右侧')
     // 没有句子的那些模式退回去看纯文字
     expect(docWritten([], '润色一下这段对白')).toContain('润色一下这段对白')
+  })
+  it('同一个时间点只出一枚标签，删掉它就删掉这一秒的全部区域', () => {
+    const two = { t: 2, tool: 'box' as const, rect: [0.5, 0.5, 0.2, 0.2] as [number, number, number, number] }
+    const doc = replaceMarks(seedDoc('edit'), [group('g1', [box(2), two, box(6)])])
+    // 第 2 秒上标了两处，句子里仍然只有两枚标签（00:02 和 00:06）
+    expect(doc.filter((s) => s.t === 'mark')).toHaveLength(2)
+    expect(read(doc)).toBe('把 @TARL 中 @框选 00:02 @框选 00:06 的')
+    // 删掉 00:02 那一枚：这一秒的两处一起没了
+    const cut = doc.filter((s) => !(s.t === 'mark' && s.regions[0].t === 2))
+    expect(marksOf(cut)[0].regions).toEqual([box(6)])
   })
   it('标签各有各的身份证，删掉一枚不会连累另一枚', () => {
     expect(segKey()).not.toBe(segKey())
@@ -36,7 +59,7 @@ describe('提示词框里那句话是一份可编辑的文档', () => {
     const doc: Seg[] = [...seedDoc('edit'), { t: 'text', v: `第一${CARET}个镜头` }]
     const out = putAtCaret(doc, ref)
     expect(out.map((s) => s.t)).toEqual(['text', 'mat', 'text', 'text', 'ref', 'text'])
-    expect(read(out)).toBe('把 视频 TARL 的第一 @GVUI 个镜头')
+    expect(read(out)).toBe('把 @TARL 的第一 @GVUI 个镜头')
     // 占位字符没留在句子里
     expect(read(out)).not.toContain(CARET)
   })

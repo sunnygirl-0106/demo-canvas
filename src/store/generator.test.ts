@@ -24,9 +24,12 @@ describe('模型置灰', () => {
     // 编辑模式下，别家模型压根没有编辑能力，列表里就不该还能选
     expect(modelBlockedReason(state(), 'kling-video-o1', get)).toContain('不支持编辑视频')
     expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('')
-    // 标了东西之后，不响应范围的 2.0 也跟着灰
+    // 只圈了画面：2.0 照旧改得了那几块地方，不灰
+    gs().patch('target', { marks: marks(3) })
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('')
+    // 选了片段才灰：2.0 不认整数秒区间（§5.2）
     gs().patch('target', { marks: marks(3, { start: 3, end: 7 }) })
-    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('Seedance 2.0 不支持局部编辑，移除标记后可切换')
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toBe('Seedance 2.0 不支持指定片段编辑')
     // 只做文生视频的型号，在这两个模式下都是「不支持这个模式」这条先拦住它
     expect(modelBlockedReason(state(), 'wan2.2-ti2v-5b', get)).toContain('不支持编辑视频')
     gs().setMode('target', 'ref', get)
@@ -97,8 +100,9 @@ describe('模式草稿与源视频', () => {
     expect(state()).toMatchObject({ marks: [], prompt: '改椅子', sourceSrc: 'new.mp4' })
   })
   it('剪断首帧由尾帧递补，历史连接保留', () => {
-    // 两张图片接进空节点就落首尾帧：① 首帧、② 尾帧
+    // 图片首次接入落全能参考（§5.1），首尾帧是用户自己挑的那件事
     gs().syncConn('fr', ['a', 'b'], get)
+    gs().setMode('fr', 'frames', get)
     expect(gs().get1('fr')).toMatchObject({ mode: 'frames', slotFirst: 'a', slotLast: 'b' })
     // 剪断首帧那条线：尾帧升上来，尾帧位空出来等下一张
     gs().syncConn('fr', ['b'], get)
@@ -143,18 +147,24 @@ describe('源资产身份校验', () => {
 })
 
 describe('初次连接与参数兼容', () => {
-  it('空节点接进来的是什么就去做什么：视频落编辑视频，图片落首尾帧', () => {
+  it('空节点接进来的是什么就去做什么：视频落编辑视频，图片落全能参考（§5.1）', () => {
     gs().syncConn('empty', [], get)
     expect(gs().get1('empty').mode).toBe('text')
     // 空节点上被接了一段视频，他要做的十有八九是改这段视频
     gs().syncConn('empty', ['v'], get)
-    expect(gs().get1('empty')).toMatchObject({ mode: 'edit', slotEdit: 'v' })
-    // 只有图片时编辑进不去，落首尾帧 —— 同一句话的另一半
+    expect(gs().get1('empty')).toMatchObject({ mode: 'edit', model: 'sd2.5', slotEdit: 'v' })
+    // 图片一律落全能参考：接一张图不等于要做一段「从这张走到那张」的过渡
     gs().syncConn('pic', ['a', 'b'], get)
-    expect(gs().get1('pic')).toMatchObject({ mode: 'frames', slotFirst: 'a', slotLast: 'b' })
-    // 首尾帧只有两个席位：第 3 张图片容纳不下，这才落到参考
+    expect(gs().get1('pic')).toMatchObject({ mode: 'ref', model: 'sd2.5', tray: ['a', 'b'] })
     gs().syncConn('pic3', ['a', 'b', 'x'], get)
     expect(gs().get1('pic3').mode).toBe('ref')
+  })
+  it('首次接入一律先切到 Seedance 2.5：此前选的型号接不住这份素材也不卡在那儿', () => {
+    gs().syncConn('wan1', [], get)
+    gs().setModel('wan1', 'wan2.2', get)
+    // Wan 2.2 一段视频都不收，而这是空节点接进来的第一份素材
+    gs().syncConn('wan1', ['v'], get)
+    expect(gs().get1('wan1')).toMatchObject({ model: 'sd2.5', mode: 'edit', slotEdit: 'v' })
   })
   it('接上第二段视频就转全能参考：编辑只承载一段，两段同为参考视频', () => {
     gs().syncConn('two', ['v'], get)
@@ -271,14 +281,14 @@ describe('连续操作', () => {
     expect(state()).toMatchObject({ mode: 'edit', model: 'sd2.5', prompt: '把椅子改成红色' })
     expect(taskError(state(), get)).toBeNull()
   })
-  it('切到不响应范围的型号，标记留着，只是生成按钮灰掉 —— 手画的东西不能被一次换型号抹掉', () => {
+  it('切到不认片段的型号，片段和标记都留着，只是生成按钮灰掉 —— 手选手画的东西不能被一次换型号抹掉', () => {
     gs().patch('target', { prompt: '把椅子改成红色', marks: marks(3, { start: 3, end: 7 }) })
-    // 不响应范围的模型在选择列表里就是灰的，用户在做选择之前已经看到原因
-    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不支持局部编辑')
+    // 不响应片段的模型在选择列表里就是灰的，用户在做选择之前已经看到原因
+    expect(modelBlockedReason(state(), 'sd2.0', get)).toContain('不支持指定片段编辑')
     gs().setModel('target', 'sd2.0', get)
     expect(state()).toMatchObject({ model: 'sd2.0', mode: 'edit', marks: marks(3, { start: 3, end: 7 }) })
-    // 留着不等于放行：生成按钮说得出是被哪几组挡住的，出口是「移除标记，改整条」
-    expect(taskError(state(), get)).toContain('不支持局部编辑')
+    // 留着不等于放行：生成按钮说得出它被什么挡住了，出口是关掉「指定片段」
+    expect(taskError(state(), get)).toContain('不支持指定片段编辑')
     gs().patch('target', { marks: [] })
     expect(taskError(state(), get)).toBeNull()
   })

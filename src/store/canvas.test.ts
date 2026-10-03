@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { focusWidthFor, opName, shotName, useCanvas } from './canvas'
+import { focusWidthFor, isFocusNode, shotName, useCanvas } from './canvas'
 import { matOf } from '../demo/assets'
 
 beforeEach(() => {
@@ -92,19 +92,75 @@ describe('画布交互回归', () => {
   })
 })
 
-describe('编辑 / 延长视频的名字', () => {
-  const node = (id: string, name: string) => ({ id, type: 'video', position: { x: 0, y: 0 }, data: { name } }) as never
+describe('节点编号由 store 自己数（§4.1）', () => {
+  it('五类各一本账，删除不回退，也不去现有的名字里找最大号', () => {
+    const store = useCanvas.getState()
+    expect(store.claimName('video')).toBe('视频节点1')
+    expect(store.claimName('image')).toBe('图片节点1')
+    // 编辑和延长各有一本账：已经发过一个编辑视频1，延长出来的仍然从延长视频1 数起
+    expect(store.claimName('edit')).toBe('编辑视频1')
+    expect(store.claimName('extend')).toBe('延长视频1')
+    expect(store.claimName('edit')).toBe('编辑视频2')
+    // 用户把号改掉了，后面的编号不跟着它走 —— 编号只用来区分，不代表画布上还剩哪几个号
+    const id = useCanvas.getState().addNode('video', { x: 0, y: 0 })
+    expect(useCanvas.getState().nodes.find((n) => n.id === id)!.data.name).toBe('视频节点2')
+    useCanvas.getState().updateNode(id, { name: '客厅沙发', renamed: true })
+    expect(useCanvas.getState().claimName('video')).toBe('视频节点3')
+    // 删掉也不回退
+    const live = useCanvas.getState()
+    live.onNodesChange(live.nodes.map((n) => ({ type: 'select', id: n.id, selected: true })))
+    useCanvas.getState().deleteSelection()
+    expect(useCanvas.getState().claimName('video')).toBe('视频节点4')
+  })
 
-  it('两类各自数号，取最大号 + 1，改口时不算自己占着的那个', () => {
-    const src = node('A', '视频节点1')
-    expect(opName([src], 'edit')).toBe('编辑视频1')
-    expect(opName([src, node('B', '编辑视频1')], 'edit')).toBe('编辑视频2')
-    // 编辑和延长各有一本账：已经有一个编辑视频1，延长出来的仍然从延长视频1 数起
-    expect(opName([src, node('B', '编辑视频1')], 'extend')).toBe('延长视频1')
-    // 取最大号 + 1 而不是个数 + 1：删掉中间那个再新建，不会撞上还在的那个
-    expect(opName([node('B', '编辑视频1'), node('C', '编辑视频3')], 'edit')).toBe('编辑视频4')
-    // 同一个还没出结果的节点从编辑改口成延长：它自己现在叫什么不挡自己的路
-    expect(opName([src, node('P', '延长视频1')], 'extend', 'P')).toBe('延长视频1')
+  it('setAll 从场景里已有的默认名接着往下数，不撞号', () => {
+    const node = (id: string, name: string) => ({ id, type: 'video', position: { x: 0, y: 0 }, data: { name } }) as never
+    useCanvas.getState().setAll({ nodes: [node('A', '视频节点3'), node('B', '编辑视频1'), node('C', '客厅沙发')], edges: [] })
+    expect(useCanvas.getState().claimName('video')).toBe('视频节点4')
+    expect(useCanvas.getState().claimName('edit')).toBe('编辑视频2')
+    expect(useCanvas.getState().claimName('extend')).toBe('延长视频1')
+  })
+})
+
+describe('快捷入口子节点跟着源视频走（§3.2.1）', () => {
+  /** 源视频 + 一个还没出片的子节点 + 一个已经出片的子节点 */
+  const setup = () => {
+    const store = useCanvas.getState()
+    const src = store.addNode('video', { x: 0, y: 0 }, { src: 'blob:v', dur: 8 })
+    const kid = useCanvas.getState().spawnDownstream(src, '编辑视频1')!
+    useCanvas.getState().updateNode(kid, { operationSource: src })
+    const done = useCanvas.getState().spawnDownstream(src, '编辑视频2')!
+    useCanvas.getState().updateNode(done, { operationSource: src, src: 'blob:out' })
+    return { src, kid, done }
+  }
+  const ids = () => useCanvas.getState().nodes.map((n) => n.id)
+
+  it('两次派生不叠在一起：第二个落在第一个下面', () => {
+    const { kid, done } = setup()
+    const at = (id: string) => useCanvas.getState().nodes.find((n) => n.id === id)!.position
+    expect(at(done).x).toBe(at(kid).x)
+    expect(at(done).y).toBeGreaterThan(at(kid).y)
+  })
+
+  it('剪断那条线，还没出片的子节点一起删掉；已出片的留着', () => {
+    const { src, kid, done } = setup()
+    expect(isFocusNode(useCanvas.getState().nodes.find((n) => n.id === kid)!)).toBe(true)
+    useCanvas.getState().disconnect(`e-${src}-${kid}`)
+    expect(ids()).toEqual([src, done])
+    // 一次撤销把线和节点一起接回来
+    useCanvas.getState().undo()
+    expect(ids()).toEqual([src, kid, done])
+    // 剪断通向已出片那个的线：它自己留着
+    useCanvas.getState().disconnect(`e-${src}-${done}`)
+    expect(ids()).toEqual([src, kid, done])
+  })
+
+  it('删掉源视频，还没出片的子节点一起走；已出片的留着', () => {
+    const { src, done } = setup()
+    const live = useCanvas.getState()
+    live.onNodesChange(live.nodes.map((n) => ({ type: 'select', id: n.id, selected: n.id === src })))
+    useCanvas.getState().deleteSelection()
+    expect(ids()).toEqual([done])
   })
 })
 

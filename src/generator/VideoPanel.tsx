@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { isFocusNode, useCanvas } from '../store/canvas'
+import { connOf, isFocusNode, useCanvas } from '../store/canvas'
 import { useGenerator } from '../store/generator'
+import { useVersions } from '../store/versions'
 import { matOf } from '../demo/assets'
 import { landResult } from '../demo/fake'
 import { activeIds, promptHint, tabStates, TABS, type MatGet } from './materialLayout'
@@ -8,7 +9,7 @@ import { taskError } from './videoTask'
 import ModeTabs from './ModeTabs'
 import MaterialRow from './MaterialRow'
 import PromptBox from './PromptBox'
-import { docText, marksOf, seedDoc, type Seg } from './promptDoc'
+import { docEmpty, docText, marksOf, seedDoc, type Seg } from './promptDoc'
 import BottomBar from './BottomBar'
 import PromptSeg from './PromptSeg'
 import VideoSettings from './VideoSettings'
@@ -23,6 +24,7 @@ import { IcCollapse, IcExpand } from '../ui/icons'
  */
 export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string; docVer: number; onBump: () => void }) {
   const nodes = useCanvas((s) => s.nodes)
+  const edges = useCanvas((s) => s.edges)
   const gen = useGenerator((s) => s.map[nodeId])
   const get: MatGet = useCallback((id) => matOf(useCanvas.getState().nodes.find((n) => n.id === id)), [nodes])
   /** 专注态：从视频上方入口长出来、还没出片的那段时间。Tab 收成一项、句首铁打，只在这时候。 */
@@ -34,7 +36,7 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
   /** 提示词框撑大 / 收回。只管这块可编辑区有多高，不动面板别的地方。 */
   const [big, setBig] = useState(false)
   /**
-   * 进了编辑 / 延长就替用户把这句话的开头写好（「把 视频 的」「从 视频 向后延长 5s，」）。
+   * 进了编辑 / 延长就替用户把这句话的开头写好（「把 @视频 的」「从 @视频 向后延长 5s，」）。
    * 只起这一次头：删光了不会自动送回来 —— 那是开头，不是模板。
    *
    * 只有专注态才起头：普通节点的源视频是从连线里挑的、随时会换，
@@ -49,14 +51,42 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
     patch(nodeId, { doc, seeded: true, marks: marksOf(doc), prompt: docText(doc, { name: mat.name, direction: g.direction, duration: g.params.duration }) })
     onBump()
   }, [nodeId, focus, gen?.mode, gen?.slotEdit, gen?.seeded, get, patch, onBump])
+  /**
+   * 接进来一个文本节点：提示词还空着就把它那段文字倒进来（§5.1「文本作为提示词来源」）。
+   * 模式不动 —— 文本不是素材，它只是省掉「把这段话抄进框里」这一步。
+   * 同一个文本节点只倒一次：倒完用户删掉它，不该在下一次重渲染时又送回来。
+   */
+  useEffect(() => {
+    const g = useGenerator.getState().map[nodeId]
+    if (!g) return
+    const canvas = useCanvas.getState()
+    const from = connOf(canvas.edges, nodeId).find((id) => canvas.nodes.find((n) => n.id === id)?.type === 'text')
+    if (!from || g.textFrom === from) return
+    const text = String(canvas.nodes.find((n) => n.id === from)?.data.text ?? '').trim()
+    const fill = !!text && docEmpty(g.doc)
+    patch(nodeId, { textFrom: from, ...(fill ? { doc: [{ t: 'text', v: text }] as Seg[], prompt: text } : {}) })
+    if (fill) onBump()
+  }, [nodeId, edges, patch, onBump])
   if (!gen) return null
   const source = gen.slotEdit ? get(gen.slotEdit) : null
   /**
    * 句子改了就把它记下来：marks 和 prompt 都从句子推出来 ——
    * 删掉一枚标签，这次任务里也就没有它；这一句念出来的样子就是任务记录里的 prompt。
    */
-  const say = (doc: Seg[]) => docText(doc, { name: source?.name, direction: gen.direction, duration: gen.params.duration })
-  const setDoc = (doc: Seg[]) => patch(nodeId, { doc, marks: marksOf(doc), prompt: say(doc) })
+  const say = (doc: Seg[], direction = gen.direction, duration = gen.params.duration) =>
+    docText(doc, { name: source?.name, direction, duration, nameOf: (id) => get(id)?.name })
+  const setDoc = (doc: Seg[]) => {
+    /**
+     * 延长标签被整枚删掉了：方向和时长回到默认（§3.3.3）。
+     * 那枚标签就是这两个数在句子里的样子 —— 删了它却让「向前 20s」在参数栏里留着，
+     * 等于这次任务还带着一个句子里已经看不见的选择。
+     */
+    const gone = gen.doc.some((s) => s.t === 'dur') && !doc.some((s) => s.t === 'dur')
+    const direction = gone ? 'after' as const : gen.direction
+    const duration = gone ? 5 : gen.params.duration
+    patch(nodeId, { doc, marks: marksOf(doc), prompt: say(doc, direction, duration),
+      ...(gone ? { direction, params: { ...gen.params, duration } } : {}) })
+  }
   /** 由外部改动句子（插入这一次的标签）：内容换了，可编辑区得重挂一遍 */
   const writeDoc = (doc: Seg[], extra?: Record<string, unknown>) => {
     patch(nodeId, { doc, marks: marksOf(doc), prompt: say(doc), ...extra })
@@ -77,9 +107,14 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
       const taskId = useGenerator.getState().submit(nodeId, get)
       // 提交那一刻的 payload 就是这一版的全部来历，之后改草稿不能倒着改写它
       const payload = useGenerator.getState().get1(nodeId).tasks.find((t) => t.id === taskId)?.payload
+      /**
+       * 来源版本在**提交这一刻**就定下来（§3.5.2）：出结果要等一会儿，
+       * 这段时间里源视频自己可能又生成了一版 —— 那时再去读，这一版就记成了基于一幅它没见过的画面。
+       */
+      const baseNo = payload?.sourceId ? useVersions.getState().baseNoOf(payload.sourceId) : null
       window.setTimeout(() => {
         useGenerator.getState().complete(nodeId, taskId)
-        if (payload) landResult(nodeId, taskId, payload)
+        if (payload) landResult(nodeId, taskId, payload, baseNo)
       }, 1400)
     }
     catch (e) { console.error(e) }
@@ -119,14 +154,10 @@ export default function VideoPanel({ nodeId, docVer, onBump }: { nodeId: string;
     <PromptBox doc={gen.doc} ver={`${gen.mode}:${gen.direction}:${gen.params.duration}:${docVer}`} onDoc={setDoc}
       renderSeg={(s) => <PromptSeg s={s} doc={gen.doc} mat={source} get={get} mode={gen.mode} direction={gen.direction} duration={gen.params.duration}
         role="源视频" />}
-      placeholder={promptHint(gen.mode, !!gen.slotLast).map((p) => p.t).join('')} mats={mats}
+      placeholder={promptHint(gen.mode, !!gen.slotLast, docEmpty(gen.doc), gen.params.duration).map((p) => p.t).join('')}
+      mats={mats}
       onInsert={(doc, m) => writeDoc(doc, { references: { ...gen.references, [m.name]: m.id } })}
-      /*
-       * 专注态的句首是铁打的：那枚源素材标签就是这句话的主语，删了这句话不成立。
-       * 退格删掉之后在读回 DOM 那一步补回来，再让可编辑区重挂一遍（光标会掉回句尾，这是代价）。
-       */
-      locked={focus ? gen.doc.filter((s) => s.t === 'mat' || s.t === 'dur').map((s) => (s as { k: string }).k) : undefined}
-      onRestore={onBump} big={big} />
+      big={big} />
     <BottomBar busy={busy} disabled={!!error} reason={error ?? undefined} cost={cost} onSend={send} left={<VideoSettings nodeId={nodeId} gen={gen} source={source} get={get} focus={focus} />} />
   </>
 }

@@ -1,4 +1,4 @@
-import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Mat } from './materialLayout'
 import { DUR_READING, fmt } from './materialLayout'
 import { CARET, docWritten, putAtCaret, segKey, type Seg } from './promptDoc'
@@ -20,13 +20,6 @@ interface Props {
   mats: Mat[]
   /** 从 @ 面板挑了一段素材：整份句子（标签已经插在光标那一点）连同它一起交出去 */
   onInsert?: (doc: Seg[], mat: Mat) => void
-  /**
-   * 删不掉的那几枚标签（按 k 点名）。专注态的句首就是这句话的主语，
-   * 删了这句话不成立 —— 退格删掉之后在「读回 DOM」那一步按原位补回来。
-   */
-  locked?: string[]
-  /** 补回来之后内容和 DOM 对不上了，可编辑区得重挂一遍 —— 由外面的 ver 负责。 */
-  onRestore?: () => void
   /** 撑大：可编辑区从三行长到九行。长句子、贴进来一整段脚本的时候，不必在三行的窗口里滚。 */
   big?: boolean
 }
@@ -38,8 +31,10 @@ interface Props {
  * （children 用 useMemo 锁住引用，React 会整棵跳过）—— 否则每敲一个字光标都会跳回去。
  * 每次输入都把 DOM 读回一份 doc，谁被删了、谁被挪了，读一遍就知道。
  */
-export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, locked, onRestore, big }: Props) {
+export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mats, onInsert, big }: Props) {
   const ed = useRef<HTMLDivElement>(null); const wrap = useRef<HTMLDivElement>(null)
+  /** 量占位文案宽度用的影子节点（在可编辑区外面，不会被当成句子的一部分读回去） */
+  const shadow = useRef<HTMLSpanElement>(null)
   const [menu, setMenu] = useState(false)
   /** 呼出时的光标位置。挑完素材要回到这里，把触发菜单的那个 @ 一起换掉。 */
   const at = useRef<Range | null>(null)
@@ -79,27 +74,46 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
     return out
   }
   /**
-   * 锁定的标签被退格删掉了就按原位补回来：位置取它在上一份句子里的下标。
-   * 「删不掉」没法靠 CSS —— contentEditable 里退格已经发生了，只能在读回来这一步还原。
+   * 占位文案摆不下就不摆。它是接在句尾的那一截灰字 —— 站的是「下一个字要落的那一点」，
+   * 一旦折到下一行，读起来就不再是这句话的延续，而是句子底下莫名多出来半句灰话；
+   * 汉字还能从任意两个字之间断开，劈成两截更难看。编辑视频这一档起头就是
+   * 「把 @素材 中 @时间段 里的 @标记 的」，一行很快就占满了，这件事随手就能撞上。
+   *
+   * 所以每次内容变了都量一遍：句尾那一点到右边界还剩多少，够不够摆下这几个字 ——
+   * 够就照旧接在句尾，不够就整截不出现，宁可少一句提示，也不让这句话看着散掉。
    */
-  const restore = (next: Seg[]): Seg[] => {
-    if (!locked?.length) return next
-    const has = new Set(next.filter((s) => s.t !== 'text').map((s) => (s as { k: string }).k))
-    const gone = locked.filter((k) => !has.has(k))
-    if (!gone.length) return next
-    const out = [...next]
-    for (const k of gone) {
-      const seg = live.current.find((s) => s.t !== 'text' && (s as { k: string }).k === k)
-      const at = live.current.findIndex((s) => s === seg)
-      if (seg) out.splice(Math.min(at, out.length), 0, seg)
-    }
-    onRestore?.()
-    return out
+  const fit = (now: Seg[] = live.current) => {
+    const box = ed.current; const mea = shadow.current
+    if (!box || !mea) return
+    // 影子节点在框外面，字体得照可编辑区抄一份（这几项还跟着窄屏的媒体查询变）
+    const cs = getComputedStyle(box)
+    mea.style.fontFamily = cs.fontFamily; mea.style.fontSize = cs.fontSize
+    mea.style.fontWeight = cs.fontWeight; mea.style.letterSpacing = cs.letterSpacing
+    mea.textContent = box.getAttribute('data-ph') ?? ''
+    const r = document.createRange(); r.selectNodeContents(box)
+    const rects = r.getClientRects(); const tail = rects[rects.length - 1]
+    // 空句子、或者刚敲了回车：光标在行首，整行都是空的（行首这一格浏览器未必给出矩形）
+    const end = now[now.length - 1]
+    const head = !end || (end.t === 'text' && end.v.endsWith('\n'))
+    const used = head || !tail ? 0 : tail.right - box.getBoundingClientRect().left
+    box.toggleAttribute('data-ph-off', mea.offsetWidth > box.clientWidth - used)
   }
+  // 每次重渲染都量一遍：句子、占位文案、框的宽度，哪一样变了都可能换一个答案
+  useLayoutEffect(() => { fit() })
+  // 面板跟着窗口收宽：内容一个字没动，剩下的地方变了，也得重新算
+  useEffect(() => {
+    const box = ed.current
+    if (!box) return
+    const ro = new ResizeObserver(() => fit())
+    ro.observe(box)
+    return () => ro.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   /** 占位文案的显隐直接改 DOM：打字期间这块区域不重新渲染，交给 React 就慢半拍 */
   const sync = () => {
-    const next = restore(read())
+    const next = read()
     ed.current?.toggleAttribute('data-empty', !docWritten(next))
+    fit(next)
     onDoc(next)
     return next
   }
@@ -176,10 +190,19 @@ export default function PromptBox({ doc, ver, onDoc, renderSeg, placeholder, mat
           setMenu(open)
         }}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') setMenu(false) }}
-        // 粘贴一律取纯文字：别人页面上的样式和结构进了这一句只会碍事
-        onPaste={(e) => { e.preventDefault(); type(e.clipboardData.getData('text/plain')) }}>
+        /*
+         * 粘贴一律取纯文字，而且一律**就是**纯文字（§3.5.3）：
+         * 别人页面上的样式和结构进了这一句只会碍事，而认得出「@客厅沙发」也不替他还原成标签 ——
+         * 还原一枚标签等于替他认下一段素材、或者在画面上补一处框，那都是他没做过的动作。
+         * 留成文字他看得见、也改得动。
+         */
+        onPaste={(e) => {
+          e.preventDefault()
+          type(e.clipboardData.getData('text/plain'))
+        }}>
         {body}
       </div>
+      <span ref={shadow} className="prompt-ph-mea" aria-hidden="true" />
     </div>
     {menu && <Overlay label="引用已连接资产" anchor={wrap} className="asset-picker" onClose={() => setMenu(false)}>
       <div className="asset-search">

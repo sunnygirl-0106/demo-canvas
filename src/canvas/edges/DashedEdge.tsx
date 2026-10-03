@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { EdgeLabelRenderer, getBezierPath, Position, type EdgeProps } from '@xyflow/react'
 import { PLUS_SPAN, useZk } from '../hooks'
-import { isFocusNode, OP_NAME, useCanvas } from '../../store/canvas'
+import { isFocusNode, NAME_OF, useCanvas } from '../../store/canvas'
 import { useGenerator } from '../../store/generator'
 import { activeIds } from '../../generator/materialLayout'
 import { IcScissors } from '../../ui/icons'
@@ -31,12 +31,12 @@ export default function DashedEdge(p: EdgeProps) {
    * 从视频上方入口长出来的那一条线，就地说出它长出来的是什么事 ——
    * 这条线两头的名字都是「视频节点」，不说这一句，连出来的那个节点为什么在那儿就只能靠猜。
    * 只有专注态（还没出片）才挂：出片之后它就是普通的一条来源线了。
-   * 说的就是 OP_NAME 那两个词：出片之后节点会叫「编辑视频1」，线上不该先用另一套叫法。
+   * 说的就是 NAME_OF 那两个词：出片之后节点会叫「编辑视频1」，线上不该先用另一套叫法。
    */
   const nodes = useCanvas((s) => s.nodes)
   const to = nodes.find((n) => n.id === target)
   const op = to && isFocusNode(to) && to.data.operationSource === source
-    ? OP_NAME[useGenerator.getState().map[target]?.mode === 'extend' ? 'extend' : 'edit'] : null
+    ? NAME_OF[useGenerator.getState().map[target]?.mode === 'extend' ? 'extend' : 'edit'] : null
   const active = !gen || activeIds(gen, gen.mode).includes(source)
   const lit = active && hover === source
   const dimmed = !!hover && !lit
@@ -60,7 +60,7 @@ export default function DashedEdge(p: EdgeProps) {
         * 这儿换成两件一直在说、又都很轻的事 —— 亮度和动。
         * 亮度：从起点那头的两成亮一路涨到落点的满亮，像一道尾巴亮到头的光，
         *      暗的那头是「从这儿出来的」，亮的那头是「落在这儿」，静止的一帧里就读得出来。
-        * 动：虚线一直朝落点走（.rf-edgepath 那条动画），3.4s 一轮，慢到不抢眼睛。
+        * 动：虚线一直朝落点走（.rf-edgepath 那条动画），3.6s 一轮，慢到不抢眼睛。
         * 悬浮时线变成实线，那一下只剩亮度在说方向 —— 够了，那会儿人正盯着这一条。
         */}
       <defs>
@@ -73,7 +73,14 @@ export default function DashedEdge(p: EdgeProps) {
       <path
         id={id} className="rf-edgepath" d={d} fill="none"
         stroke={`url(#${gid})`} strokeWidth={lit || armed ? 2.2 : 1.5} strokeLinecap="round"
-        strokeDasharray={lit ? undefined : '4 4'}
+        /*
+         * 线段 12、空隙 9：原先 4 4 那种一截一截的碎点，一条线上要排几十节，远看是一条
+         * 带毛边的灰线，近看满是碎屑。拉到这个长度，一节就读得出是一段「线」而不是一个点，
+         * 整条线上只剩十来节，空隙也跟着松开，密度降下来才看得清它在往哪边走。
+         * 两头是圆头（strokeLinecap），每节实际各长出半个线宽，所以空隙给得比线段短些才匀。
+         * 节长 21px 要和 app.css 里 gp-flow 的位移对上（-84 = 四节），不然一轮接头会跳。
+         */
+        strokeDasharray={lit ? undefined : '12 9'}
         opacity={armed ? 0.9 : !active ? 0.1 : dimmed ? 0.12 : lit ? 1 : 0.55}
       />
       {/* 加宽的透明命中区，方便点选删除、也方便悬浮出剪刀 */}

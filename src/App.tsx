@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import Canvas from './canvas/Canvas'
-import { connOf, useCanvas } from './store/canvas'
+import { connOf, isFocusNode, useCanvas } from './store/canvas'
 import { useGenerator } from './store/generator'
 import { matOf } from './demo/assets'
 import type { MatGet } from './generator/materialLayout'
@@ -20,7 +20,8 @@ export default function App() {
       if (n.type !== 'video') return
       const conn = connOf(edges, n.id).filter((id) => !!get(id))
       const cur = gs.map[n.id]
-      if (!cur || cur.conn.join(',') !== conn.join(',')) gs.syncConn(n.id, conn, get)
+      // 快捷入口创建、还没出片的那个子节点：模式和型号锁死，新接进来的素材只重新分配一遍（§3.2.1）
+      if (!cur || cur.conn.join(',') !== conn.join(',')) gs.syncConn(n.id, conn, get, isFocusNode(n))
       else gs.syncSources(n.id, get)
     })
   }, [nodes, edges])

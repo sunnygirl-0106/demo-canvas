@@ -18,7 +18,8 @@ import LeftDock from './LeftDock'
 import ZoomBar from './ZoomBar'
 import ContextMenu, { type MenuPos } from './ContextMenu'
 import AddNodeMenu from './AddNodeMenu'
-import { sceneShowcase, sceneWired, sceneWorkflow } from '../demo/scenes'
+import SceneCard from './SceneCard'
+import { hintOf, sceneShowcase, sceneWired, sceneWorkflow, type SceneHint } from '../demo/scenes'
 
 /**
  * 把画布缩放比（--z）和标签系数（--zk）写进 CSS。单拎成一个不渲染任何东西的小组件 ——
@@ -61,6 +62,9 @@ export default function Canvas() {
   const pendingFit = useRef(true)
   const [menu, setMenu] = useState<MenuPos | null>(null)
   const [addMenu, setAddMenu] = useState<MenuPos | null>(null)
+  /** 眼下摆着的是哪个示例的要点（null = 不是示例，或者用户把卡关掉了） */
+  const [hint, setHint] = useState<SceneHint | null>(
+    () => hintOf(new URLSearchParams(location.search).get('scene') ?? ''))
   const file = useRef<HTMLInputElement>(null)
   const dropAt = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
@@ -78,9 +82,10 @@ export default function Canvas() {
     }
   }, [initialized, st.nodes, canvasWidth, fitView, setViewport])
 
-  const showScene = (load: () => void) => {
+  const showScene = (load: () => void, next: SceneHint | null = null) => {
     setMenu(null)
     setAddMenu(null)
+    setHint(next)
     pendingFit.current = true
     load()
   }
@@ -173,8 +178,9 @@ export default function Canvas() {
       </ReactFlow>
 
       <TopBar onShowcase={() => showScene(sceneShowcase)}
-        onWired={(key) => showScene(() => sceneWired(key))}
+        onWired={(key) => showScene(() => sceneWired(key), hintOf(key))}
         onWorkflow={() => showScene(sceneWorkflow)} />
+      {hint && <SceneCard hint={hint} onClose={() => setHint(null)} />}
       <LeftDock onAdd={(e) => { setMenu(null); setAddMenu(posAt(e.clientX + 8, e.clientY)) }} />
       <ZoomBar />
 

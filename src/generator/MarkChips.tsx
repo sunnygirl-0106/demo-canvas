@@ -4,7 +4,7 @@ import { useFrame } from './markFrame'
 import { shotBox, useHover } from './hoverShot'
 import Overlay from './Overlay'
 import MarkArt from './MarkArt'
-import { rangeLabel, regionDetail, timecode, type MarkRegion, type TimeRange } from './marks'
+import { rangeLabel, spotDetail, timecode, type MarkRegion, type TimeRange } from './marks'
 import { IcVideo } from '../ui/icons'
 /**
  * 正方形小图块里的裁切位置：把圈出来的那一块摆到正中。
@@ -12,10 +12,12 @@ import { IcVideo } from '../ui/icons'
  * 横屏的整幅画面比方块宽，往左右挪；竖屏比方块高，往上下挪，两种各管一个方向。
  */
 function crop(regions: MarkRegion[], ar: number): CSSProperties {
-  const r = regions[0]
+  // 同一秒可能标了好几处：对准它们的中点，而不是只对准第一处
+  const mid = (i: number) => regions.length
+    ? regions.reduce((m, r) => m + r.rect[i] + r.rect[i + 2] / 2, 0) / regions.length : 0.5
   const at = (v: number, size: number) => `${Math.max(100 - size, Math.min(0, 50 - v * size)).toFixed(2)}%`
-  if (ar >= 1) return { '--fx': at(r ? r.rect[0] + r.rect[2] / 2 : 0.5, ar * 100), '--fy': '0%' } as CSSProperties
-  return { '--fx': '0%', '--fy': at(r ? r.rect[1] + r.rect[3] / 2 : 0.5, 100 / ar) } as CSSProperties
+  if (ar >= 1) return { '--fx': at(mid(0), ar * 100), '--fy': '0%' } as CSSProperties
+  return { '--fx': '0%', '--fy': at(mid(1), 100 / ar) } as CSSProperties
 }
 /**
  * 一帧画面 + 画在它上面的标记。句子里的标签用填满的正方形小图块（按真实比例裁，只裁溢出的那一边），
@@ -57,13 +59,15 @@ function Chip({ cls, body, aria, pop }: {
   </span>
 }
 /**
- * 一处标记：缩略图上只画它自己，同一秒圈了两块也分得开。
+ * 一个时间点上标的那些东西，一枚标签。缩略图把这一秒的全部区域都画上去 ——
+ * 同一秒圈两个框、再涂一笔说的是同一帧上要改的地方，拆成三枚标签就读成了三件事（§4.3）。
  * 不会有「不在时间段内」这一路 —— 选了片段，圈选就只发生在片段里（弹窗那边从源头上管住了）。
  */
-export function RegionChip({ mat, ratio, r }: { mat: Mat; ratio: number | null; r: MarkRegion }) {
-  const shot = <Shot mat={mat} t={r.t} regions={[r]} ratio={ratio} />
-  return <Chip body={<>{shot}<b>{timecode(r.t)}</b></>} aria={regionDetail(r)}
-    pop={<span className="mark-pop-shot" style={shotBox(ratio)}>{shot}<em>{timecode(r.t)}</em></span>} />
+export function RegionChip({ mat, ratio, rs }: { mat: Mat; ratio: number | null; rs: MarkRegion[] }) {
+  const t = rs[0]?.t ?? 0
+  const shot = <Shot mat={mat} t={t} regions={rs} ratio={ratio} />
+  return <Chip body={<>{shot}<b>{timecode(t)}</b></>} aria={spotDetail(rs)}
+    pop={<span className="mark-pop-shot" style={shotBox(ratio)}>{shot}<em>{timecode(t)}</em></span>} />
 }
 /**
  * 一段时间：独立的一枚，管着后面那几处。

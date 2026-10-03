@@ -29,5 +29,5 @@ export default function PromptSeg({ s, doc, mat, get, role, mode, direction, dur
   if (!mat) return null
   if (s.t === 'mat') return <SourceChip mat={mat} role={role} />
   if (s.t === 'range') return <RangeChip range={s.range} n={doc.filter((x) => x.t === 'mark' && x.g === s.g).length} />
-  return <RegionChip mat={mat} ratio={ratio} r={s.region} />
+  return <RegionChip mat={mat} ratio={ratio} rs={s.regions} />
 }
