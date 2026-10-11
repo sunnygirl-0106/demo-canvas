@@ -32,8 +32,8 @@ input,textarea{font:inherit;color:inherit}
  * handle 本体是**连线的锚点**，不是那枚能点的圆（见 .h-plus）—— 把它的框**摆成和那枚圆一样**
  * （26×26、离节点边 6px；left/right:-19px 是被 react-flow 的 translate(±50%) 拉回半格后的写法）。
  * react-flow 的左右 handle 取的是框的左 / 右沿当端点 —— 也就是说端点落在离节点 32px 的地方。
- * 线不照这个点画：⊕ 只在选中时才出现，平时那儿什么也没有，线停在那儿就成了一条没接上的线。
- * 这一截由 DashedEdge 自己补回去（见那儿的 pad），线一路走到节点边，⊕ 出现时压在它上面。
+ * 线不照这个点画：那样两头各空出一段「留给加号的位置」，读着像一条没接上的线。
+ * 这一截由 DashedEdge 自己补回去（见那儿的 pad），线一路走到节点边，⊕ 压在它上面。
  *
  * 这三个数都乘 --zk：⊕ 和节点名、工具栏走同一条跟随规矩（见 tokens.css 的那一段）——
  * 画布放大到 200%，节点长到两倍，这枚圆只长 1.41 倍；不乘的话它跟着翻倍，
@@ -460,22 +460,37 @@ input,textarea{font:inherit;color:inherit}
   gap:8px;font-size:12px;color:var(--ink-2)}
 
 /*
- * ⊕ ——「从这儿接下一段」。只在节点被选中时露出来（渲染由 NodeShell 管）。
+ * ⊕ ——「从这儿接下一段」。每个节点左右各一枚，一直在那儿（渲染由 NodeShell 管）。
  *
- * 静止的画布上每个节点左右各挂一枚，一屏就是几十枚小圆在同时喊「点我」，
- * 于是哪一枚都不像在说话。选中才出现，画面上就只有「现在在说的这一个」带着它的两个出口。
+ * 它曾经只在选中时才画：一屏几十枚小圆同时喊「点我」，哪一枚都不像在说话。
+ * 可代价是「能从哪儿接下一段」变成了一件得先点一下才看得见的事 ——
+ * 第一次用的人站在画布上找不到出口，只好到处试。出口是画布的语法，不该藏。
  *
- * 出现时自己会呼吸（.h-plus-wave）：一圈白边从圆的边线上向外荡出去，3.6s 一轮 ——
- * 比心跳慢得多，是「这儿能点」的一句提示，不是催促。原先要把鼠标移上去才知道这儿有东西。
+ * 所以改成一直显形，拿响度分档，不拿有无分档：
+ * 平时是一枚淡到 .4 的圆，看得见、不抢戏，几十枚一起也只是节点边上一排小记号；
+ * 鼠标走到哪个节点身上、或是哪个节点被选中，那一对就亮到满、并开始荡波纹 ——
+ * 「现在在说的这一个」仍旧只有一个，只是别人不再是消失了，而是退到后面去了。
+ *
+ * 亮起来那一下自己会呼吸（.h-plus-wave）：一圈白边从圆的边线上向外荡出去，3.6s 一轮 ——
+ * 比心跳慢得多，是「这儿能点」的一句提示，不是催促。
  * 波纹是圆下面的一层、比圆先画，所以荡到圆身上的那一瞬间是被圆盖住的，看着才像从边线上长出来。
  * 左右两枚同步（不给 delay）：它们是一对出口，错开半拍就成了两件各自在动的东西。
+ * 淡着的时候不荡：满屏不停荡的波纹就是上面那个「几十枚一起喊」的毛病换了种形状。
  *
  * 位置：离节点边 6px —— 和 handle 框严丝合缝（见上），所以这儿只要 inset:0。
  * 圆自己接事件，按下 / 点击照样冒泡到外面的 handle 上 —— 拖出去还是连线。
  */
-.h-plus{position:absolute;inset:0;pointer-events:auto;cursor:pointer;animation:plus-in .25s ease-out}
-.h-plus-wave{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+/*
+ * 不再给它自己的出场动画：它跟节点同生同死，节点落地那一下整块都在 nd-popin 里一起浮上来。
+ * 留着的话 0.4 的底和「淡入到 1」的收尾会打一下架 —— 亮完再掉回 .4，像闪了一眼。
+ */
+.h-plus{position:absolute;inset:0;pointer-events:auto;cursor:pointer;
+  opacity:.4;transition:opacity .18s ease-out}
+/* 走到这个节点身上 / 这个节点被选中 / 鼠标就压在圆上：这一对亮到满 */
+.nd:hover .h-plus,.nd.sel .h-plus,.h-plus:hover{opacity:1}
+.h-plus-wave{display:none;position:absolute;inset:0;border-radius:50%;pointer-events:none;
   border:calc(1px * var(--zk)) solid rgba(255,255,255,.45);animation:plus-ripple 3.6s ease-out infinite}
+.nd:hover .h-plus-wave,.nd.sel .h-plus-wave{display:block}
 /* 底色不透明：线从它身子底下穿过去，半透的话线会在圆里印出一道，读着像圆被划了一刀 */
 .h-plus-btn{position:absolute;inset:0;border-radius:50%;background:rgb(22,23,25);
   border:calc(1px * var(--zk)) solid rgba(255,255,255,.16);color:rgba(255,255,255,.72);
@@ -491,12 +506,11 @@ input,textarea{font:inherit;color:inherit}
  * 而一枚青圆压在青线上，两块同色的东西叠在一起，反倒把圆的边界糊掉了。
  * 白的圆压在青的线上，是一枚按钮压在一条线上 —— 两件事各自清楚。
  */
-@keyframes plus-in{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 @keyframes plus-ripple{0%{transform:scale(1);opacity:.28}100%{transform:scale(1.6);opacity:0}}
-/* 一圈不停荡的波纹正是这档设置要关掉的东西：留下那枚圆，去掉动 */
+/* 一圈不停荡的波纹正是这档设置要关掉的东西：留下那枚圆，去掉动。
+   选择器得比上面那两条 .nd:hover / .nd.sel 更重，光写在后面压不住它们 */
 @media (prefers-reduced-motion:reduce){
-  .h-plus{animation:none}
-  .h-plus-wave{display:none}
+  .nd .h-plus-wave,.nd:hover .h-plus-wave,.nd.sel .h-plus-wave{display:none}
 }
 .react-flow__handle-left{left:calc(-19px * var(--zk))}
 .react-flow__handle-right{right:calc(-19px * var(--zk))}

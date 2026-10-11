@@ -12,10 +12,10 @@ export default function DashedEdge(p: EdgeProps) {
    * 线的两端直接落在节点边上，不给 ⊕ 空位。
    *
    * react-flow 给的端点是 handle 方框的外沿，而那个方框是照着 ⊕ 摆的（见 app.css 的 .react-flow__handle）——
-   * 照它画，线会停在离节点 32px 的地方，中间空出一段「留给加号的位置」；
-   * 可加号只在节点选中时才出现，平时那儿什么也没有，就成了一条没接上的线。
+   * 照它画，线会停在离节点 32px 的地方，中间空出一段「留给加号的位置」——
+   * 那一段看着就是一条没接上的线，两头都浮在节点外面。
    * 所以把这一截（32 × 跟随系数，和方框同一个算法）补回去：线一路走到节点边，
-   * ⊕ 出现时压在它上面，像一枚按钮压在线上，而不是线绕着它让路。
+   * ⊕ 压在它上面，像一枚按钮压在线上，而不是线绕着它让路。
    */
   const pad = PLUS_SPAN * useZk()
   const at = (x: number, pos: Position) => pos === Position.Left ? x + pad : pos === Position.Right ? x - pad : x

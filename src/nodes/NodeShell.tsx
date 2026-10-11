@@ -95,7 +95,9 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
 
       {/*
         * handle 一直挂着（连线的锚点得一直在，不然已有的连线会掉回节点中心），
-        * 露在外面那枚 ⊕ 只在选中时才画：见 .h-plus。
+        * 露在外面那两枚 ⊕ 也一直画着 —— 「从哪儿接下一段」得是看一眼就知道的事，
+        * 不该先点中一个节点才显形。响度上的分档交给 CSS：平时是一枚淡圆，
+        * 选中 / 悬浮到这个节点身上才完全亮起来并开始荡波纹（见 .h-plus）。
         * 加号本身用 24 格的图标凑设计稿里 16 格那一枚的观感：
         * 那枚是 11px 画 10/16 的十字、线宽 1.6，落到屏上是 6.9px 的十字 / 1.1px 的线；
         * 这边 14px 画 12/24，十字 7px、线宽 1.9 折出来也是 1.1px。
@@ -104,21 +106,19 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
         */}
       {kind !== 'text' && (
         <Handle type="target" position={Position.Left} id="in" isConnectableStart={false}>
-          {selected && <Plus />}
+          <Plus />
         </Handle>
       )}
       {/* 拖出去 = 连线；原地点一下 = 右侧 360px 直接新建一个空视频节点并连上 */}
       <Handle type="source" position={Position.Right} id="out">
-        {selected && (
-          <Plus
-            onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
-            onClick={(e) => {
-              if (Math.abs(e.clientX - down.current.x) + Math.abs(e.clientY - down.current.y) > 6) return
-              e.stopPropagation()
-              spawn(id)
-            }}
-          />
-        )}
+        <Plus
+          onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
+          onClick={(e) => {
+            if (Math.abs(e.clientX - down.current.x) + Math.abs(e.clientY - down.current.y) > 6) return
+            e.stopPropagation()
+            spawn(id)
+          }}
+        />
       </Handle>
 
       {panel}
