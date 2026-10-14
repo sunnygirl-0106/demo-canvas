@@ -1642,23 +1642,34 @@ button:disabled{opacity:.4;cursor:not-allowed}
   font-family:var(--num);font-variant-numeric:tabular-nums}
 /* 选区和播放头都探出轨道上下沿，所以这一层只管定位，不加内边距 */
 .seg-body{position:relative}
+/* 空处点一下就是选上一段：手形光标说「这儿能点」，从哪一秒开始由悬停那条虚线说 ——
+   十字准星是「画框」的光标，放在这条轨上读起来像能在缩略图上圈东西 */
 .timeline-track{height:34px;position:relative;border-radius:5px;background:var(--sunk);touch-action:none;
-  user-select:none;cursor:crosshair}
+  user-select:none;cursor:pointer}
 .timeline-track.disabled{opacity:.4;cursor:not-allowed}
+/* 拖动期间指针捕获在轨道上，光标只认轨道这一层：按住什么，就一直是什么光标，手滑出把手也不跳 */
+.timeline-track[data-drag=resize],.timeline-track[data-drag=resize] *{cursor:ew-resize!important}
+.timeline-track[data-drag=move],.timeline-track[data-drag=move] *{cursor:grabbing!important}
+.timeline-track[data-drag] .seg-del{opacity:0!important;pointer-events:none!important}
 .timeline-track:focus-visible{outline:2px solid var(--teal-ring);outline-offset:4px}
 .timeline-frames{height:100%;display:flex;gap:1px;border-radius:5px;overflow:hidden;pointer-events:none}
 .timeline-frames img{height:100%;flex:1;min-width:0;object-fit:cover;background:var(--sunk);
   transition:opacity .22s}
 /* 选区之外的那几格暗下去：选了哪一段，不用读数字也看得见 */
 .timeline-frames img.dim{opacity:.4}
-.timeline-selection{position:absolute;top:-3px;bottom:-3px;border:1px solid rgba(232,240,238,.55);
-  border-radius:6px;cursor:grab;z-index:1}
+/*
+ * 一段 = 一只「夹子」：上下两道 1px 的实边，左右两头是实心的把手片，四样东西同一个颜色、焊成一整只框。
+ * 把手片长在段的**外面**：段框里头整截缩略图都露着，把手的内沿就是这一段的起点 / 终点那一秒。
+ * 不再是「细描边 + 两粒浮着的药丸 + 底下一条渐变线」三样东西各说各的。
+ * 颜色走 --sel：眼下这一段是标记那一档的亮青（和画面上框角那四粒同色，都是「抓这里改大小」），
+ * 其余几段退成灰白 —— 全都一样亮就分不出播放头这会儿走在哪一段里。
+ */
+.timeline-selection{--sel:var(--mark-chip);position:absolute;top:-2px;bottom:-2px;box-sizing:border-box;
+  border-top:1px solid var(--sel);border-bottom:1px solid var(--sel);cursor:grab;z-index:1;
+  box-shadow:0 -.5px 0 rgba(0,0,0,.35),0 .5px 0 rgba(0,0,0,.35);transition:border-color .18s}
 .timeline-selection:active{cursor:grabbing}
-/* 选了好几段：眼下在看的那一段描实，其余的收着一点 ——
-   全都一样亮就分不出播放头这会儿走在哪一段里，而「哪一段」正是圈选落脚的地方 */
-.timeline-selection:not(.on){border-color:rgba(232,240,238,.26)}
-.timeline-selection:not(.on) .selection-edge{opacity:.4}
-.timeline-selection:not(.on) .range-handle::before{opacity:.55}
+.timeline-selection:not(.on){--sel:rgba(214,222,220,.42)}
+.timeline-selection:not(.on):hover{--sel:rgba(214,222,220,.62)}
 /*
  * 悬到某一段上才露出来的小垃圾桶：它只属于这一段，所以就长在这一段上，浮在它正上方 ——
  * 压在段里会把这块能拖的地方占掉，窄的一段更是整个被它盖住。
@@ -1682,30 +1693,64 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .seg-del:active{transform:translateX(-50%) scale(.92)}
 .seg-del:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.seg-del{transition:opacity .14s}}
-/* 底边那条青线是「这一段」的签名：选区本身不填色，填了就把缩略图盖住了 */
-.selection-edge{position:absolute;left:0;right:0;bottom:-1px;height:2px;
-  background:linear-gradient(90deg,rgba(127,227,203,0),var(--mark),rgba(127,227,203,0))}
-/* 把手看上去是一粒 4px 的细条，能抓的却有 14px —— 细是给眼睛看的，宽是给手用的 */
-.range-handle{position:absolute;top:50%;transform:translateY(-50%);width:14px;height:24px;
-  display:grid;place-items:center;cursor:ew-resize;touch-action:none;z-index:2;background:none}
-.range-handle::before{content:'';width:4px;height:20px;border-radius:20px;background:#dde4e3;
-  box-shadow:0 2px 8px rgba(0,0,0,.6)}
-.range-handle::after{content:'';position:absolute;width:1px;height:8px;background:#5a6161}
-.range-handle.start{left:-8px}
-.range-handle.end{right:-9px}
-.range-handle:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px;border-radius:var(--r-pill)}
+/*
+ * 把手片：8px 宽、和段框一样高，外侧两角圆、内侧两角方 —— 方的那一边焊在框上，读起来是框的一部分。
+ * 片上一枚朝外的小箭头（‹ ›）：「往这边拉」，不用悬停也知道它是干什么的。
+ * 能抓的比看见的宽：::after 往两边各多铺 5px 透明的一条。
+ */
+.range-handle{position:absolute;top:-1px;bottom:-1px;width:8px;display:grid;place-items:center;
+  background:var(--sel);cursor:ew-resize;touch-action:none;z-index:2;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.45);transition:background .18s}
+.range-handle::before{content:'';width:3.5px;height:3.5px;border:solid rgba(12,21,19,.72);border-width:0 0 1.5px 1.5px}
+.range-handle::after{content:'';position:absolute;top:0;bottom:0;left:-5px;right:-5px}
+.range-handle.start{left:-8px;border-radius:5px 0 0 5px}
+.range-handle.start::before{transform:translateX(1px) rotate(45deg)}
+.range-handle.end{right:-8px;border-radius:0 5px 5px 0}
+.range-handle.end::before{transform:translateX(-1px) rotate(-135deg)}
+.timeline-selection.on .range-handle:hover,.timeline-selection.on .range-handle:active{background:#e9fbf6}
+.range-handle:focus-visible{outline:2px solid var(--teal-ring);outline-offset:2px}
 /* 平移整段选区：平时只是选区中间一小片可抓的地方，聚焦时才亮出来给键盘用户看 */
 .selection-grip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;
   border-radius:8px;cursor:grab}
 .selection-grip:focus-visible{outline:2px solid var(--teal-ring);outline-offset:0}
-/* 标记落在哪一秒，轨道上就钉一枚 */
-.mark-pin{position:absolute;top:0;bottom:0;width:2px;border-radius:2px;background:var(--mark);
+/*
+ * 悬停虚线：空处才有，吸在整秒上 —— 新拉的一段就从这一秒开始，所以它停在哪儿就是哪儿。
+ * 虚线而不是实线：它还不是任何东西，只是「点下去会落在这里」。
+ */
+.timeline-ghost{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(242,245,244,.7);
   pointer-events:none;z-index:2}
-.mark-pin::after{content:'';position:absolute;left:-4px;top:-3px;width:10px;height:10px;border-radius:50%;
-  background:inherit;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
-.timeline-playhead{position:absolute;top:-11px;bottom:-6px;width:1px;background:#f2f5f4;pointer-events:none;
-  z-index:3}
-.timeline-playhead>i{position:absolute;top:-1px;left:-3px;width:6px;height:7px;background:#f2f5f4}
+.timeline-ghost b{position:absolute;left:4px;top:3px;padding:1px 4px;border-radius:3px;
+  font:500 9.5px/1.4 var(--num);font-variant-numeric:tabular-nums;color:#f2f5f4;background:rgba(8,9,9,.72);
+  white-space:nowrap}
+/* 号牌挂在轨道下沿：留出它的那一截，免得压到卡片底边 */
+.seg-body:has(.mark-pin){padding-bottom:15px}
+/*
+ * 标记的号牌：一根细线从轨道里穿下来，底下挂一枚和画面上「区域 n」同色同字的小牌。
+ * 线只有 1px、压一层暗边，缩略图上看得见又不抢 —— 轨道上最该被看见的仍然是段和播放头。
+ */
+.mark-pin{position:absolute;top:0;bottom:-14px;width:0;padding:0;transform:translateX(-50%);z-index:2;
+  display:flex;flex-direction:column;align-items:center;cursor:pointer;opacity:.62;transition:opacity .15s}
+.mark-pin::before{content:'';flex:1;width:1px;background:var(--mark);box-shadow:0 0 0 .5px rgba(0,0,0,.45)}
+.mark-pin b{flex:none;min-width:13px;height:13px;padding:0 3px;border-radius:3px;display:grid;place-items:center;
+  font:700 9px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--mark-ink);background:var(--mark-chip);
+  box-shadow:0 0 0 1px rgba(0,0,0,.4);white-space:nowrap}
+.mark-pin:hover,.mark-pin.on{opacity:1}
+.mark-pin.on b{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 0 3px var(--mark-halo)}
+/*
+ * 播放头：只有一根发丝线，不戴帽子 —— 轨道上已经有段框、把手、号牌，再顶一枚帽子就太满了。
+ * 线和轨道一样高，上下各探出 2px，跟段框的上下沿齐平；外面压半像素暗边，亮画面上也断不了。
+ * 能抓的是沿着线的一条 10px 透明带（.playhead-cap），手放上去线稍微变粗，拖动时上面冒出时间码。
+ */
+.timeline-playhead{position:absolute;top:-2px;bottom:-2px;width:1.5px;margin-left:-.75px;border-radius:1px;
+  background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 0 6px rgba(0,0,0,.35);pointer-events:none;z-index:3;
+  transition:width .15s,margin-left .15s}
+.timeline-playhead:has(.playhead-cap:hover),.timeline-playhead.live{width:2px;margin-left:-1px}
+.playhead-cap{position:absolute;left:50%;top:0;bottom:0;width:10px;transform:translateX(-50%);
+  pointer-events:auto;cursor:ew-resize}
+/* 拖着播放头时冒出来的时间码，浮在帽子正上方 */
+.playhead-time{position:absolute;left:50%;bottom:calc(100% + 4px);transform:translateX(-50%);padding:2px 6px;
+  border-radius:4px;font:600 10px/1.3 var(--num);font-variant-numeric:tabular-nums;color:#0c1513;
+  background:#f2f5f4;box-shadow:0 4px 12px rgba(0,0,0,.5);white-space:nowrap}
 
 /* ── 节点上的延长轴 ── */
 /* 中间是原片，左右两头是定宽的延长口：选中的那头描实、宽一点摆得下「+5s」，
@@ -2043,9 +2088,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mdl-row[aria-disabled=true]{opacity:.45;cursor:not-allowed}
 .mdl-row[aria-disabled=true]:hover{background:transparent}
 .mdl-tick{flex:none;color:var(--teal)}
-/* 新一代的那枚小牌：实心青底、近黑的字，一眼是个标签，不是名字的一部分 */
-.mdl-new{flex:none;font:700 9.5px/1 var(--num);letter-spacing:.06em;font-style:normal;
-  padding:3px 5px;border-radius:5px;background:var(--teal-solid);color:var(--teal-ink)}
+/*
+ * 新一代的那枚小牌：一层清透的青玻璃（配色与来由见 tokens.css 的 --pill-new）。
+ * 外形和 VIP 那枚对齐 —— 同高、同圆角：挨在一起的两枚牌子高矮不齐、圆角不一，
+ * 读出来是两件凑在一块儿的东西，而它们本来是名字后头的同一串注脚。
+ */
+.mdl-new{flex:none;display:flex;align-items:center;height:16px;padding:0 6px;border-radius:8px;
+  font:700 9.5px/1 var(--num);letter-spacing:.06em;font-style:normal;
+  background:var(--pill-new);color:var(--pill-new-ink);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.2),inset 0 0 0 1px var(--pill-new-line)}
 /* 视频节点上的入口：接不了这段视频时灰掉，理由挂在悬浮说明上 */
 .vtool button[aria-disabled=true]{opacity:.4;cursor:not-allowed}
 
@@ -2103,3 +2154,71 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
 
 .reference-chip.static { cursor: default; }
+
+/* 压在画面底边的那条控制条：播放键、「走到哪儿 / 一共多长」、一条细进度条。
+   手不在画面上时整条退到半透明 —— 它只是候着，不跟画面抢眼睛；鼠标进画面才亮起来。
+   整条不收指针事件（只有播放键和进度条自己收），画面底下这一截照样能拉框 */
+.mark-scrub{position:absolute;left:0;right:0;bottom:0;z-index:2;pointer-events:none;
+  opacity:.4;transition:opacity .15s}
+.mark-stage:hover .mark-scrub,.mark-scrub:focus-within{opacity:1}
+/* 亮画面上那条白线和白字会糊掉：底边垫一层暗角，亮起来的时候才垫 */
+.mark-scrub::before{content:'';position:absolute;left:0;right:0;bottom:0;height:62px;pointer-events:none;
+  background:linear-gradient(to top,rgba(0,0,0,.55),rgba(0,0,0,.18) 55%,transparent);
+  opacity:0;transition:opacity .15s}
+.mark-stage:hover .mark-scrub::before,.mark-scrub:focus-within::before{opacity:1}
+.mark-scrub-row{position:relative;display:flex;align-items:center;gap:10px;padding:0 12px 1px}
+.mark-scrub-play{pointer-events:auto;display:grid;place-items:center;width:24px;height:24px;color:#fff;
+  border-radius:50%;flex:none}
+.mark-scrub-play:hover{background:rgba(255,255,255,.16)}
+/* 两个数同一套等宽字：秒数跳动时这一行不会跟着左右晃。总长暗一档 —— 要读的是前面那个 */
+.mark-scrub-time{font:500 12px/1 var(--num);font-variant-numeric:tabular-nums;color:rgba(255,255,255,.62);
+  text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.mark-scrub-time b{font-weight:500;color:#fff}
+.mark-scrub-bar{position:relative;pointer-events:auto;height:12px;display:flex;align-items:flex-end;
+  cursor:pointer;touch-action:none;outline:none}
+.mark-scrub-bar i{position:relative;display:block;width:100%;height:3px;background:rgba(255,255,255,.28)}
+.mark-scrub-bar b{position:absolute;left:0;top:0;bottom:0;background:#fff}
+.mark-scrub-bar b::after{content:'';position:absolute;right:-5px;top:50%;width:10px;height:10px;margin-top:-5px;
+  border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.55);opacity:0;transition:opacity .15s}
+.mark-scrub-bar:hover b::after,.mark-scrub-bar:focus-visible b::after{opacity:1}
+/* 控制条占住了画面底边这一截：笔刷/撤销/清除那行往上让一格，两者不叠在一起
+   （.mark-float 只长在这块画面上，而控制条和它总是同时在，所以直接抬，不另开一档） */
+.mark-float{bottom:46px}
+
+
+
+/* 「全部版本」详情里的那一句和提示词框里是同一句：标签就照那边的样子摆
+   （同一组数，见上面 .prompt-input 那一段）—— 同一句话在两处读起来不该是两个样子 */
+.vp-prompt .vp-seg{display:inline-block;overflow:hidden;line-height:0;vertical-align:-6px;margin:0 3px}
+.vp-prompt .vp-seg>*{vertical-align:top}
+.vp-prompt .reference-chip,.vp-prompt .mark-chip,.vp-prompt .source-chip{height:24px}
+.vp-prompt .reference-chip{display:inline-flex;align-items:center;line-height:1;padding:0 9px;font-size:14px}
+.vp-prompt .source-chip{font-size:15.5px;padding:0 11px 0 4px;gap:8px}
+.vp-prompt .source-chip-shot{width:17px;height:17px;border-radius:4px}
+.vp-prompt .mark-chip{padding:0 9px 0 4px}
+.vp-prompt .mark-chip-body{gap:8px;font-size:14.5px}
+.vp-prompt .mark-chip .mark-shot{--shot:17px}
+.vp-prompt .mark-chip.range{padding:0 11px 0 9px}
+
+/* 画面上的那句提示（标不了的时候说的那句，见下面 .mark-lock）：
+   和「已暂停在」同一档样子，摆在它下面一行 —— 说完就走，不占地方 */
+.mark-note{position:absolute;left:50%;top:38px;transform:translateX(-50%);pointer-events:none;z-index:3;
+  white-space:nowrap;font-size:11.5px;color:var(--ink-0);background:rgba(8,9,9,.8);
+  border-radius:var(--r-pill);padding:4px 11px;animation:mark-note-in .18s ease-out}
+@keyframes mark-note-in{from{opacity:0;transform:translate(-50%,-5px)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* 开了指定片段、播放头却不在片段里：画面上那句「将播放头移到片段内后可标记」。
+   平时藏着，暂停时鼠标移上画面才露出来 —— 只是看片段外的画面时不该有字挡着；
+   在这儿按了一下没画出东西（.ping），就强制露出来并左右晃一下 */
+.mark-lock{opacity:0;animation:none;transition:opacity .15s}
+.mark-stage:hover .mark-lock{opacity:1}
+.mark-lock.ping{opacity:1;animation:mark-lock-ping .36s ease-out}
+@keyframes mark-lock-ping{0%,100%{transform:translateX(-50%)}25%{transform:translateX(calc(-50% - 4px))}75%{transform:translateX(calc(-50% + 4px))}}
+/* 同一下，时间轴上的片段跟着闪一下：指给他该去哪儿。一段都没选就闪整条轨。
+   a / b 两份一模一样的动画轮流用，连按几下每次都能重放 */
+.timeline-track.flash-a .timeline-selection{animation:seg-flash-a .9s ease-out}
+.timeline-track.flash-b .timeline-selection{animation:seg-flash-b .9s ease-out}
+.timeline-track.empty.flash-a{animation:seg-flash-a .9s ease-out}
+.timeline-track.empty.flash-b{animation:seg-flash-b .9s ease-out}
+@keyframes seg-flash-a{0%,60%{box-shadow:0 0 0 2px var(--teal-ring)}100%{box-shadow:0 0 0 2px transparent}}
+@keyframes seg-flash-b{0%,60%{box-shadow:0 0 0 2px var(--teal-ring)}100%{box-shadow:0 0 0 2px transparent}}

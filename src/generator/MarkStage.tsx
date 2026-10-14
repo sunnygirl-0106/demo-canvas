@@ -20,6 +20,8 @@ interface Props {
   draft: MarkDraft
   /** 暂停停在哪一秒：这一秒的标记满亮，别的秒淡着 —— 一眼看得出「现在标的是哪一帧」 */
   second: number
+  /** 播放头在哪一秒：播放中用它决定哪几处亮着 */
+  head: number
   active: number
   paused: boolean
   playing: boolean
@@ -27,18 +29,30 @@ interface Props {
   veil: string
   loading: boolean
   onTogglePlay: () => void
-  /** 按下去的那一刻：暂停到这一整秒，并把当前草稿压进撤销栈 */
-  onBegin: (t: number) => void
+  /**
+   * 按下去的那一刻：暂停到这一整秒，并把当前草稿压进撤销栈。
+   * 返回 false = 这一秒上标不了东西（开了指定片段，这一秒却不在片段里），这一下整个不作数。
+   */
+  onBegin: (t: number) => boolean | void
   onDraft: (d: MarkDraft, active: number) => void
   /** 松手时发现只是误点了一下，退回按下之前 */
   onCancel: () => void
   /** 压在画面底边的那条浮动工具行：笔刷粗细、撤回、清除。手势不往画面上漏 */
   tools?: ReactNode
+  /** 压在画面底边的那条细进度条 */
+  scrub?: ReactNode
+  /**
+   * 非空 = 播放头这一秒标不了，值就是那句提示（「将播放头移到片段内后可标记」）。
+   * 光标换成禁用；暂停时鼠标移上画面，顶上露出这句提示。
+   */
+  lock: string
+  /** 刚在标不了的地方按了一下：> 0 时提示强制露出来并闪一下，每次的值不同好让动画重放 */
+  ping: number
   /** 素材本来的宽高比（量自它的 poster）。量不到就 null，由这块屏自己退回竖屏 */
   aspect: number | null
 }
 /** 画面区：真视频打底，标记画在上面。所有手势都在这里，草稿一律整份回传给弹窗。 */
-export default function MarkStage({ mat, video, tool, brush, draft, second, active, paused, playing, veil, loading, onTogglePlay, onBegin, onDraft, onCancel, tools, aspect }: Props) {
+export default function MarkStage({ mat, video, tool, brush, draft, second, head, active, paused, playing, veil, loading, onTogglePlay, onBegin, onDraft, onCancel, tools, scrub, lock, ping, aspect }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
   /**
@@ -47,6 +61,16 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, acti
    */
   const live = useRef(draft)
   live.current = draft
+  /*
+   * 按下播放时停在的那一整秒。播放头还在这一秒里的时候一处都不点亮 ——
+   * 不然刚标完那个框会在原地再亮半秒才淡下去，看着像「按了播放没反应」。
+   * 走出这一秒之后恢复常规：播放头经过谁那一秒，谁就亮起来。
+   */
+  const from = useRef<number | null>(null)
+  if (!playing) from.current = null
+  else if (from.current == null) from.current = Math.round(head)
+  // -1 这一档谁也够不着（标记的秒数都 ≥ 0），就是「这会儿一处都不亮」
+  const litAt = paused ? second : (from.current === Math.round(head) ? -1 : head)
   const commit = (next: MarkDraft, i: number) => { live.current = next; onDraft(next, i) }
   const at = (e: PointerEvent) => {
     const r = box.current!.getBoundingClientRect()
@@ -62,7 +86,7 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, acti
     if (veil) return
     e.preventDefault()
     const t = nowSecond()
-    onBegin(t)
+    if (onBegin(t) === false) return
     const [x, y] = at(e)
     capture(box.current, e.pointerId)
     const d = live.current
@@ -89,7 +113,7 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, acti
     e.preventDefault()
     const region = live.current.regions[i]
     if (!region) return
-    onBegin(region.t)
+    if (onBegin(region.t) === false) return
     const [x, y] = at(e)
     const r = region.rect
     capture(box.current, e.pointerId)
@@ -127,12 +151,16 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, acti
    * 量不到（poster 还没加载、或者压根没有）时退回 9:16：这块画布上的视频就是竖屏的。
    */
   return <div ref={box} className={`mark-stage${veil ? ' off' : ''}`}
-    style={{ cursor: veil ? 'default' : 'crosshair', aspectRatio: aspect || 9 / 16 }}
+    style={{ cursor: veil ? 'default' : lock ? 'not-allowed' : 'crosshair', aspectRatio: aspect || 9 / 16 }}
     onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
     <video ref={video} src={mat.src} poster={mat.thumb} playsInline muted preload="auto" aria-label={`${mat.name} 标记画面`} />
-    <MarkArt regions={draft.regions} at={paused ? second : undefined} active={active} onBoxDown={boxDown} />
+    <MarkArt regions={draft.regions} at={litAt} active={active} onBoxDown={boxDown} />
     {paused && !veil && <span className="mark-paused">已暂停在 <b>{timecode(second)}</b></span>}
+    {/* 标不了的时候说一句：平时只在暂停且鼠标在画面上时露出来；按了一下没画出东西，就闪一下 */}
+    {!veil && lock && (ping > 0 || !playing) &&
+      <span key={ping} className={`mark-note mark-lock${ping ? ' ping' : ''}`} role="status">{lock}</span>}
     {!playing && !veil && <button className="mark-play" aria-label="播放" onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onTogglePlay() }}><IcPlay size={22} /></button>}
+    {!veil && scrub}
     {!veil && tools && <div className="mark-float nodrag" onPointerDown={(e) => e.stopPropagation()}>{tools}</div>}
     {/* 蒙层上只留原因那一句：「正在读取…」读完会自己解开，「无法读取，可尝试重新上传」
         也已经把下一步说完了 —— 再补一行「元数据到达后自动解锁」只是把同一件事翻成技术话 */}

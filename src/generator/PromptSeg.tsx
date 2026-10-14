@@ -15,12 +15,14 @@ export default function PromptSeg({ s, doc, mat, get, role, mode, direction, dur
   const ratio = useAspect(mat?.thumb)
   if (s.t === 'text') return null
   /**
-   * 一枚标签只在读它的那个 Tab 里才是结构化的：方向和秒数只有延长在读，时间段和标记只有编辑在读。
-   * 换到别的 Tab，它们就只是这句话里的几个字 —— 摆着一枚亮着的标签，等于说这次任务还带着它。
-   * 换的只是样子：句子里那一枚还在原处，切回去它又是一枚标签。
+   * 一枚标签不管切到哪个 Tab 都还是一整枚标签：方向和秒数只有延长在读、时间段和标记只有编辑在读，
+   * 但「这个模式不读它」不必写在脸上 —— 它还在这句话里，就是说这次任务还带着它，
+   * 里面的数字一个字都改不动，退格整枚删除。换 Tab 它一点都不变样。
    */
-  if ((s.t === 'dur' && mode !== 'extend') || ((s.t === 'range' || s.t === 'mark') && mode !== 'edit'))
-    return <span className="prompt-flat">{segText(s, { name: mat?.name, direction, duration })}</span>
+  const off = (s.t === 'dur' && mode !== 'extend') || ((s.t === 'range' || s.t === 'mark') && mode !== 'edit')
+  // 没有源视频可画缩略图时才退回文字（换源时 sourceSync 本来就会把这些标签摘掉，这里只是兜底）
+  if (off && !mat && s.t !== 'dur')
+    return <span className="prompt-flat">{segText(s, { direction, duration })}</span>
   // 方向还没选时不替用户说「向后」，和 segText 里那句念法保持一致
   if (s.t === 'dur') return <span className="reference-chip static">{direction === 'before' ? '向前延长' : direction === 'after' ? '向后延长' : '延长'} {duration}s</span>
   // @ 引来的那一段：和句首那枚源素材是同一枚标签，只是指着别的素材。

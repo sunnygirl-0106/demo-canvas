@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 import type { Mat } from './materialLayout'
 import { useFrame } from './markFrame'
 import { useTip } from './useTip'
@@ -32,6 +32,12 @@ function ticksOf(duration: number): number[] {
   if (out[out.length - 1] !== dur) out.push(dur)
   return out
 }
+/** 同一秒上的几处并成一枚号牌：号按画面上「区域 n」的次序数 */
+function pinsOf(regions: MarkRegion[]) {
+  const by = new Map<number, number[]>()
+  regions.forEach((r, i) => by.set(r.t, [...(by.get(r.t) ?? []), i + 1]))
+  return [...by].map(([t, nums]) => ({ t, nums }))
+}
 interface Props {
   mat: Mat
   /** 选中的那几段，按先后排好。空着不会走到这里 —— 一段都没选时整条轨道都不长出来 */
@@ -46,17 +52,23 @@ interface Props {
   onRanges: (ranges: TimeRange[], at: number, fresh?: boolean) => void
   /** 扔掉第 i 段（连同圈在它里面的那几处） */
   onDrop: (i: number) => void
-  /** 一段拉完（松手 / 回车）：选了哪一段就把这一段播一遍 */
+  /** 一段拉完（松手 / 回车）：播放头停到这一段的开头，好接着在里面标 */
   onPicked: () => void
   onSeek: (t: number) => void
   /** 拖之前先把当前草稿压进撤销栈 */
   onBegin: () => void
+  /** 在画面上标不了的地方按了一下：> 0 时片段（一段都没有就是整条轨）闪一下，指给他该去哪儿 */
+  flash: number
 }
 /** 时间轴：长在专注态节点上、画面下面那一截，多了标记的位置钉。 */
-export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRanges, onDrop, onPicked, onSeek, onBegin }: Props) {
+export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRanges, onDrop, onPicked, onSeek, onBegin, flash }: Props) {
   const track = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ action: 'start' | 'end' | 'move' | 'new'; i: number; x: number; range: TimeRange
+  const drag = useRef<{ action: 'start' | 'end' | 'move' | 'new' | 'scrub'; i: number; x: number; range: TimeRange
     anchor: number; lo: number; hi: number; moved: boolean } | null>(null)
+  /** 手悬在轨道空处时那一秒（已经吸到整秒上）：轨道上浮一条虚的竖线，告诉他「点下去，这一段从这儿开始」 */
+  const [hover, setHover] = useState<number | null>(null)
+  /** 正拖着播放头：头顶上冒出时间码，手底下那一秒不用低头去读画面角上的数 */
+  const [scrubbing, setScrubbing] = useState(false)
   const { tip, node: tipNode } = useTip()
   const duration = mat.dur ?? 0
   const pct = (t: number) => `${duration ? clamp(t / duration, 0, 1) * 100 : 0}%`
@@ -79,6 +91,17 @@ export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRan
     }
     return [lo, hi]
   }
+  /**
+   * 拖动期间的光标由轨道说了算：指针被捕获到轨道上之后，浏览器只看轨道自己的 cursor ——
+   * 不在这里改，手一离开那枚把手，光标就跳回轨道平时那一档，拖着边却像在「新建」。
+   * 拉长短 / 新拉一段 / 拖播放头 = 左右箭头，平移整段 = 抓手。
+   */
+  const hold = (kind: 'resize' | 'move' | null) => {
+    const el = track.current
+    if (!el) return
+    if (kind) el.dataset.drag = kind
+    else delete el.dataset.drag
+  }
   const put = (i: number, r: TimeRange, fresh = false) => onRanges(ranges.map((x, j) => j === i ? r : x), i, fresh)
   /** 在空处按下去：就地选上一段，松手前一直跟着指针走 */
   const start = (e: PointerEvent<HTMLElement>) => {
@@ -95,6 +118,7 @@ export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRan
     const list = sortRanges([...ranges, next])
     const i = list.indexOf(next)
     drag.current = { action: 'new', i, x: e.clientX, range: next, anchor, lo, hi, moved: false }
+    hold('resize'); setHover(null)
     onRanges(list, i, true); onSeek(next.start)
   }
   const down = (e: PointerEvent<HTMLElement>, i?: number, action?: 'start' | 'end' | 'move') => {
@@ -105,12 +129,30 @@ export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRan
     capture(track.current, e.pointerId)
     const [lo, hi] = rangeBounds(ranges, i, duration)
     drag.current = { action, i, x: e.clientX, range: { ...ranges[i] }, anchor: 0, lo, hi, moved: false }
+    hold(action === 'move' ? 'move' : 'resize'); setHover(null)
     // 按在哪一段上，眼下看的就换成哪一段：还没动手，先把注意力挪过去
     if (i !== pick) onRanges(ranges, i)
   }
+  /** 抓住播放头的那枚帽子：拖到哪一秒画面就停在哪一秒，和画面底下那条进度条是同一件事 */
+  const scrubDown = (e: PointerEvent<HTMLElement>) => {
+    if (why) return
+    e.stopPropagation(); e.preventDefault()
+    capture(track.current, e.pointerId)
+    drag.current = { action: 'scrub', i: -1, x: e.clientX, range: { start: 0, end: 0 }, anchor: 0, lo: 0, hi: 0, moved: false }
+    hold('resize'); setHover(null); setScrubbing(true)
+  }
+  /** 悬停虚线：只在空处出现（段上是拖动的地盘），落在摆不下一段的窄缝里也不出 */
+  const peek = (e: PointerEvent<HTMLDivElement>) => {
+    if (why || (e.target as Element).closest('.timeline-playhead, .mark-pin, .seg-del')) { setHover(null); return }
+    const t = timeAt(e.clientX)
+    const [lo, hi] = gapAt(t)
+    setHover(rangeAt(ranges, t) < 0 && hi - lo >= RANGE_MIN ? clamp(Math.round(t), lo, hi - RANGE_MIN) : null)
+  }
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current
-    if (!d || why) return
+    if (!d) { peek(e); return }
+    if (why) return
+    if (d.action === 'scrub') { d.moved = true; onSeek(timeAt(e.clientX)); return }
     if (Math.abs(e.clientX - d.x) < 3 && !d.moved) return
     d.moved = true
     if (d.action === 'new') { put(d.i, dragRange(d.anchor, timeAt(e.clientX), duration, d.lo, d.hi), true); return }
@@ -125,13 +167,14 @@ export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRan
     if (d?.action === 'move' && !d.moved) onSeek(timeAt(e.clientX))
     drag.current = null
     release(track.current, e.pointerId)
+    hold(null); setScrubbing(false)
     if (d?.action !== 'new') return
     // 只是点了一下：那一下就是「选上这一段」，摊开成默认那一档（4 秒，也是最短那一档）
     if (!d.moved) {
       const seg = defaultSegment(d.anchor, duration, d.lo, d.hi)
       if (seg) put(d.i, seg, true)
     }
-    // 刚选出来的这一段，松手就放一遍：选了哪一段，看到的就是哪一段
+    // 刚选出来的这一段，松手就把播放头停在它的开头：选了哪一段，看到的就是哪一段
     onPicked()
   }
   const nudge = (e: React.KeyboardEvent, i: number, action: 'start' | 'end' | 'move') => {
@@ -181,9 +224,10 @@ export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRan
       <div className="timeline-ticks" aria-hidden="true">{ticksOf(duration).map((t, i, all) =>
         <span key={t}>{why ? '—' : tickLabel(t, i, all, duration)}</span>)}</div>
       <div className="seg-body">
-        <div ref={track} className={`timeline-track${why ? ' disabled' : ''}`} tabIndex={0} aria-disabled={!!why}
+        <div ref={track} className={`timeline-track${why ? ' disabled' : ''}${flash ? ` flash-${flash % 2 ? 'a' : 'b'}` : ''}${ranges.length ? '' : ' empty'}`} tabIndex={0} aria-disabled={!!why}
           aria-label={why ? `视频时间轴：${why}` : '视频时间轴：点一下选上一段，可以选多段，拖动改长短'} {...tip(why || undefined)}
           onPointerDown={(e) => down(e)} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+          onPointerLeave={() => setHover(null)}
           onKeyDown={(e) => { e.stopPropagation(); if (why) return; if (e.key === 'Enter') { e.preventDefault(); enter() } }}>
           <div className="timeline-frames" aria-hidden="true">
             {Array.from({ length: FRAMES }, (_, i) => {
@@ -211,12 +255,25 @@ export default function MarkTrack({ mat, ranges, pick, regions, head, why, onRan
               <button type="button" className="seg-del" aria-label={`删除 ${rangeLabel(r)} 这一段`}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); onDrop(i) }}><IcTrash size={12} /></button>
-              <i className="selection-edge" aria-hidden />
             </div>
           })}
-          {/* 标记落在哪一秒，轨道上就钉一枚。钉子只会落在选中的那几段里：段收不过它们 */}
-          {!why && regions.map((r, i) => <span key={i} aria-hidden className="mark-pin" style={{ left: pct(r.t) }} />)}
-          <div className="timeline-playhead" style={{ left: pct(head) }}><i aria-hidden /></div>
+          {hover != null && <div className="timeline-ghost" aria-hidden style={{ left: pct(hover) }}><b>{timecode(hover)}</b></div>}
+          {/*
+            标记落在哪一秒，轨道底下就挂一枚号牌，号和画面上那枚「区域 n」是同一个号 ——
+            画面上看见「区域 2」，低头在轨道上找的也是「2」。同一秒圈了几处就挂在同一枚牌上。
+            号牌挂在轨道下沿而不是上沿：上沿是播放头那枚帽子的地方，两样东西一高一低才不会叠成一团。
+            点一下号牌 = 跳到那一秒，播放头正停在那一秒时号牌亮着，其余的收一档。
+            钉子只会落在选中的那几段里：段收不过它们。
+          */}
+          {!why && pinsOf(regions).map(({ t, nums }) => <button key={t} type="button" tabIndex={-1}
+            className={`mark-pin${Math.round(head) === t ? ' on' : ''}`} style={{ left: pct(t) }}
+            aria-label={`跳到 ${timecode(t)} 的区域 ${nums.join('、')}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onSeek(t) }}><b>{nums.join(' ')}</b></button>)}
+          <div className={`timeline-playhead${scrubbing ? ' live' : ''}`} style={{ left: pct(head) }}>
+            <span className="playhead-cap" onPointerDown={scrubDown} aria-hidden />
+            {scrubbing && <b className="playhead-time">{timecode(head)}</b>}
+          </div>
         </div>
       </div>
     </div>

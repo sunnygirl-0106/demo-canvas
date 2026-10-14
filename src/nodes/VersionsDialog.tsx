@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useReactFlow, useStore } from '@xyflow/react'
 import { useCanvas } from '../store/canvas'
 import { heldBy, useVersions, versionGroups, type VersionRecord, type VersionTask } from '../store/versions'
-import { MODEL_CAPABILITIES, fmt, ratioNear } from '../generator/materialLayout'
+import { MODEL_CAPABILITIES, fmt, ratioNear, type Mat, type MatGet } from '../generator/materialLayout'
 import { docText } from '../generator/promptDoc'
-import { gradOf } from '../demo/assets'
+import PromptSeg from '../generator/PromptSeg'
+import { gradOf, matOf } from '../demo/assets'
 import { IcArrowL, IcCheck, IcClose, IcCopy, IcOpenOut, IcPencil, IcPlay, IcPlusBox, IcTiles, IcToEnd, IcVideo, IcZoomIn } from '../ui/icons'
 import Overlay from '../generator/Overlay'
 import { useTip } from '../generator/useTip'
@@ -236,6 +237,8 @@ export default function VersionsDialog({ nodeId, name, onClose }:
    * 一段补到自己的过渡，只会让内容白白停一下。
    */
   const pageRef = useRef<HTMLDivElement>(null)
+  /** 提示词那一段的本体：复制时照着它现在的样子抄一份带标签的 HTML */
+  const pbox = useRef<HTMLParagraphElement>(null)
   const page = current?.id ?? 'list'
   const seen = useRef<{ page: string; h: number }>()
   useLayoutEffect(() => {
@@ -331,19 +334,58 @@ export default function VersionsDialog({ nodeId, name, onClose }:
     name: task.sourceId ? nameAt(task.sourceId) : undefined,
     direction: task.direction, duration: task.params.duration, nameOf: nameAt,
   }).trim() : ''
+  /** 句子里那几枚标签指着的素材，一律问画布现在这一份 —— 和提示词框里是同一条路 */
+  const get: MatGet = (id) => matOf(nodes.find((n) => n.id === id))
   /**
-   * 抄走这段话。不走 navigator.clipboard —— 它在一部分环境里会卡在权限询问上，
-   * 既不成也不败，按钮就永远停在「复制」两个字上，用户只当是点了没反应。
-   * 一块离屏的 textarea 选中再 copy 是同步的：成没成当场就知道，没成就不改口。
+   * 这一句的主语：源素材。节点还在画布上就用它现在的样子（改了名、换了封面都跟着），
+   * 被拿走了就按记录里那份名字兜一枚出来 —— 没有画面可放，但这一枚仍是一整枚标签，
+   * 不至于在历史里变回一串「@00:00–00:04」的文字，或者干脆什么都不剩。
    */
+  const srcMat: Mat | null = !task?.sourceId ? null
+    : get(task.sourceId) ?? { id: task.sourceId, name: nameAt(task.sourceId), kind: 'video', grad: gradOf(task.sourceId) }
+  /**
+   * 抄走这段话，连标签一起：粘到认得 HTML 的地方（文档、聊天框）标签仍是一枚药丸，
+   * 那一帧缩略图也跟着过去（它本来就是一串 data:，不依赖这个站点还开着）。
+   * 粘到只认纯文字的地方，落下来的还是念出来的那一句 —— 两份一起放进剪贴板，由对面挑。
+   *
+   * 不走 navigator.clipboard —— 它在一部分环境里会卡在权限询问上，
+   * 既不成也不败，按钮就永远停在「复制」两个字上，用户只当是点了没反应。
+   * 一块离屏的 textarea 选中再 copy 是同步的：成没成当场就知道，没成就不改口；
+   * 这一刀落下时 copy 事件会经过 document，HTML 那一份就在那儿塞进去。
+   */
+  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+    .replace(/\n/g, '<br>')
+  /** 屏幕上这一句现在长什么样，就抄什么样 —— 标签的文字和缩略图都从它自己的那枚 DOM 上取 */
+  const promptHtml = () => {
+    const box = pbox.current
+    if (!box) return ''
+    const pill = (el: Element) => {
+      const img = el.querySelector('img')
+      const shot = img?.src.startsWith('data:')
+        ? `<img src="${img.src}" style="width:16px;height:16px;border-radius:4px;object-fit:cover;vertical-align:-3px;margin-right:6px">` : ''
+      return `<span style="display:inline-block;padding:2px 9px;margin:0 2px;border-radius:8px;`
+        + `background:#2b302f;color:#eef2f1;font-size:14px;line-height:1.7">${shot}${esc(el.textContent ?? '')}</span>`
+    }
+    return [...box.childNodes].map((n) => n.nodeType === 1 && (n as Element).classList.contains('vp-seg')
+      ? pill(n as Element) : esc(n.textContent ?? '')).join('')
+  }
   const copy = () => {
+    const html = promptHtml()
+    const put = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return
+      e.preventDefault()
+      e.clipboardData.setData('text/plain', prompt)
+      if (html) e.clipboardData.setData('text/html', html)
+    }
     const ta = document.createElement('textarea')
     ta.value = prompt
     ta.setAttribute('readonly', '')
     ta.style.cssText = 'position:fixed;top:-9999px;opacity:0'
     document.body.appendChild(ta)
     ta.select()
+    document.addEventListener('copy', put, true)
     const ok = document.execCommand('copy')
+    document.removeEventListener('copy', put, true)
     ta.remove()
     if (ok) setCopied(true)
   }
@@ -450,8 +492,17 @@ export default function VersionsDialog({ nodeId, name, onClose }:
                 写一句「无生成记录」是在替一件本来就不存在的事做解释，而框空着这件事自己看得见。
                 生成过、只是没写提示词的那一版不同：那是用户当时真的没写，得说一句。
               */}
+              {/*
+                这一句和提示词框里是同一句：标签照旧是标签（谁、哪一段、哪一帧），
+                不摊成一串「@00:00–00:04」的文字 —— 那是念给模型听的样子，不是给人读的。
+                「复制」抄走的仍是念出来的那一份纯文字。
+              */}
               {prompt
-                ? <p className="vp-prompt">{prompt}</p>
+                ? <p className="vp-prompt" ref={pbox}>{task?.doc.length
+                  ? task.doc.map((seg, i) => seg.t === 'text' ? <span key={i}>{seg.v}</span>
+                    : <span key={i} className="vp-seg"><PromptSeg s={seg} doc={task.doc} mat={srcMat} get={get}
+                      role="源视频" mode={task.mode} direction={task.direction} duration={task.params.duration} /></span>)
+                  : prompt}</p>
                 : current.task ? <p className="vp-blank">本次未填写提示词</p> : null}
             </div>
             {/*

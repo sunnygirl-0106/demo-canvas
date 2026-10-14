@@ -5,13 +5,15 @@ import { mediaFailure, MEDIA_FAIL, type Mat } from './materialLayout'
 import { sourceError } from './videoTask'
 import { warmFrame } from './markFrame'
 import MarkStage from './MarkStage'
+import MarkScrub from './MarkScrub'
 import MarkTrack from './MarkTrack'
 import { useTip } from './useTip'
 import { useAspect } from './hoverShot'
 import { IcFrame, IcBrush, IcUndo, IcTrash } from '../ui/icons'
 import { docText, marksOf, replaceMarks } from './promptDoc'
 import { BRUSH_WIDTH, brushOf, brushPct, clipRegions, commitDraft, draftOf, emptyDraft,
-  marksReading, rangeAt, rangesTotal, timecode, type MarkDraft, type MarkTool, type TimeRange } from './marks'
+  marksReading, rangeAt, rangesTotal, timecode,
+  type MarkDraft, type MarkTool, type TimeRange } from './marks'
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
 /**
  * 一套标记读成一串。句子里那几枚标签和手上这份草稿是同一套东西，
@@ -47,6 +49,18 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
   const [second, setSecond] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [broken, setBroken] = useState('')
+  /**
+   * 在标不了的地方按了一下：画面上那句提示闪一下，时间轴上的片段也跟着闪一下 ——
+   * 告诉他「这儿不行」的同时，指给他「该去哪儿」。数字每挡一次 +1，好让动画能重放；0 = 这会儿不闪。
+   */
+  const [ping, setPing] = useState(0)
+  const pingAt = useRef<number>()
+  const refuse = () => {
+    setPing((n) => n + 1)
+    window.clearTimeout(pingAt.current)
+    pingAt.current = window.setTimeout(() => setPing(0), 2400)
+  }
+  useEffect(() => () => window.clearTimeout(pingAt.current), [])
   const { tip, node: tipNode } = useTip()
   const duration = mat.dur ?? 0
   // 这块屏按素材本来的比例摆：横屏摊成横屏、竖屏摊成竖屏，两边都不留黑
@@ -127,25 +141,38 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
   const cur = () => live.current.ranges[live.current.pick] ?? null
   /** 把注意力挪到第 i 段上。VideoWiring 一段放完接着放下一段也走这里，所以引用要稳。 */
   const focus = useCallback((i: number) => { live.current = { ...live.current, pick: i }; setPick(i) }, [])
-  const inScope = (t: number) => { const r = cur(); return clamp(t, r?.start ?? 0, r?.end ?? duration) }
   /**
-   * 播放头只走在眼下这一段里 ——
-   * 圈选发生在停住的那一秒上，头出不去，圈就出不去，「圈在片段之外」这件事从源头上不成立。
+   * 播放头走遍整条片子，播放也一样 —— 片段只管「改哪几截」，不管「能看哪几截」。
+   * 片段外的那几秒照样能看、能放，只是标不了（见 lockAt）。
    */
   const jump = (t: number) => {
     const v = video.current; if (!v) return
-    const at = inScope(t)
+    const at = clamp(t, 0, duration)
     v.currentTime = at; setHead(at)
   }
-  /** 用户点到哪一秒：那一秒在哪一段里，眼下看的就换成哪一段，然后才夹。 */
+  /** 用户点到哪一秒：那一秒在哪一段里，眼下看的就换成哪一段；落在段外就停在原处那一段上。 */
   const seek = (t: number) => {
     const i = rangeAt(live.current.ranges, t)
     if (i >= 0 && i !== live.current.pick) focus(i)
     jump(t)
   }
-  const pauseAt = (t: number) => { video.current?.pause(); seek(t); setSecond(Math.round(inScope(t))) }
-  /** 改完片段之后把播放头收回来：这一下不换段（换了就等于替用户跳到别处去了） */
-  const holdAt = (t: number) => { video.current?.pause(); jump(t); setSecond(Math.round(inScope(t))) }
+  const pauseAt = (t: number) => { video.current?.pause(); seek(t); setSecond(Math.round(clamp(t, 0, duration))) }
+  /** 播放中播放头走进哪一段，眼下看的就换成哪一段：时间轴上描亮的、读数报的都跟着它 */
+  const onHead = useCallback((t: number) => {
+    setHead(t)
+    const i = rangeAt(live.current.ranges, Math.round(t))
+    if (i >= 0 && i !== live.current.pick) focus(i)
+  }, [focus])
+  /**
+   * 第 t 秒上能不能标东西。规则只有一条：打开「指定片段」后，只能在片段内标记。
+   * 返回空串 = 能标；否则就是要对他说的那一句。
+   */
+  const lockAt = (t: number) => {
+    if (!segment || why) return ''
+    const rs = live.current.ranges
+    if (!rs.length) return '在时间轴上选择片段后可标记'
+    return rangeAt(rs, Math.round(clamp(t, 0, duration))) < 0 ? '将播放头移到片段内后可标记' : ''
+  }
   /**
    * 片段的唯一入口。`fresh` = 这一下是**新选出一段**：那时片段外的已有标记跟着摘掉（§3.2.3）——
    * 选了这一段就是说「只改这儿」，外面留不住东西。
@@ -156,8 +183,6 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
     setPick(live.current.pick)
     apply({ ranges: next, regions: fresh ? clipRegions(draft.regions, next) : draft.regions })
     setActive(-1)
-    const v = video.current, r = cur()
-    if (v && r && (v.currentTime < r.start || v.currentTime > r.end)) holdAt(v.currentTime)
   }
   /**
    * 扔掉一段。圈在它里面的那几处跟着走 —— 它们本来就是「这一段里的那几处」，
@@ -172,29 +197,21 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
     setPick(live.current.pick)
     apply({ ranges, regions: draft.regions.filter((g) => g.t < r.start || g.t > r.end) })
     setActive(-1); settle()
-    holdAt(video.current?.currentTime ?? 0)
   }
   /**
-   * 选了哪一段就播哪一段：段一定下来（live 已同步），就从它的头上把这一段放一遍。
-   * 这一下是我们替用户按的，播不起来（刚跳完帧、自动播放被拦）不能算「视频坏了」——
-   * 只有用户自己按播放键那一下失败，才值得把整个画面蒙起来说源有问题。
+   * 选好一段（松手 / 回车）：播放头停到这一段的开头，不自动播 ——
+   * 选片段就是为了在里面标东西，播起来播放头一走出这一段，画面就又标不了了。
    */
-  const playRange = () => {
-    const v = video.current, r = cur()
-    if (!v || why || !r) return
-    jump(r.start)
-    void v.play().catch(() => undefined)
+  const landRange = () => {
+    const r = cur()
+    if (why || !r) return
+    pauseAt(r.start)
   }
+  /** 播放不看片段：停在哪儿就从哪儿接着放，放到片尾再按就从头来 */
   const togglePlay = () => {
     const v = video.current; if (!v || why) return
     if (!v.paused) { v.pause(); return }
-    const rs = live.current.ranges
-    if (rs.length) {
-      // 停在某一段里（还没走到它的尾）就接着放；掉在段外或停在末尾，从第一段的头重放
-      const i = rs.findIndex((r) => v.currentTime >= r.start && v.currentTime < r.end - 0.05)
-      focus(i < 0 ? 0 : i)
-      if (i < 0) jump(rs[0].start)
-    } else if (v.currentTime >= duration - 0.05) jump(0)
+    if (v.currentTime >= duration - 0.05) jump(0)
     void v.play().catch(() => setBroken(mediaFailure('视频', mat.name, MEDIA_FAIL.play)))
   }
   /**
@@ -212,10 +229,16 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
     live.current = { ranges: prev.ranges, pick: clamp(pick, 0, Math.max(0, prev.ranges.length - 1)) }
     setPick(live.current.pick)
     apply(prev); setActive(-1); settle()
-    const v = video.current, r = cur()
-    if (v && r && (v.currentTime < r.start || v.currentTime > r.end)) holdAt(v.currentTime)
   }
-  const begin = (t: number) => { remember(); pauseAt(t) }
+  /**
+   * 按下去的那一刻。打开了「指定片段」，这一秒却不在任何一段里（或者一段都还没选）：
+   * 这一下整个不作数，只把提示闪一下。不替他补一段出来 —— 片段只有一个来处：他自己在时间轴上点。
+   */
+  const begin = (t: number) => {
+    if (lockAt(t)) { refuse(); return false }
+    remember(); pauseAt(t)
+    return true
+  }
   const cancel = () => back()
   /** 清除全部标记：只收画面上圈的那些，片段留着（§3.2.3）—— 片段说的是「改哪一截」，不是标记。 */
   const clearAll = () => {
@@ -257,12 +280,16 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
   </>
 
   return <div className="nd-board mark-board nodrag nowheel" onPointerUp={settle} onPointerCancel={settle}>
-    <MarkStage mat={mat} video={video} tool={tool} brush={brush} draft={draft} second={second} active={active} aspect={aspect}
+    <MarkStage mat={mat} video={video} tool={tool} brush={brush} draft={draft} second={second} head={head} active={active} aspect={aspect}
       paused={!playing} playing={playing} veil={why} loading={loading} tools={stageTools}
-      onTogglePlay={togglePlay} onBegin={begin} onDraft={(d, i) => { apply(d); setActive(i) }} onCancel={cancel} />
+      scrub={duration > 0 && <MarkScrub head={head} duration={duration} playing={playing} onSeek={pauseAt} onTogglePlay={togglePlay} />}
+      lock={lockAt(head)} ping={ping}
+      onTogglePlay={togglePlay} onBegin={begin}
+      /* 片段以这边为准：画面那层只管圈出来的那几处 */
+      onDraft={(d, i) => { apply({ ...d, ranges: live.current.ranges }); setActive(i) }} onCancel={cancel} />
     {/* video 的事件绑在 MarkStage 渲染出来的那个元素上，这里只挂回调 */}
-    <VideoWiring video={video} ranges={draft.ranges} pick={pick} duration={duration} src={mat.src} name={mat.name}
-      onHead={setHead} onPlaying={setPlaying} onSecond={setSecond} onBroken={setBroken} onReady={ready} onPick={focus} />
+    <VideoWiring video={video} src={mat.src} name={mat.name}
+      onHead={onHead} onPlaying={setPlaying} onSecond={setSecond} onBroken={setBroken} onReady={ready} />
     <div className="mark-tools">
       <div className="mark-toolpick">
         <button aria-pressed={tool === 'box'} className={tool === 'box' ? 'selected' : ''} onClick={() => setTool('box')}><IcFrame size={14} />框选</button>
@@ -288,42 +315,28 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
     </div>
     {/* 开关一开轨道就摆出来，哪怕还一段都没选 —— 「点时间轴才选出一段」得先看得见时间轴 */}
     {segment && <MarkTrack mat={mat} ranges={draft.ranges} pick={pick} regions={draft.regions} head={head} why={why}
-      onBegin={remember} onSeek={pauseAt} onRanges={setRanges} onDrop={dropRange} onPicked={playRange} />}
+      flash={ping} onBegin={remember} onSeek={pauseAt} onRanges={setRanges} onDrop={dropRange} onPicked={landRange} />}
     {tipNode}
   </div>
 }
 /** 播放状态与播放头：video 元素在 MarkStage 里，这里只负责把它的事件接出来。 */
-function VideoWiring({ video, ranges, pick, duration, src, name, onHead, onPlaying, onSecond, onBroken, onReady, onPick }: {
-  video: React.RefObject<HTMLVideoElement>; ranges: TimeRange[]; pick: number; duration: number
+function VideoWiring({ video, src, name, onHead, onPlaying, onSecond, onBroken, onReady }: {
+  video: React.RefObject<HTMLVideoElement>
   src?: string; name: string
   onHead: (t: number) => void; onPlaying: (v: boolean) => void; onSecond: (t: number) => void; onBroken: (v: string) => void
   /** 这块屏把源片读出来了，时长报上去 —— 谁在等这一句，见 MarkBoard 里的 ready */
   onReady: (dur: number) => void
-  /** 一段放完，接着放下一段：报一声眼下换到第几段了 */
-  onPick: (i: number) => void
 }) {
-  const box = useRef({ ranges, pick, duration, src }); box.current = { ranges, pick, duration, src }
+  const box = useRef({ src }); box.current = { src }
   useEffect(() => {
     const v = video.current; if (!v) return
     const play = () => onPlaying(true)
     const pause = () => { onPlaying(false); onSecond(Math.round(v.currentTime)) }
-    const time = () => {
-      const { ranges: rs, pick: i } = box.current
-      const r = rs[i]
-      // 选了片段就只播这几段：一段放到尾，接着放下一段；最后一段放完才停住，中间没选的那几截跳过去
-      if (r && v.currentTime >= r.end) {
-        const next = rs[i + 1]
-        // 跳过去之后 pick 还要等一次渲染才跟上，这时候再收到一次 timeupdate 也不会重跳：已经在那儿了
-        if (next && !v.paused) { if (v.currentTime < next.start) { v.currentTime = next.start; onPick(i + 1) } }
-        else { v.pause(); v.currentTime = r.end }
-      }
-      onHead(v.currentTime)
-    }
-    // 整条放完了从头再来：选了片段就回到第一段的头上
+    // 播放不看片段：整条片子从头放到尾，片段外的那几截照常放
+    const time = () => onHead(v.currentTime)
+    // 整条放完了从头再来
     const ended = () => {
-      const first = box.current.ranges[0]
-      v.currentTime = first?.start ?? 0
-      if (first) onPick(0)
+      v.currentTime = 0
       void v.play().catch(() => undefined)
     }
     // 暂停到的每一秒顺手存一张干净帧：句子里的 chip 立刻就有图，不用再解一遍视频
@@ -340,6 +353,6 @@ function VideoWiring({ video, ranges, pick, duration, src, name, onHead, onPlayi
       v.removeEventListener('ended', ended); v.removeEventListener('seeked', seeked); v.removeEventListener('error', fail)
       v.removeEventListener('loadedmetadata', meta)
     }
-  }, [video, name, onHead, onPlaying, onSecond, onBroken, onReady, onPick])
+  }, [video, name, onHead, onPlaying, onSecond, onBroken, onReady])
   return null
 }
