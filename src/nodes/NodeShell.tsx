@@ -2,6 +2,8 @@ import { useRef, useState, type MouseEventHandler, type PointerEventHandler, typ
 import { Handle, Position } from '@xyflow/react'
 import { useCanvas, type NodeKind } from '../store/canvas'
 import { useActiveConn } from '../canvas/hooks'
+import { useGenerator } from '../store/generator'
+import { activeIds } from '../generator/materialLayout'
 import { IcImage, IcPlus, IcText, IcVideo } from '../ui/icons'
 
 const KIND_ICON = { text: IcText, image: IcImage, video: IcVideo }
@@ -10,8 +12,8 @@ const KIND_ICON = { text: IcText, image: IcImage, video: IcVideo }
  * 节点左右那枚 ⊕：一层向外荡的波纹 + 一枚圆。波纹不接事件，事件全落在外层，好往 handle 冒泡。
  * 接没接着线都是同一枚白圆 —— 线是从它底下穿过去的，有没有线眼睛直接看得见（见 .h-plus）。
  */
-const Plus = (p: { onPointerDown?: PointerEventHandler; onClick?: MouseEventHandler }) => (
-  <div className="h-plus" {...p}>
+const Plus = ({ on, ...p }: { on?: boolean; onPointerDown?: PointerEventHandler; onClick?: MouseEventHandler }) => (
+  <div className={'h-plus' + (on ? ' on' : '')} {...p}>
     <i className="h-plus-wave" />
     <span className="h-plus-btn"><IcPlus size={14} sw={1.9} /></span>
   </div>
@@ -47,6 +49,15 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
   const [draft, setDraft] = useState(name)
 
   const hl = hover === id
+  /*
+   * 悬浮到上游节点时，连到这儿的那条线会亮（见 DashedEdge 的 lit）——
+   * 线的这一头也得跟着亮：只亮悬浮那一侧的 ⊕，读着像一条线只接上了一头。
+   * 条件和那条线一模一样（这条连线在、且这个来源此刻在生成里算数），线亮它才亮。
+   */
+  const gen = useGenerator((s) => s.map[id])
+  const inLit = useCanvas((s) => !!s.hoverMat && s.hoverMat !== id
+    && s.edges.some((e) => e.source === s.hoverMat && e.target === id))
+    && (!gen || activeIds(gen, gen.mode).includes(hover!))
   const dim = !!hover && hover !== id && conn.has(id)
 
   const commit = () => {
@@ -106,7 +117,7 @@ export default function NodeShell({ id, kind, name, selected, focus, action, chi
         */}
       {kind !== 'text' && (
         <Handle type="target" position={Position.Left} id="in" isConnectableStart={false}>
-          <Plus />
+          <Plus on={inLit} />
         </Handle>
       )}
       {/* 拖出去 = 连线；原地点一下 = 右侧 360px 直接新建一个空视频节点并连上 */}

@@ -51,6 +51,14 @@ input,textarea{font:inherit;color:inherit}
 .react-flow__handle:after{display:none}
 .rf-edgepath{animation:gp-flow 3.6s linear infinite}
 .react-flow__edge.selected .rf-edgepath{stroke-width:2.4}
+/*
+ * 亮起的线上跑的那道光（见 DashedEdge）。线量成 100 份：光段 8、空隙 200（比整条线还长，一次只有一段），
+ * 偏移从 8 走到 -100 —— 从起点外面进来、从落点出去，一轮中间不会有两段同时在线上。
+ * ease-in-out：出发和到达都缓一点，读着像一个东西被送过去，而不是一排匀速滚动的点。
+ */
+.edge-pulse path{stroke-dasharray:8 200;animation:edge-pulse 1.6s ease-in-out infinite}
+@keyframes edge-pulse{from{stroke-dashoffset:8}to{stroke-dashoffset:-100}}
+@media (prefers-reduced-motion:reduce){.edge-pulse{display:none}}
 /* 连线上的剪刀：悬浮到线上才出现，点一下断开这一条连接（⌘Z 可撤销） */
 .edge-cut{position:absolute;pointer-events:all;width:22px;height:22px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
@@ -486,11 +494,11 @@ input,textarea{font:inherit;color:inherit}
  */
 .h-plus{position:absolute;inset:0;pointer-events:auto;cursor:pointer;
   opacity:.4;transition:opacity .18s ease-out}
-/* 走到这个节点身上 / 这个节点被选中 / 鼠标就压在圆上：这一对亮到满 */
-.nd:hover .h-plus,.nd.sel .h-plus,.h-plus:hover{opacity:1}
+/* 走到这个节点身上 / 这个节点被选中 / 鼠标就压在圆上 / 悬浮的是上游、连到这儿的线亮了（.on，由 NodeShell 给）：亮到满 */
+.nd:hover .h-plus,.nd.sel .h-plus,.h-plus:hover,.h-plus.on{opacity:1}
 .h-plus-wave{display:none;position:absolute;inset:0;border-radius:50%;pointer-events:none;
   border:calc(1px * var(--zk)) solid rgba(255,255,255,.45);animation:plus-ripple 3.6s ease-out infinite}
-.nd:hover .h-plus-wave,.nd.sel .h-plus-wave{display:block}
+.nd:hover .h-plus-wave,.nd.sel .h-plus-wave,.h-plus.on .h-plus-wave{display:block}
 /* 底色不透明：线从它身子底下穿过去，半透的话线会在圆里印出一道，读着像圆被划了一刀 */
 .h-plus-btn{position:absolute;inset:0;border-radius:50%;background:rgb(22,23,25);
   border:calc(1px * var(--zk)) solid rgba(255,255,255,.16);color:rgba(255,255,255,.72);
@@ -510,7 +518,7 @@ input,textarea{font:inherit;color:inherit}
 /* 一圈不停荡的波纹正是这档设置要关掉的东西：留下那枚圆，去掉动。
    选择器得比上面那两条 .nd:hover / .nd.sel 更重，光写在后面压不住它们 */
 @media (prefers-reduced-motion:reduce){
-  .nd .h-plus-wave,.nd:hover .h-plus-wave,.nd.sel .h-plus-wave{display:none}
+  .nd .h-plus-wave,.nd:hover .h-plus-wave,.nd.sel .h-plus-wave,.nd .h-plus.on .h-plus-wave{display:none}
 }
 .react-flow__handle-left{left:calc(-19px * var(--zk))}
 .react-flow__handle-right{right:calc(-19px * var(--zk))}

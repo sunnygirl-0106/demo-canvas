@@ -72,7 +72,7 @@ export default function DashedEdge(p: EdgeProps) {
       </defs>
       <path
         id={id} className="rf-edgepath" d={d} fill="none"
-        stroke={`url(#${gid})`} strokeWidth={lit || armed ? 2.2 : 1.5} strokeLinecap="round"
+        stroke={`url(#${gid})`} strokeWidth={1.5} strokeLinecap="round"
         /*
          * 线段 12、空隙 9：原先 4 4 那种一截一截的碎点，一条线上要排几十节，远看是一条
          * 带毛边的灰线，近看满是碎屑。拉到这个长度，一节就读得出是一段「线」而不是一个点，
@@ -83,6 +83,20 @@ export default function DashedEdge(p: EdgeProps) {
         strokeDasharray={lit ? undefined : '12 9'}
         opacity={armed ? 0.9 : !active ? 0.1 : dimmed ? 0.12 : lit ? 1 : 0.55}
       />
+      {/*
+        * 亮起来不加粗，让一道光顺着线跑：线本身还是 1.5，变实线、透明度拉满，
+        * 上面再有一小段白光从来源一路跑到落点 —— 方向和「这一条亮了」一起说出来。
+        * 白的但压着透明度：满白压在青线上太跳，像线上破了一个口子；
+        * 半透的白叠在青上是一段被提亮的青白，比同色系的浅青更像「光」。
+        * pathLength=100 把每条线都量成 100 份，光段长短、跑一趟的节奏就和线多长无关。
+        * 光段底下垫一道 4px 的淡光，让它有点晕开的光感，不是一截生硬的亮条。
+        */}
+      {(lit || armed) && (
+        <g className="edge-pulse" fill="none" stroke="#fff" strokeLinecap="round" pointerEvents="none">
+          <path d={d} pathLength={100} strokeWidth={4} opacity={0.1} />
+          <path d={d} pathLength={100} strokeWidth={1.5} opacity={0.55} />
+        </g>
+      )}
       {/* 加宽的透明命中区，方便点选删除、也方便悬浮出剪刀 */}
       <path d={d} fill="none" stroke="transparent" strokeWidth={14} className="react-flow__edge-interaction"
         onMouseEnter={enter} onMouseLeave={leave} />
