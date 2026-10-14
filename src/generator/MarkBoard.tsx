@@ -142,6 +142,33 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
   /** 把注意力挪到第 i 段上。VideoWiring 一段放完接着放下一段也走这里，所以引用要稳。 */
   const focus = useCallback((i: number) => { live.current = { ...live.current, pick: i }; setPick(i) }, [])
   /**
+   * 一播起来就放下手上选中的那一处：框完接着往下看，画面上不该还挂着角点、× 和那层压暗 ——
+   * 那几样是「正在改这一处」的样子，播放时已经不在改它了。要再改，悬上去或点一下就回来。
+   */
+  const onPlaying = useCallback((v: boolean) => { setPlaying(v); if (v) setActive(-1) }, [])
+  /**
+   * 删掉画面上的一处：选中它（点一下框 / 涂过的那一笔）之后按 ⌫ / Delete，或者点框标号牌上的 ×。
+   * 句子里对应那枚标签跟着消失，轨道上的号牌也跟着摘掉 —— 三处说的是同一样东西。
+   */
+  const dropRegion = (i: number) => {
+    if (why || !draft.regions[i]) return
+    remember()
+    apply({ ...draft, regions: draft.regions.filter((_, j) => j !== i) })
+    setActive(-1); settle()
+  }
+  /**
+   * 键盘：⌫ / Delete 删掉选中的那一处，Esc 取消选中。
+   * 两个都要 stopPropagation —— 冒到画布上，⌫ 删的就是整个节点，Esc 会把节点的专注态一起关掉。
+   */
+  const keys = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest('input, textarea, [contenteditable=true]')) return
+    if ((e.key === 'Backspace' || e.key === 'Delete') && active >= 0) {
+      e.preventDefault(); e.stopPropagation(); dropRegion(active)
+    } else if (e.key === 'Escape' && active >= 0) {
+      e.stopPropagation(); setActive(-1)
+    }
+  }
+  /**
    * 播放头走遍整条片子，播放也一样 —— 片段只管「改哪几截」，不管「能看哪几截」。
    * 片段外的那几秒照样能看、能放，只是标不了（见 lockAt）。
    */
@@ -279,17 +306,17 @@ export default function MarkBoard({ nodeId, mat, onBump }: { nodeId: string; mat
       {...tip(noMark ? '暂无可清除的标记' : '清除全部标记')} onClick={clearAll}><IcTrash size={14} /></button>
   </>
 
-  return <div className="nd-board mark-board nodrag nowheel" onPointerUp={settle} onPointerCancel={settle}>
+  return <div className="nd-board mark-board nodrag nowheel" onPointerUp={settle} onPointerCancel={settle} onKeyDown={keys}>
     <MarkStage mat={mat} video={video} tool={tool} brush={brush} draft={draft} second={second} head={head} active={active} aspect={aspect}
       paused={!playing} playing={playing} veil={why} loading={loading} tools={stageTools}
       scrub={duration > 0 && <MarkScrub head={head} duration={duration} playing={playing} onSeek={pauseAt} onTogglePlay={togglePlay} />}
       lock={lockAt(head)} ping={ping}
       onTogglePlay={togglePlay} onBegin={begin}
       /* 片段以这边为准：画面那层只管圈出来的那几处 */
-      onDraft={(d, i) => { apply({ ...d, ranges: live.current.ranges }); setActive(i) }} onCancel={cancel} />
+      onDraft={(d, i) => { apply({ ...d, ranges: live.current.ranges }); setActive(i) }} onCancel={cancel} onDrop={dropRegion} />
     {/* video 的事件绑在 MarkStage 渲染出来的那个元素上，这里只挂回调 */}
     <VideoWiring video={video} src={mat.src} name={mat.name}
-      onHead={onHead} onPlaying={setPlaying} onSecond={setSecond} onBroken={setBroken} onReady={ready} />
+      onHead={onHead} onPlaying={onPlaying} onSecond={setSecond} onBroken={setBroken} onReady={ready} />
     <div className="mark-tools">
       <div className="mark-toolpick">
         <button aria-pressed={tool === 'box'} className={tool === 'box' ? 'selected' : ''} onClick={() => setTool('box')}><IcFrame size={14} />框选</button>

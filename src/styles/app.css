@@ -1501,6 +1501,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .mark-stage>video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
 /* 框要拖要缩，所以框本身收指针事件，覆盖层不收 */
 .mark-stage .mark-box{pointer-events:auto;cursor:move;border-color:rgba(127,227,203,.85)}
+.mark-stage .mark-box.on{border-color:var(--mark-chip)}
 /*
  * 正在改的那一处之外压暗一层：压暗自己就说清楚了「现在改的是这一处」，不必再加一圈光。
  * 只给正在编辑的那一处：每处都罩一层，叠起来就是整块画面全黑。
@@ -1508,14 +1509,33 @@ button:disabled{opacity:.4;cursor:not-allowed}
  */
 .mark-stage .mark-box.on{box-shadow:0 0 0 1px rgba(0,0,0,.45),0 0 0 9999px rgba(0,0,0,.34)}
 /* 标号是一枚实底小牌，不是描边字：底下是活动的画面，只靠文字投影读不稳 */
-.mark-box-label{position:absolute;left:-1px;top:-23px;white-space:nowrap;border-radius:4px;padding:1.5px 6px;
-  font:600 10px/1.6 var(--num);font-variant-numeric:tabular-nums;
-  color:var(--mark-ink);background:var(--mark-chip)}
+/* 标号牌：浅青底上用深青字，不用纯黑 —— 黑字压在这么浅的底上对比冲到顶，读起来是一枚贴纸在叫。
+   「区域 n」实一点，后面的时间退半档，中间一道细竖线隔开，不再靠「·」 */
+.mark-box-label{position:absolute;left:-1px;top:-23px;display:inline-flex;align-items:center;gap:5px;
+  white-space:nowrap;border-radius:4px;padding:1.5px 6px;
+  font:600 10px/1.6 var(--num);font-variant-numeric:tabular-nums;letter-spacing:.01em;
+  color:var(--mark-ink);background:var(--mark-chip);box-shadow:0 2px 8px rgba(0,0,0,.35)}
+.mark-box-label>i{font-style:normal;font-weight:500;opacity:.72;display:inline-flex;align-items:center;gap:5px}
+.mark-box-label>i::before{content:'';width:1px;height:8px;background:currentColor;opacity:.35}
 .mark-box-label.inside{top:4px;left:4px}
+/* 选中的那个框，标号牌末尾的 ×：和牌子同色同高，像是牌子自己多出来的一格；悬上去转红 */
+.mark-box-label:has(.mark-box-x){padding-right:2px}
+.mark-box-x{width:14px;height:14px;display:grid;place-items:center;border-radius:3px;color:var(--mark-ink);
+  pointer-events:auto;cursor:pointer;transition:background .14s,color .14s}
+.mark-box-x:hover{background:rgba(27,77,67,.12);color:#c2413a}
+.mark-stage:focus{outline:none}
 /* 角上那四粒看上去是 5px 的方点，能抓的有 12px —— 和选区把手同一套办法 */
 .mark-grip{position:absolute;width:12px;height:12px;display:grid;place-items:center}
-.mark-grip::before{content:'';width:5px;height:5px;background:var(--mark-chip);
-  box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+/*
+ * 框角：4px 的白芯小圆点，外面一圈 1px 的青边 —— 只是告诉手「这里能抓」，不是框上的装饰。
+ * 平时收着，手悬到框上、或者这个框正被选中时才浮出来：几个框同时在画面上时，
+ * 一排排角点看着像压缩噪点。悬到角点上再胀一圈。能抓的仍是外面那 12px。
+ */
+.mark-grip::before{content:'';width:4px;height:4px;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 1px var(--mark),0 1px 2px rgba(0,0,0,.5);
+  opacity:0;transform:scale(.6);transition:opacity .14s,transform .14s var(--ease-soft)}
+.mark-box:hover .mark-grip::before,.mark-box.on .mark-grip::before{opacity:1;transform:scale(1)}
+.mark-box .mark-grip:hover::before{transform:scale(1.5)}
 .mark-grip.nw{left:-6px;top:-6px;cursor:nwse-resize}
 .mark-grip.ne{right:-6px;top:-6px;cursor:nesw-resize}
 .mark-grip.sw{left:-6px;bottom:-6px;cursor:nesw-resize}
@@ -1701,7 +1721,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .range-handle{position:absolute;top:-1px;bottom:-1px;width:8px;display:grid;place-items:center;
   background:var(--sel);cursor:ew-resize;touch-action:none;z-index:2;
   box-shadow:0 0 0 .5px rgba(0,0,0,.35),0 2px 8px rgba(0,0,0,.45);transition:background .18s}
-.range-handle::before{content:'';width:3.5px;height:3.5px;border:solid rgba(12,21,19,.72);border-width:0 0 1.5px 1.5px}
+.range-handle::before{content:'';width:3.5px;height:3.5px;border:solid var(--mark-ink);border-width:0 0 1.5px 1.5px;opacity:.85}
 .range-handle::after{content:'';position:absolute;top:0;bottom:0;left:-5px;right:-5px}
 .range-handle.start{left:-8px;border-radius:5px 0 0 5px}
 .range-handle.start::before{transform:translateX(1px) rotate(45deg)}
@@ -1723,19 +1743,34 @@ button:disabled{opacity:.4;cursor:not-allowed}
   font:500 9.5px/1.4 var(--num);font-variant-numeric:tabular-nums;color:#f2f5f4;background:rgba(8,9,9,.72);
   white-space:nowrap}
 /* 号牌挂在轨道下沿：留出它的那一截，免得压到卡片底边 */
-.seg-body:has(.mark-pin){padding-bottom:15px}
+.seg-body:has(.mark-pin){padding-bottom:22px}
 /*
- * 标记的号牌：一根细线从轨道里穿下来，底下挂一枚和画面上「区域 n」同色同字的小牌。
- * 线只有 1px、压一层暗边，缩略图上看得见又不抢 —— 轨道上最该被看见的仍然是段和播放头。
+ * 标记的号牌：一根细线从轨道里穿下来，底下挂一枚带小尖角的牌子，号和画面上「区域 n」是同一个号。
+ * 两档：播放头停在这一秒的那枚是实心亮青（和画面上的标号牌一个样子），
+ * 其余的是深底 + 青色细边 + 青字的空心牌 —— 看得见、数得清，但不和眼下这一枚抢。
+ * 线穿过缩略图那一截淡一些，出了轨道才实起来：轨道上最该被看见的仍然是段和播放头。
  */
-.mark-pin{position:absolute;top:0;bottom:-14px;width:0;padding:0;transform:translateX(-50%);z-index:2;
-  display:flex;flex-direction:column;align-items:center;cursor:pointer;opacity:.62;transition:opacity .15s}
-.mark-pin::before{content:'';flex:1;width:1px;background:var(--mark);box-shadow:0 0 0 .5px rgba(0,0,0,.45)}
-.mark-pin b{flex:none;min-width:13px;height:13px;padding:0 3px;border-radius:3px;display:grid;place-items:center;
-  font:700 9px/1 var(--num);font-variant-numeric:tabular-nums;color:var(--mark-ink);background:var(--mark-chip);
-  box-shadow:0 0 0 1px rgba(0,0,0,.4);white-space:nowrap}
-.mark-pin:hover,.mark-pin.on{opacity:1}
-.mark-pin.on b{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 0 3px var(--mark-halo)}
+/* 线和牌各自按 left:50% 对中，不靠 flex 居中：零宽的按钮里放一枚 15px 的牌子，
+   浏览器会把溢出的那一截全甩到右边，线就落在牌子的左沿上了。
+   这一整枚按钮不收指针（它压在段上，别把拖段的手势吃掉），只有牌子收 */
+.mark-pin{--pin:rgba(127,227,203,.6);position:absolute;top:0;bottom:-20px;width:0;padding:0;
+  z-index:2;display:block;pointer-events:none}
+.mark-pin::before{content:'';position:absolute;left:0;top:0;bottom:13px;width:1px;margin-left:-.5px;background:linear-gradient(180deg,rgba(127,227,203,.35),var(--pin) 70%);
+  box-shadow:0 0 0 .5px rgba(0,0,0,.35)}
+.mark-pin b{position:absolute;left:0;bottom:0;transform:translateX(-50%);pointer-events:auto;cursor:pointer;min-width:15px;height:14px;padding:1px 4px 0;box-sizing:border-box;
+  border-radius:4px;display:flex;align-items:center;justify-content:center;
+  /* 数字按比例宽度排：等宽数字里的「1」左边留着一大截空，摆在小牌子正中看着往右歪 */
+  font:600 9px/1 var(--num);font-variant-numeric:proportional-nums;letter-spacing:0;white-space:nowrap;
+  color:#bfeee2;background:#132220;border:1px solid var(--pin);box-shadow:0 2px 6px rgba(0,0,0,.45);
+  transition:background .16s,color .16s,border-color .16s,box-shadow .16s}
+/* 牌顶的小尖角，和线接上：牌子是「挂」在这一秒上的，不是随手摆在底下的一个数 */
+.mark-pin b::before{content:'';position:absolute;left:50%;top:-4px;width:6px;height:6px;margin-left:-3px;
+  box-sizing:border-box;transform:rotate(45deg);background:inherit;border:solid var(--pin);border-width:1px 0 0 1px;border-radius:1px 0 0 0}
+.mark-pin:hover{--pin:rgba(127,227,203,.9)}
+.mark-pin:hover b{color:#e4fbf5}
+.mark-pin.on{--pin:var(--mark-chip)}
+.mark-pin.on b{color:var(--mark-ink);background:var(--mark-chip);font-weight:700;
+  box-shadow:0 2px 6px rgba(0,0,0,.45),0 0 0 3px rgba(127,227,203,.22)}
 /*
  * 播放头：只有一根发丝线，不戴帽子 —— 轨道上已经有段框、把手、号牌，再顶一枚帽子就太满了。
  * 线和轨道一样高，上下各探出 2px，跟段框的上下沿齐平；外面压半像素暗边，亮画面上也断不了。

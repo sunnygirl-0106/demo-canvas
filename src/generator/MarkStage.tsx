@@ -37,6 +37,8 @@ interface Props {
   onDraft: (d: MarkDraft, active: number) => void
   /** 松手时发现只是误点了一下，退回按下之前 */
   onCancel: () => void
+  /** 删掉第 i 处（标号牌上的 ×） */
+  onDrop: (i: number) => void
   /** 压在画面底边的那条浮动工具行：笔刷粗细、撤回、清除。手势不往画面上漏 */
   tools?: ReactNode
   /** 压在画面底边的那条细进度条 */
@@ -52,7 +54,7 @@ interface Props {
   aspect: number | null
 }
 /** 画面区：真视频打底，标记画在上面。所有手势都在这里，草稿一律整份回传给弹窗。 */
-export default function MarkStage({ mat, video, tool, brush, draft, second, head, active, paused, playing, veil, loading, onTogglePlay, onBegin, onDraft, onCancel, tools, scrub, lock, ping, aspect }: Props) {
+export default function MarkStage({ mat, video, tool, brush, draft, second, head, active, paused, playing, veil, loading, onTogglePlay, onBegin, onDraft, onCancel, onDrop, tools, scrub, lock, ping, aspect }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
   /**
@@ -82,6 +84,11 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, head
     commit({ ...d, regions: d.regions.map((g, j) => j === i ? { ...g, ...r } : g) }, i)
   }
 
+  /**
+   * 按下去时 preventDefault 掐掉了默认的聚焦，这里手动把焦点收到画面上：
+   * 选中一处之后按 ⌫ / Delete 要有人接 —— 焦点留在别处，这一下就落到画布上去删整个节点了。
+   */
+  const focusStage = () => box.current?.focus({ preventScroll: true })
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (veil) return
     e.preventDefault()
@@ -89,6 +96,7 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, head
     if (onBegin(t) === false) return
     const [x, y] = at(e)
     capture(box.current, e.pointerId)
+    focusStage()
     const d = live.current
     if (tool === 'brush') {
       // 同一秒只有一个画笔区域：再涂一笔是往它里面加，不是又开一处 —— 清单和轨道上都只记一条
@@ -117,6 +125,7 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, head
     const [x, y] = at(e)
     const r = region.rect
     capture(box.current, e.pointerId)
+    focusStage()
     // 拖角就是从对角重新拉一个框，和新建走同一条路
     drag.current = handle
       ? { mode: 'rect', i, x0: handle === 'nw' || handle === 'sw' ? r[0] + r[2] : r[0], y0: handle === 'nw' || handle === 'ne' ? r[1] + r[3] : r[1] }
@@ -150,11 +159,11 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, head
    * 能圈的那块画面只剩中间窄窄一条 —— 而这块屏存在的意义就是「在上面圈准一块地方」。
    * 量不到（poster 还没加载、或者压根没有）时退回 9:16：这块画布上的视频就是竖屏的。
    */
-  return <div ref={box} className={`mark-stage${veil ? ' off' : ''}`}
+  return <div ref={box} tabIndex={-1} className={`mark-stage${veil ? ' off' : ''}`}
     style={{ cursor: veil ? 'default' : lock ? 'not-allowed' : 'crosshair', aspectRatio: aspect || 9 / 16 }}
     onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
     <video ref={video} src={mat.src} poster={mat.thumb} playsInline muted preload="auto" aria-label={`${mat.name} 标记画面`} />
-    <MarkArt regions={draft.regions} at={litAt} active={active} onBoxDown={boxDown} />
+    <MarkArt regions={draft.regions} at={litAt} active={active} onBoxDown={boxDown} onDrop={veil ? undefined : onDrop} />
     {paused && !veil && <span className="mark-paused">已暂停在 <b>{timecode(second)}</b></span>}
     {/* 标不了的时候说一句：平时只在暂停且鼠标在画面上时露出来；按了一下没画出东西，就闪一下 */}
     {!veil && lock && (ping > 0 || !playing) &&

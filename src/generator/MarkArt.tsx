@@ -1,4 +1,5 @@
 import type { PointerEvent } from 'react'
+import { IcClose } from '../ui/icons'
 import { BRUSH_WIDTH, timecode, type MarkRegion } from './marks'
 /** 画面一律 16:9，viewBox 用 160×90 而不是 0..1：等比缩放，笔迹的圆头才不会被压扁。 */
 const VW = 160, VH = 90
@@ -12,12 +13,14 @@ interface Props {
   active?: number
   /** 只读的地方（chip、悬浮卡、清单）不挂交互，也不画标号和手柄 */
   onBoxDown?: (e: PointerEvent<HTMLElement>, i: number, handle: Handle | null) => void
+  /** 删掉第 i 处：正在编辑的那个框，标号牌末尾长出一枚 × */
+  onDrop?: (i: number) => void
 }
 /**
  * 标记的唯一渲染处：框是绝对定位的 DOM（要拖要缩要聚焦，比 canvas 命中测试省太多），
  * 笔迹是同一层里的 SVG。坐标全归一化，所以 22px 的 chip 和满屏的画面共用这一份 markup。
  */
-export default function MarkArt({ regions, at, active, onBoxDown }: Props) {
+export default function MarkArt({ regions, at, active, onBoxDown, onDrop }: Props) {
   const lit = (r: MarkRegion) => at == null || Math.abs(r.t - at) < 0.5
   const strokes = regions.filter((r) => r.tool === 'brush' && r.strokes?.length)
   return <div className="mark-art" aria-hidden={!onBoxDown || undefined}>
@@ -42,7 +45,12 @@ export default function MarkArt({ regions, at, active, onBoxDown }: Props) {
           * 标上常驻「区域 n · 时间码」：框是圈在某一秒上的，不悬停也该读得出是哪一秒的哪一处。
           * 编号按 draft.regions 的次序数，跨秒也连着数下去，所以拖时间轴时同一块地方始终是同一个号。
           */}
-        <span className={`mark-box-label${r.rect[1] < 0.1 ? ' inside' : ''}`}>区域 {i + 1} · {timecode(r.t)}</span>
+        <span className={`mark-box-label${r.rect[1] < 0.1 ? ' inside' : ''}`}>区域 {i + 1}<i>{timecode(r.t)}</i>
+          {/* 只有选中的那个框才有 ×：每个框都挂一枚，画面上就是一排叉；键盘上 ⌫ / Delete 是同一件事 */}
+          {active === i && onDrop && <button type="button" className="mark-box-x" aria-label={`删除区域 ${i + 1}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onDrop(i) }}><IcClose size={10} /></button>}
+        </span>
         {HANDLES.map((h) => <i key={h} className={`mark-grip ${h}`} onPointerDown={(e) => onBoxDown(e, i, h)} />)}
       </>}
     </div>)}
