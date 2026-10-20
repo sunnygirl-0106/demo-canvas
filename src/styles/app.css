@@ -453,10 +453,6 @@ input,textarea{font:inherit;color:inherit}
  */
 .nd-wm{position:absolute;right:.82em;bottom:.73em;font-size:calc(11px * var(--zk));
   color:rgba(255,255,255,.5);letter-spacing:.4px}
-.nd-preview{position:absolute;right:.73em;bottom:.73em;height:2em;padding:0 .82em;border-radius:var(--r-pill);
-  background:rgba(0,0,0,.6);color:var(--ink);font-size:calc(11px * var(--zk));
-  display:flex;align-items:center;gap:.36em}
-.nd-preview svg{width:1.09em;height:1.09em}
 .nd-text{position:absolute;inset:0;padding:14px 16px;font-size:13px;line-height:1.65;color:var(--ink-1);
   white-space:pre-wrap;overflow:auto}
 .nd-text.ph{color:var(--ink-3)}
@@ -569,7 +565,8 @@ input,textarea{font:inherit;color:inherit}
  * 少了这两下，四个按钮各窄 3px，整条比稿子短一截、图标也贴着自己那侧的内边距。
  * 不能改成给 svg 一个 22 的宽度：svg 会跟着 CSS 宽度整枚放大，墨迹就从 14 涨到 16.5。
  */
-.vtool button>svg,.vtool a>svg{flex:none;margin:0 1.5px;opacity:.7;transition:opacity .2s}
+/* 图标和文字同一个颜色（都读 currentColor）：原先压到 70% 不透明，整排读着像灰掉了一半 */
+.vtool button>svg,.vtool a>svg{flex:none;margin:0 1.5px}
 /*
  * 亮起来的那一枚 —— hover 和「正开着」用的是同一套，不是两档深浅。
  *
@@ -603,8 +600,6 @@ input,textarea{font:inherit;color:inherit}
 @media (prefers-reduced-motion:reduce){
   .vtool button,.vtool a,.vtool button:active,.vtool a:active{animation:none;transform:none}
 }
-.vtool button:not([aria-disabled=true]):hover>svg,.vtool a:hover>svg,
-.vtool button[aria-expanded=true]>svg{opacity:.95}
 /*
  * 宽出来的这一圈**只给真正开着的那一枚**，hover 不动内边距。
  * 19 是稿子里量得出来的：整块 142 宽 = 19×2 + 图标 22 + 7.6 + 标签 50.8 + 7.6 + 版本数 15.2，
@@ -618,6 +613,39 @@ input,textarea{font:inherit;color:inherit}
   min-width:15px;height:15px;padding:0 3px;border-radius:5px;
   font:700 8.5px/1 var(--num);font-variant-numeric:tabular-nums;color:rgba(255,255,255,.82);
   background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.14)}
+
+/*
+ * 图片节点那条：外壳和动效全是 .vtool 的，这里只补它多出来的几样 ——
+ * 一条分组竖线、只有图标的方块按钮、下拉的小箭头。
+ *
+ * 开着下拉的那一枚不加宽：视频那条只有一枚会「开着」，加宽是它浮起来的由来；
+ * 这条有三枚带下拉，每开一个都把后面整排推走一截，鼠标就追不上自己要点的那一枚了。
+ */
+.itool button[aria-expanded]{padding:0 13.5px}
+.itool .ic,.itool button.ic[aria-expanded]{justify-content:center;min-width:32.5px;padding:0 6.25px}
+.itool .ic.has-menu,.itool button.ic.has-menu[aria-expanded]{padding:0 8px 0 7px;gap:2px}
+.itool-sep{flex:none;width:1px;height:18px;margin:0 5px;background:rgba(255,255,255,.14)}
+.itool-caret{display:flex;margin-left:-3px;font-style:normal;transition:transform .2s var(--ease-soft)}
+.itool button[aria-expanded=true] .itool-caret{transform:rotate(180deg)}
+.itool-menu{min-width:156px}
+.itool-menu svg{flex:none}
+.itool-more{margin-left:auto;display:flex;color:var(--ink-3)}
+/* 工具箱：按用途分三组，每组两列；画面推演单独一行，四个时间点按先后排开 */
+.overlay.itool-box{width:468px;padding:14px;border-radius:16px;display:flex;flex-direction:column;gap:14px}
+.itool-box h4{margin:0 0 6px;padding:0 4px;font-size:12px;font-weight:400;color:var(--ink-3)}
+.itool-box-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+.itool-box-grid button{display:flex;align-items:center;gap:10px;height:40px;padding:0 8px;border-radius:10px;
+  font-size:13px;color:var(--ink);white-space:nowrap;cursor:pointer;transition:background .16s}
+.itool-box-grid button:hover{background:var(--fill-2)}
+.itool-tile{flex:none;display:flex;align-items:center;justify-content:center;width:28px;height:28px;
+  border-radius:8px;background:var(--fill-2)}
+.itool-beta{font-style:normal;font-size:10px;line-height:16px;padding:0 5px;border-radius:4px;
+  background:rgba(240,179,90,.18);color:#f0b35a}
+.itool-infer{display:flex;align-items:center;gap:6px;height:40px;padding:0 8px}
+.itool-infer .itool-tile{margin-right:4px}
+.itool-infer button{flex:1;height:30px;border-radius:8px;font-size:12px;color:var(--ink);white-space:nowrap;
+  background:var(--fill);border:1px solid var(--line-2);cursor:pointer;transition:background .16s}
+.itool-infer button:hover{background:var(--fill-3)}
 
 
 /* ═══ 生成器面板 ═══════════════════════════════════════════ */

@@ -65,9 +65,15 @@ interface Props {
    * 左对齐会让浮层整个往右探出去，压在旁边那个节点上。
    */
   align?: 'start' | 'end'
+  /**
+   * 先往下长：下拉菜单（工具栏上那几枚带 ▾ 的）就该从按钮底下掉出来，
+   * 默认那套「上方放得下就放上方」会让它往上弹，箭头指着下、菜单却跑到头顶。
+   * 下面放不下才翻到上面。
+   */
+  below?: boolean
 }
 /** 所有浮层按视窗避让；交互浮层支持 Escape、焦点圈定及关闭后焦点恢复。 */
-export default function Overlay({ children, onClose, label, anchor, className = '', modal = false, passive = false, tail = false, side = false, sideLock = false, tailNear, onShift, track, sideAlign = 'center', center = false, align = 'start', onMouseEnter, onMouseLeave }: Props) {
+export default function Overlay({ children, onClose, label, anchor, className = '', modal = false, passive = false, tail = false, side = false, sideLock = false, tailNear, onShift, track, sideAlign = 'center', center = false, align = 'start', below = false, onMouseEnter, onMouseLeave }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef(onClose); close.current = onClose
   // 和 onClose 同一个办法：放进 ref，免得外面每次渲染换一个新函数就把整段定位重跑一遍
@@ -135,7 +141,9 @@ export default function Overlay({ children, onClose, label, anchor, className = 
         }
       }
       const gap = tail ? 11 : center ? 9 : 8
-      const above = a.top - r.height - gap >= 12
+      const fitsAbove = a.top - r.height - gap >= 12
+      const fitsBelow = a.bottom + gap + r.height <= window.innerHeight - 12
+      const above = below ? !fitsBelow && fitsAbove : fitsAbove
       const top = above ? a.top - r.height - gap : Math.min(a.bottom + gap, window.innerHeight - r.height - 12)
       const want = tail || center ? a.left + a.width / 2 - r.width / 2 : align === 'end' ? a.right - r.width : a.left
       const left = Math.max(12, Math.min(want, window.innerWidth - r.width - 12))
@@ -170,7 +178,7 @@ export default function Overlay({ children, onClose, label, anchor, className = 
       window.removeEventListener('resize', replay); window.removeEventListener('scroll', replay, true)
       if (!passive && restore?.isConnected) restore.focus({ preventScroll: true })
     }
-  }, [anchor, passive, tail, side, sideLock, tailNear, sideAlign, center, align])
+  }, [anchor, passive, tail, side, sideLock, tailNear, sideAlign, center, align, below])
   /*
    * 锚点动了就重贴一次，但不再推画布 —— 画布是被用户（或别处的镜头动画）拖着走的，
    * 浮层此刻的本分是跟住它指的那个东西，不是把它拽回来。
