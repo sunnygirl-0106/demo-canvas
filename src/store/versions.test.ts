@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useCanvas } from './canvas'
+import { landTool } from '../nodes/videoTools'
 import { heldBy, useVersions, versionGroups, versionsOf, type VersionTask } from './versions'
 
 const media = (src: string) => ({ src, poster: `${src}.jpg`, dur: 5 })
@@ -146,4 +147,34 @@ describe('版本归属', () => {
     expect(v().records.map((r) => [r.id, r.no])).toEqual([['a-v1', 1], ['a-v2', 2], ['b-v1', 1]])
     expect(heldBy(v().records, 'A')!.id).toBe('a-v2')
   })
+})
+
+
+it('工具产物归入源视频的直接派生层，baseNo 固定在点击时而非出片时', () => {
+  const canvas = useCanvas.getState()
+  const source = canvas.addNode('video', { x: 0, y: 0 }, media('a1.mp4'))
+  const baseNo = v().baseNoOf(source)
+  const kid = canvas.spawnTool(source, 'upscale', '2160p', baseNo)!
+  record('a2', source, null, 'a2.mp4', gen)
+  canvas.updateNode(source, media('a2.mp4'))
+  expect(v().baseNoOf(source)).toBe(2)
+  landTool(kid)
+  const derived = versionGroups(v().records, source).derived
+  expect(derived).toHaveLength(1)
+  expect(derived[0]).toMatchObject({ nodeId: kid, sourceNodeId: source, baseNo: 1,
+    task: null, tool: { kind: 'upscale', resolution: '2160p' } })
+  expect(versionsOf(v().records, source)).toHaveLength(3)
+  const grandchild = canvas.spawnTool(kid, 'mocap', undefined, v().baseNoOf(kid))!
+  landTool(grandchild)
+  expect(versionsOf(v().records, source)).toHaveLength(3)
+  expect(versionGroups(v().records, kid).derived[0].tool).toEqual({ kind: 'mocap' })
+  v().addToCanvas(derived[0].id)
+  expect(v().records[v().records.length - 1].tool).toEqual({ kind: 'upscale', resolution: '2160p' })
+  expect(versionsOf(v().records, source)).toHaveLength(3)
+})
+
+it('示例版本可以携带工具参数', () => {
+  v().seed([{ id: 'tool', nodeId: 'B', name: '动作捕捉1', sourceNodeId: 'A', baseNo: 1,
+    createdAt: Date.now(), media: media('b.mp4'), task: null, tool: { kind: 'mocap' } }])
+  expect(versionsOf(v().records, 'A')[0]).toMatchObject({ no: 1, tool: { kind: 'mocap' } })
 })

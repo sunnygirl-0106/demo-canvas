@@ -16,10 +16,9 @@ export interface MarkShot {
   /** 还没画出来时是 undefined，面板上先摆一个占位方块 */
   url?: string
 }
-const round = (n: number) => n.toFixed(3)
 /** 这一秒的标记长什么样。动了一个框、多画一笔，这一串就不一样，缓存自然失效。 */
-const sign = (t: number, regions: MarkRegion[]) => `${t}|` + regions.map((r) =>
-  `${r.tool}:${r.rect.map(round).join(',')}:${(r.strokes ?? []).map((st) => st.length).join('.')}`).join('/')
+const sign = (t: number, regions: MarkRegion[]) => JSON.stringify([t, regions.map((r) =>
+  [r.tool, r.rect, r.width ?? BRUSH_WIDTH, r.strokes ?? []])])
 /**
  * 要截哪几张：把所有组里的标记按秒归拢，一秒一张，按时间先后排。
  * 组只是弹窗会话的容器，参考图关心的是画面 —— 两次会话圈在同一秒上，画的是同一帧。
@@ -81,8 +80,9 @@ export function markShot(src: string, t: number, regions: MarkRegion[]): Promise
     img.onerror = () => reject(new Error('frame'))
     img.src = frame
   }))
-  job.catch(() => cache.delete(k))
+  job.catch(() => { if (cache.get(k) === job) cache.delete(k) })
   cache.set(k, job)
+  if (cache.size > 64) cache.delete(cache.keys().next().value!)
   return job
 }
 /** 参考图上读出来的那一句：给读屏和悬浮卡用。 */
@@ -100,15 +100,22 @@ export function useMarkShots(src: string | undefined, marks: MarkGroup[]): MarkS
   useEffect(() => {
     if (!src) return
     let alive = true
-    for (const s of live.current) {
-      if (urls[s.key]) continue
-      markShot(src, s.t, s.regions).then((url) => {
-        if (alive) setUrls((m) => (m[s.key] === url ? m : { ...m, [s.key]: url }))
-      }, () => undefined)
-    }
-    return () => { alive = false }
+    // 拖框、涂画期间先显示草稿；停手后再编码参考图，避免每次 pointermove 都生成大图。
+    const timer = setTimeout(() => {
+      for (const s of live.current) {
+        const key = `${src}#${s.key}`
+        if (urls[key]) continue
+        markShot(src, s.t, s.regions).then((url) => {
+          if (alive) setUrls((m) => Object.fromEntries(live.current.map((p) => {
+            const k = `${src}#${p.key}`
+            return [k, k === key ? url : m[k]]
+          }).filter((entry): entry is [string, string] => !!entry[1])))
+        }, () => undefined)
+      }
+    }, 120)
+    return () => { alive = false; clearTimeout(timer) }
     // urls 只用来跳过已经画好的那几张，不该因为它变了就再跑一遍
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, sig])
-  return plan.map((s) => ({ ...s, url: urls[s.key] }))
+  return plan.map((s) => ({ ...s, url: urls[`${src}#${s.key}`] }))
 }

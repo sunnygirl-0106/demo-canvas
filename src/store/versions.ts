@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { boxFor, EMPTY_VIDEO_RATIO, useCanvas } from './canvas'
+import { boxFor, EMPTY_VIDEO_RATIO, useCanvas, type ToolKind, type UpscaleRes } from './canvas'
 import type { Seg } from '../generator/promptDoc'
 import type { Mode, Model } from '../generator/materialLayout'
 
@@ -40,6 +40,7 @@ export interface VersionRecord {
   createdAt: number
   media: { src: string; poster?: string; dur?: number }
   task: VersionTask | null         // 上传 / 示例带进来的原画面没有任务记录
+  tool?: { kind: ToolKind; resolution?: UpscaleRes }
   /**
    * 这一版是「添加到画布」从哪一条记录抄过来的（§4.1）。
    * 抄出来的那一版沿用原版本的类型、提示词和来源，可它不是源视频又做了一次衍生 ——
@@ -89,7 +90,7 @@ export function versionGroups(records: VersionRecord[], nodeId: string) {
   }
 }
 
-type RecordInput = Pick<VersionRecord, 'id' | 'nodeId' | 'sourceNodeId' | 'baseNo' | 'media' | 'task'>
+type RecordInput = Pick<VersionRecord, 'id' | 'nodeId' | 'sourceNodeId' | 'baseNo' | 'media' | 'task' | 'tool'>
 
 interface VersionStore {
   records: VersionRecord[]
@@ -159,7 +160,7 @@ export const useVersions = create<VersionStore>((set, get) => ({
       records: [...s.records, {
         id: nanoid(), no: 1, nodeId: id, name,
         sourceNodeId: from.sourceNodeId, baseNo: from.baseNo, copiedFrom: from.id,
-        createdAt: Date.now(), media: { ...from.media }, task: from.task,
+        createdAt: Date.now(), media: { ...from.media }, task: from.task, tool: from.tool,
       }],
     }))
   },

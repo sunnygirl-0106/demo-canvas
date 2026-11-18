@@ -12,6 +12,7 @@ import { useTip } from '../generator/useTip'
 import MediaPreview from '../generator/MediaPreview'
 import { shotBox, useAspect, useHover } from '../generator/hoverShot'
 import VersionShot from './VersionShot'
+import { TOOL_LABEL } from './videoTools'
 
 /**
  * 整只气泡的缩放。下面所有的数（和 app.css 里的 --vp-k）都是稿子上的原值，
@@ -28,9 +29,9 @@ const ic = (n: number) => Math.round(n * K)
 const no2 = (n: number) => String(n).padStart(2, '0')
 
 /** 便签和筛选是同一个词：这一版是怎么产出的 */
-type Op = '生成' | '编辑' | '延长' | '上传'
+type Op = '生成' | '编辑' | '延长' | '上传' | '动作捕捉' | '超清'
 const opOf = (r: VersionRecord): Op =>
-  !r.task ? '上传' : r.task.mode === 'edit' ? '编辑' : r.task.mode === 'extend' ? '延长' : '生成'
+  r.tool ? r.tool.kind === 'mocap' ? '动作捕捉' : '超清' : !r.task ? '上传' : r.task.mode === 'edit' ? '编辑' : r.task.mode === 'extend' ? '延长' : '生成'
 /** 今天的只写时分，其余写月日 */
 const when = (t: number) => {
   const d = new Date(t), hm = `${no2(d.getHours())}:${no2(d.getMinutes())}`
@@ -58,6 +59,12 @@ const durOf = (r: VersionRecord) =>
  * 没有配音开关的型号不摆「音频」那一行 —— 一栏恒为「无声」说的不是这次任务，是这个型号。
  */
 const specsOf = (r: VersionRecord, ratio?: number): [string, string][] => {
+  if (r.tool) {
+    const rows: [string, string][] = [['工具', TOOL_LABEL[r.tool.kind]]]
+    if (r.tool.kind === 'upscale' && r.tool.resolution) rows.push(['清晰度', r.tool.resolution])
+    rows.push(['画幅', ratio && ratio > 0 ? ratioNear(ratio) : ''], ['时长', durOf(r)])
+    return rows.filter(([, v]) => v)
+  }
   if (!r.task) return ([['时长', durOf(r)]] as [string, string][]).filter(([, v]) => v)
   const cap = MODEL_CAPABILITIES[r.task.model]
   const rows: [string, string][] = [
@@ -214,7 +221,7 @@ export default function VersionsDialog({ nodeId, name, onClose }:
 
   // 次序（当下这一版排头、其次本视频、最后衍生视频）归 versionGroups 管，这儿只按类型分档
   const { own, derived: der } = versionGroups(records, nodeId)
-  const groups = { all: [...own, ...der], own, edit: der.filter((r) => opOf(r) === '编辑'), extend: der.filter((r) => opOf(r) === '延长') }
+  const groups = { all: [...own, ...der], own: own.filter((r) => !r.tool), edit: der.filter((r) => opOf(r) === '编辑'), extend: der.filter((r) => opOf(r) === '延长') }
   const list = groups[pick]
 
   const current = records.find((r) => r.id === open) ?? null
@@ -472,7 +479,7 @@ export default function VersionsDialog({ nodeId, name, onClose }:
               {src && <span className="vp-srcline">基于
                 <SourceShot poster={src.media.poster} label={verOf(src)} card={setSrcCard}
                   onOpen={() => setZoomed(src.id)} />
-                {opOf(current) === '延长' ? '延长' : '修改'}</span>}
+                {current.tool ? opOf(current) : opOf(current) === '延长' ? '延长' : '修改'}</span>}
             </p>
             {/*
               提示词是一口常驻的井：一道边、一块比浮层更深的底，界线自己说清楚「话到哪儿为止」。
@@ -483,7 +490,7 @@ export default function VersionsDialog({ nodeId, name, onClose }:
             <div className="vp-pbox">
               <p className="vp-label">提示词
                 {/* 只在压上这一块时露出来：静止态这一页上该只有画面和那段话 */}
-                {prompt && <button className="vp-copy" onClick={copy}>
+                {!current.tool && prompt && <button className="vp-copy" onClick={copy}>
                   {copied ? <IcCheck size={ic(12)} sw={2} /> : <IcCopy size={ic(12)} sw={1.7} />}
                   {copied ? '已复制' : '复制'}</button>}
               </p>
@@ -497,7 +504,7 @@ export default function VersionsDialog({ nodeId, name, onClose }:
                 不摊成一串「@00:00–00:04」的文字 —— 那是念给模型听的样子，不是给人读的。
                 「复制」抄走的仍是念出来的那一份纯文字。
               */}
-              {prompt
+              {current.tool ? <p className="vp-blank">工具箱任务，无提示词</p> : prompt
                 ? <p className="vp-prompt" ref={pbox}>{task?.doc.length
                   ? task.doc.map((seg, i) => seg.t === 'text' ? <span key={i}>{seg.v}</span>
                     : <span key={i} className="vp-seg"><PromptSeg s={seg} doc={task.doc} mat={srcMat} get={get}

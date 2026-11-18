@@ -29,7 +29,7 @@ function Shot({ mat, t, regions, ratio }: { mat: Mat; t: number; regions: MarkRe
   return <span className="mark-shot" style={{ '--ar': ar } as CSSProperties}>
     <span className="mark-shot-in" style={crop(regions, ar)}>
       <img src={useFrame(mat.src, t, mat.thumb)} alt="" />
-      <MarkArt regions={regions} />
+      <MarkArt regions={regions} aspect={ar} />
     </span>
   </span>
 }

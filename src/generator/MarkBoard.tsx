@@ -21,7 +21,7 @@ const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(ma
  */
 const sign = (d: MarkDraft) => JSON.stringify([
   d.ranges.map((r) => [r.start, r.end]),
-  d.regions.map((r) => [r.t, r.tool, r.rect, r.strokes ?? null]),
+  d.regions.map((r) => [r.t, r.tool, r.rect, r.strokes ?? null, r.width]),
 ])
 /**
  * 专注态节点上那半截：原片摆在上面，「整段视频 / 指定片段」和时间轴长在画面下面。
@@ -367,7 +367,7 @@ function VideoWiring({ video, src, name, onHead, onPlaying, onSecond, onBroken, 
       void v.play().catch(() => undefined)
     }
     // 暂停到的每一秒顺手存一张干净帧：句子里的 chip 立刻就有图，不用再解一遍视频
-    const seeked = () => { if (box.current.src) warmFrame(v, box.current.src, Math.round(v.currentTime)) }
+    const seeked = () => { if (box.current.src) warmFrame(v, box.current.src) }
     const fail = () => onBroken(mediaFailure('视频', name, MEDIA_FAIL.read))
     /* 挂上来时元素可能已经读完了（换个源、组件重挂）—— 那就不会再有 loadedmetadata 可等，当场报一次 */
     const meta = () => { if (Number.isFinite(v.duration)) onReady(v.duration) }

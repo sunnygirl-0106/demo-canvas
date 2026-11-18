@@ -5,6 +5,9 @@ import {
 } from '@xyflow/react'
 import { customAlphabet } from 'nanoid'
 
+export type ToolKind = 'mocap' | 'upscale'
+export type UpscaleRes = '720p' | '1080p' | '2160p'
+
 export type NodeKind = 'text' | 'image' | 'video'
 
 export interface CanvasNodeData extends Record<string, unknown> {
@@ -19,6 +22,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   ratio?: number     // 画面真实宽高比，量自封面；节点按它摆成横的还是竖的
   busy?: boolean     // 假生成中
   operationSource?: string  // 这个节点是从哪个视频节点的「编辑 / 延长」长出来的
+  toolOp?: { kind: ToolKind; source: string; resolution?: UpscaleRes; baseNo: number | null }
+  px?: { w: number; h: number }
   renamed?: boolean  // 名字是用户手打的：自动命名不再改口
 }
 
@@ -30,6 +35,11 @@ export type CNode = Node<CanvasNodeData>
  */
 export const isFocusNode = (n: CNode) => !!n.data.operationSource && !n.data.src
 
+export const isToolPending = (n: CNode) => !!n.data.toolOp && !n.data.src
+const isPendingKid = (n: CNode, sourceId: string) =>
+  (isFocusNode(n) && n.data.operationSource === sourceId)
+  || (isToolPending(n) && n.data.toolOp?.source === sourceId)
+
 /** 专注态节点自己还没有画面，它摆的是父节点那一段。 */
 export const focusSource = (nodes: CNode[], n: CNode) =>
   isFocusNode(n) ? nodes.find((p) => p.id === n.data.operationSource) ?? null : null
@@ -38,9 +48,9 @@ export const focusSource = (nodes: CNode[], n: CNode) =>
 export const newId = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 4)
 
 export const KIND_NAME: Record<NodeKind, string> = { text: '文本节点', image: '图片节点', video: '视频节点' }
-/** 名字分五本账：三类节点各一本，编辑 / 延长出来的视频各一本（和从谁改出来的无关）。 */
-export type NameKind = NodeKind | 'edit' | 'extend'
-export const NAME_OF: Record<NameKind, string> = { ...KIND_NAME, edit: '编辑视频', extend: '延长视频' }
+/** 名字按入口各自记账：不同用途的视频不抢同一串编号（和从谁改出来的无关）。 */
+export type NameKind = NodeKind | 'edit' | 'extend' | ToolKind
+export const NAME_OF: Record<NameKind, string> = { ...KIND_NAME, edit: '编辑视频', extend: '延长视频', mocap: '动作捕捉', upscale: '超清视频' }
 /**
  * 画布上按类型从 1 开始编号：视频节点1、视频节点2……
  * 名字就是它当素材时的名字（name 和 assetName 一直是同一个），两处不分家 ——
@@ -52,7 +62,7 @@ export const NAME_OF: Record<NameKind, string> = { ...KIND_NAME, edit: '编辑�
  * 删掉也不回退：编号是用来区分的，不是一份连号的清单。
  */
 export const seqOf = (nodes: CNode[]): Record<NameKind, number> => {
-  const seq = { text: 0, image: 0, video: 0, edit: 0, extend: 0 }
+  const seq = { text: 0, image: 0, video: 0, edit: 0, extend: 0, mocap: 0, upscale: 0 }
   for (const n of nodes) {
     const name = String(n.data.name ?? '')
     for (const k of Object.keys(seq) as NameKind[]) {
@@ -151,7 +161,7 @@ const rightOf = (n: CNode) => n.position.x + (Number(n.style?.width) || VIDEO_NO
  * 没量过按它那个比例推一个 —— 写死一个数的话，竖片和专注态的节点都会被压在一起。
  */
 const bottomOf = (n: CNode) => n.position.y + (n.measured?.height
-  ?? (kindOf(n) === 'video' ? boxFor(Number(n.data.ratio) || EMPTY_VIDEO_RATIO).height : 200))
+  ?? (kindOf(n) === 'video' ? boxFor(Number(n.data.ratio) || (isToolPending(n) ? 9 / 16 : EMPTY_VIDEO_RATIO)).height : 200))
 /**
  * 同一个源视频再派生一个子节点时，新的落在哪条线上：已经挂在它右边的那些节点之下。
  * 和截帧那一套（spawnShot）同一个规矩 —— 点两次「局部编辑」不该叠成一个。
@@ -168,7 +178,7 @@ function belowKids(nodes: CNode[], edges: Edge[], source: CNode) {
 function withFocusKids(nodes: CNode[], gone: Set<string>) {
   const out = new Set(gone)
   for (const n of nodes) {
-    if (isFocusNode(n) && out.has(String(n.data.operationSource))) out.add(n.id)
+    if ([...out].some((id) => isPendingKid(n, id))) out.add(n.id)
   }
   return out
 }
@@ -190,7 +200,7 @@ interface CanvasStore {
   clipboard: Snap | null
   past: Snap[]
   future: Snap[]
-  /** 五本名字账的当前号（见 seqOf）：只往上走，删节点不回退 */
+  /** 各本名字账的当前号（见 seqOf）：只往上走，删节点不回退 */
   seq: Record<NameKind, number>
 
   onNodesChange: (c: NodeChange<CNode>[]) => void
@@ -211,6 +221,8 @@ interface CanvasStore {
   disconnect: (edgeId: string) => void
   /** 点右 ⊕（不拖）：紧挨着源节点右边新建一个空视频节点并连上 */
   spawnDownstream: (source: string, name?: string, width?: number) => string | null
+  /** baseNo 由入口读取，避免画布与版本 store 相互依赖。 */
+  spawnTool: (source: string, kind: ToolKind, resolution?: UpscaleRes, baseNo?: number | null) => string | null
   /** 截一帧：右侧长出一个图片节点，画面就是那一帧，并连回源视频 */
   spawnShot: (source: string, name: string, shot: string) => string | null
   /** 量出素材真实比例后把节点摆成那个形状（不进撤销栈） */
@@ -222,6 +234,11 @@ interface CanvasStore {
   setAll: (s: Snap) => void
 }
 
+// 与 claimName 共用发号规则，工具节点把名字账和节点放在同一次提交里，订阅者不会读到半成品。
+const nextName = (seq: Record<NameKind, number>, kind: NameKind) => ({
+  name: `${NAME_OF[kind]}${seq[kind] + 1}`, seq: { ...seq, [kind]: seq[kind] + 1 },
+})
+
 const kindOf = (n: CNode) => (n.type || 'text') as NodeKind
 
 export const useCanvas = create<CanvasStore>((set, get) => ({
@@ -232,7 +249,7 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
   clipboard: null,
   past: [],
   future: [],
-  seq: { text: 0, image: 0, video: 0, edit: 0, extend: 0 },
+  seq: { text: 0, image: 0, video: 0, edit: 0, extend: 0, mocap: 0, upscale: 0 },
 
   onNodesChange: (c) => set({ nodes: applyNodeChanges(c, get().nodes) }),
   onEdgesChange: (c) => set({ edges: applyEdgeChanges(c, get().edges) }),
@@ -292,7 +309,7 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
       const name = get().claimName(kindOf(n))
       // 粘贴出来的是一个新的独立节点：它不是谁的操作节点，名字也是新发的编号而不是手打的那个
       return { ...n, id, position, selected: true,
-        data: { ...n.data, name, assetName: name, renamed: undefined, operationSource: undefined } }
+        data: { ...n.data, name, assetName: name, renamed: undefined, operationSource: undefined, toolOp: undefined } }
     })
     const edges = clip.edges.map((e) => ({
       ...e,
@@ -342,7 +359,7 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
     // 删掉的线里有通向还没出片的快捷入口子节点的，子节点跟着一起走（和 disconnect 同一条规矩）
     for (const e of edges) {
       if (!delE.has(e.id)) continue
-      const kid = nodes.find((n) => n.id === e.target && isFocusNode(n) && n.data.operationSource === e.source)
+      const kid = nodes.find((n) => n.id === e.target && isPendingKid(n, e.source))
       if (kid) gone.add(kid.id)
     }
     const delN = withFocusKids(nodes, gone)
@@ -374,7 +391,7 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
      * 它自己没有画面，摆的是源节点那一段 —— 线断了，它连要改什么都指不出来。
      * 和剪线这一下进同一个撤销快照：⌘Z 一次把线和节点一起接回来。
      */
-    const kid = nodes.find((n) => n.id === cut.target && isFocusNode(n) && n.data.operationSource === cut.source)
+    const kid = nodes.find((n) => n.id === cut.target && isPendingKid(n, cut.source))
     set({
       nodes: kid ? nodes.filter((n) => n.id !== kid.id) : nodes,
       edges: edges.filter((e) => e.id !== edgeId && (!kid || (e.source !== kid.id && e.target !== kid.id))),
@@ -397,6 +414,27 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
       }],
       edges: addEdge({ id: `e-${source}-${id}`, source, target: id, type: 'dashed' }, s.edges),
     }))
+    return id
+  },
+
+  spawnTool: (source, kind, resolution, baseNo = null) => {
+    const { nodes, edges, seq } = get()
+    const src = nodes.find((n) => n.id === source)
+    if (!src) return null
+    get().snapshot()
+    const id = newId()
+    const claimed = nextName(seq, kind)
+    set({
+      seq: claimed.seq,
+      nodes: [...nodes.map((n) => ({ ...n, selected: false })), {
+        id, type: 'video', selected: true,
+        position: { x: rightOf(src), y: belowKids(nodes, edges, src) },
+        style: { width: boxFor(src.data.ratio || 9 / 16).width },
+        data: { name: claimed.name, assetName: claimed.name, ratio: src.data.ratio,
+          toolOp: { kind, source, resolution, baseNo } },
+      }],
+      edges: addEdge({ id: `e-${source}-${id}`, source, target: id, type: 'dashed' }, edges),
+    })
     return id
   },
 
@@ -444,9 +482,9 @@ export const useCanvas = create<CanvasStore>((set, get) => ({
   setHoverMat: (id) => set({ hoverMat: id }),
   setOpenVersions: (id) => set({ openVersions: id }),
   claimName: (kind) => {
-    const no = get().seq[kind] + 1
-    set((s) => ({ seq: { ...s.seq, [kind]: no } }))
-    return `${NAME_OF[kind]}${no}`
+    const claimed = nextName(get().seq, kind)
+    set({ seq: claimed.seq })
+    return claimed.name
   },
   // 场景自己带着默认名进来（视频节点3、编辑视频1…）：从那儿接着往下数，别和已经摆着的撞号
   setAll: (s) => set({ nodes: s.nodes, edges: s.edges, past: [], future: [],

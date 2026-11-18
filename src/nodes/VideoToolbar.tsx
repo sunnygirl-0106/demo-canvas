@@ -1,13 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { NodeToolbar, Position } from '@xyflow/react'
 import { IcDownload, IcHistory, IcPencil, IcPlus } from '../ui/icons'
-import { connOf, focusWidthFor, useCanvas } from '../store/canvas'
+import { connOf, focusWidthFor, useCanvas, type CanvasNodeData, type ToolKind, type UpscaleRes } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { useVersions, versionsOf } from '../store/versions'
 import { matOf } from '../demo/assets'
 import { FOCUS_MODEL, sourceEntryReason } from '../generator/materialLayout'
 import { useTip } from '../generator/useTip'
 import VersionsDialog from './VersionsDialog'
+import Overlay from '../generator/Overlay'
+import ToolIcon from './ToolIcon'
+import { TOOL_LABEL, UPSCALE_OPTIONS, toolEntryReason, upscaleAllBlocked, upscaleBlockedReason } from './videoTools'
 /**
  * 工具栏要避开的那一截：节点名字那行（.nd-head）是绝对定位摆在**节点框外面**的，
  * top:-24、高 22，也就是占了节点上方 −24…−2 这一段；react-flow 量的节点框只到画面，
@@ -17,6 +20,70 @@ import VersionsDialog from './VersionsDialog'
  */
 const HEAD_CLEAR = 24 + 8
 
+function Toolbox({ anchor, data, onPick, onClose }: {
+  anchor: RefObject<HTMLButtonElement>; data: CanvasNodeData
+  onPick: (kind: ToolKind, res?: UpscaleRes) => void; onClose: () => void
+}) {
+  const { tip, node: tipNode } = useTip()
+  const [sub, setSub] = useState(false)
+  const [flip, setFlip] = useState(false)
+  const row = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const timer = useRef<ReturnType<typeof setTimeout>>()
+  const focusSub = useRef(false)
+  const reason = toolEntryReason(data)
+  const upscaleReason = reason || upscaleAllBlocked(data.px)
+  const cancel = () => clearTimeout(timer.current)
+  const hide = () => { cancel(); setSub(false) }
+  const show = (keyboard = false) => {
+    cancel()
+    if (upscaleReason) return
+    focusSub.current = keyboard
+    setSub(true)
+    if (keyboard && sub) menu.current?.querySelector<HTMLButtonElement>('button')?.focus()
+  }
+  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => { if (upscaleReason) setSub(false) }, [upscaleReason])
+  useLayoutEffect(() => {
+    if (!sub) return
+    const place = () => {
+      if (row.current && menu.current) setFlip(row.current.getBoundingClientRect().right + 6 + menu.current.offsetWidth > window.innerWidth - 12)
+    }
+    place()
+    if (focusSub.current) menu.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [sub])
+  return <Overlay label="工具箱" below anchor={anchor} className="vhud-menu itool-menu vtool-box" onClose={onClose}>
+    <div role="menu" aria-label="工具箱">
+      <button role="menuitem" aria-disabled={!!reason} {...tip(reason || undefined)}
+        onClick={() => { if (!reason) onPick('mocap') }}><ToolIcon kind="mocap" />{TOOL_LABEL.mocap}</button>
+      <div className="vtool-subrow" ref={row}
+        onMouseEnter={() => { cancel(); if (!upscaleReason) timer.current = setTimeout(() => show(), 120) }}
+        onMouseLeave={hide}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') { e.preventDefault(); show(true) }
+          if (e.key === 'ArrowLeft') { e.preventDefault(); hide(); trigger.current?.focus() }
+        }}>
+        <button role="menuitem" ref={trigger} aria-haspopup="menu" aria-expanded={sub} aria-disabled={!!upscaleReason}
+          {...tip(upscaleReason || undefined)} onClick={(e) => show(e.detail === 0)}>
+          <ToolIcon kind="upscale" />{TOOL_LABEL.upscale}<span className="itool-more">›</span>
+        </button>
+        {/* 子菜单留在父浮层内，点选才能通过 Overlay 的 DOM 包含判断；缝隙由 CSS 接住鼠标。 */}
+        {sub && <div ref={menu} role="menu" aria-label="超清分辨率" className="vhud-menu vtool-sub" data-flip={flip || undefined}>
+          {UPSCALE_OPTIONS.map(({ res, hint }) => {
+            const blocked = upscaleBlockedReason(data.px, res)
+            return <button key={res} role="menuitem" aria-disabled={!!blocked} {...tip(blocked || undefined)}
+              onClick={() => { if (!blocked) onPick('upscale', res) }}>{res}{hint && <small>{hint}</small>}</button>
+          })}
+        </div>}
+      </div>
+    </div>
+    {tipNode}
+  </Overlay>
+}
+
 /** 为源视频创建独立下游任务，原素材保留。每次点击都新长一个子节点，先前那个照旧留在画布上。 */
 export default function VideoToolbar({ nodeId, visible, src, name, dur, versions }: {
   nodeId: string; visible: boolean; src?: string; name: string; dur?: number
@@ -25,6 +92,17 @@ export default function VideoToolbar({ nodeId, visible, src, name, dur, versions
 }) {
   /** 接不住这段视频的入口直接灰掉，理由挂在悬浮说明上 */
   const { tip, node: tipNode } = useTip()
+  const [box, setBox] = useState(false)
+  const anchor = useRef<HTMLButtonElement>(null)
+  const self = useCanvas((s) => s.nodes.find((n) => n.id === nodeId))
+  useEffect(() => { if (!visible || versions) setBox(false) }, [visible, versions])
+  const pickTool = (kind: ToolKind, res?: UpscaleRes) => {
+    const data = useCanvas.getState().nodes.find((n) => n.id === nodeId)?.data
+    if (!data || toolEntryReason(data) || (kind === 'upscale' && res && upscaleBlockedReason(data.px, res))) return
+    const baseNo = useVersions.getState().baseNoOf(nodeId)
+    useCanvas.getState().spawnTool(nodeId, kind, res, baseNo)
+    setBox(false)
+  }
   const records = useVersions((s) => s.records)
   const setVersions = (open: boolean) => useCanvas.getState().setOpenVersions(open ? nodeId : null)
   const count = versionsOf(records, nodeId).length
@@ -66,28 +144,24 @@ export default function VideoToolbar({ nodeId, visible, src, name, dur, versions
     return <button aria-disabled={!!reason} aria-label={reason ? `${label}：${reason}` : label}
       {...tip(reason || undefined)} onClick={() => { if (!reason) open(mode) }}>{icon}{label}</button>
   }
-  /**
-   * 四个入口一进来都是未点击态：这排只是摆出「能对这条视频做什么」，没有哪一件已经选中，
-   * 所以「局部修改」也不实心、不着青色 —— 亮起来的样子该留给真正进了编辑之后。
-   * 唯一会亮的是「全部版本」，而亮的条件是它那个气泡正开着，不是它被选中了。
-   *
-   * 原先在前两件和后两件之间插过一条竖线（前两件把人带进另一种状态，后两件是顺手的事）。
-   * 设计稿把它去掉了，这里跟着去掉：四件事靠间距分组本来就够，
-   * 而且现在亮起来的那一枚自带一圈底，再加一条竖线，一行里就有两套分隔在打架。
-   *
-   * 外面多一层 .vtool-ring：那圈是渐变描边，border 画不出来，得靠外层垫 1.5px 透出渐变。
-   */
+  // 外层垫出渐变描边；入口亮起只表示对应浮层正开着。
   return <NodeToolbar isVisible={visible} position={Position.Top} offset={HEAD_CLEAR}><div className="vtool-ring nodrag"><div className="vtool">
     {entry('edit', '局部编辑', <IcPencil size={19} sw={1.7} />)}
     {entry('extend', '延长视频', <IcPlus size={19} sw={1.7} />)}
+    <button ref={anchor} aria-haspopup="menu" aria-expanded={box}
+      onClick={() => { setVersions(false); setBox(!box) }}>
+      <ToolIcon kind="box" />工具箱<i className="itool-caret"><svg width="11" height="11" viewBox="0 0 24 24"
+        fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="m6 9 6 6 6-6" /></svg></i>
+    </button>
     {/* 只有一版（或一版都没有）就不摆这个数：「全部版本 1」说的是「这里只有一个」，
         而这枚入口本来就是「点进去看有哪些」—— 一个数写出来反倒像在提醒「没什么可看的」。
         两版起才有「有几版」这件事可说。 */}
-    <button aria-expanded={versions} onClick={() => setVersions(!versions)}>
+    <button aria-expanded={versions} onClick={() => { setBox(false); setVersions(!versions) }}>
       <IcHistory size={19} sw={1.7} />全部版本
       {count > 1 && <b>{count}</b>}</button>
     <a href={src} download={`${name}.mp4`}><IcDownload size={19} sw={1.7} />下载</a>
     {tipNode}
+    {box && self && <Toolbox anchor={anchor} data={self.data} onPick={pickTool} onClose={() => setBox(false)} />}
     {versions && <VersionsDialog nodeId={nodeId} name={name} onClose={() => setVersions(false)} />}
   </div></div></NodeToolbar>
 }

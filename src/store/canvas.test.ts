@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { focusWidthFor, isFocusNode, shotName, useCanvas } from './canvas'
+import { boxFor, focusWidthFor, isFocusNode, isToolPending, seqOf, shotName, useCanvas } from './canvas'
 import { matOf } from '../demo/assets'
 
 beforeEach(() => {
@@ -187,5 +187,111 @@ describe('专注态那块屏的大小', () => {
     // 封面还没量出来就按竖片算，和从前一样
     expect(focusWidthFor(undefined)).toBe(420)
     expect(focusWidthFor(0)).toBe(420)
+  })
+})
+
+
+describe('工具箱任务节点', () => {
+  const setup = () => {
+    const store = useCanvas.getState()
+    const source = store.addNode('video', { x: 50, y: 100 }, { src: 'v.mp4', ratio: 9 / 16 })
+    const pending = store.spawnTool(source, 'mocap', undefined, 2)!
+    const done = store.spawnTool(source, 'upscale', '2160p', 2)!
+    store.updateNode(done, { src: 'done.mp4' })
+    return { store, source, pending, done }
+  }
+  const ids = () => useCanvas.getState().nodes.map((n) => n.id)
+
+  it('动作捕捉和超清各自数号，场景默认名能读回进度', () => {
+    const store = useCanvas.getState()
+    expect(store.claimName('mocap')).toBe('动作捕捉1')
+    expect(store.claimName('upscale')).toBe('超清视频1')
+    expect(store.claimName('mocap')).toBe('动作捕捉2')
+    expect(store.claimName('upscale')).toBe('超清视频2')
+    const nodes = ['动作捕捉3', '超清视频2'].map((name, i) => ({ id: String(i), position: { x: 0, y: 0 }, data: { name } }))
+    expect(seqOf(nodes)).toMatchObject({ mocap: 3, upscale: 2 })
+    store.setAll({ nodes, edges: [] })
+    expect(store.claimName('mocap')).toBe('动作捕捉4')
+    expect(store.claimName('upscale')).toBe('超清视频3')
+  })
+
+  it('一次撤销覆盖整个创建，任务不进入专注态，连续派生落在已有子节点下方', () => {
+    const store = useCanvas.getState()
+    const source = store.addNode('video', { x: 10, y: 20 }, { src: 'v.mp4', ratio: 16 / 9 })
+    store.shape(source, 16 / 9)
+    const old = store.spawnDownstream(source)!
+    store.onNodesChange([{ type: 'dimensions', id: old, dimensions: { width: 356, height: 500 } }])
+    const before = useCanvas.getState().past.length
+    const updates: number[] = []
+    const unsubscribe = useCanvas.subscribe((s) => updates.push(s.nodes.length))
+    const id = store.spawnTool(source, 'mocap', undefined, 3)!
+    unsubscribe()
+    // 快照不改节点，随后一次提交带齐节点、连线、任务和名字账。
+    expect(updates).toEqual([2, 3])
+    const node = useCanvas.getState().nodes.find((n) => n.id === id)!
+    expect(useCanvas.getState().past).toHaveLength(before + 1)
+    expect(node).toMatchObject({ selected: true, style: { width: boxFor(16 / 9).width },
+      position: { x: 10 + boxFor(16 / 9).width + 160, y: 20 + 500 + 70 },
+      data: { name: '动作捕捉1', ratio: 16 / 9, toolOp: { kind: 'mocap', source, baseNo: 3 } } })
+    expect(isFocusNode(node)).toBe(false)
+    expect(isToolPending(node)).toBe(true)
+    expect(useCanvas.getState().nodes.filter((n) => n.selected).map((n) => n.id)).toEqual([id])
+    store.undo()
+    expect(ids()).toEqual([source, old])
+    expect(useCanvas.getState().edges).toHaveLength(1)
+    store.redo()
+    expect(useCanvas.getState().nodes.find((n) => n.id === id)).toEqual(node)
+    const next = store.spawnTool(source, 'upscale', '2160p')!
+    expect(useCanvas.getState().nodes.find((n) => n.id === next)!.position.y)
+      .toBe(node.position.y + boxFor(16 / 9).height + 70)
+  })
+
+  it('缺少比例时按竖片留足高度，不存在的源不建节点或快照', () => {
+    const store = useCanvas.getState()
+    const source = store.addNode('video', { x: 0, y: 0 }, { src: 'v.mp4' })
+    store.spawnTool(source, 'mocap')
+    const next = store.spawnTool(source, 'mocap')!
+    expect(useCanvas.getState().nodes.find((n) => n.id === next)!.position.y).toBe(boxFor(9 / 16).height + 70)
+    const before = useCanvas.getState()
+    expect(store.spawnTool('missing', 'mocap')).toBeNull()
+    expect(useCanvas.getState()).toBe(before)
+  })
+
+  it('删源视频只带走未出片任务，撤销一起恢复', () => {
+    const { store, source, pending, done } = setup()
+    store.onNodesChange(ids().map((id) => ({ type: 'select', id, selected: id === source })))
+    store.deleteSelection()
+    expect(ids()).toEqual([done])
+    store.undo()
+    expect(ids()).toEqual([source, pending, done])
+    expect(useCanvas.getState().edges).toHaveLength(2)
+  })
+
+  it.each(['剪刀', '删除选中线'])('%s 只带走未出片任务，成片独立保留', (mode) => {
+    const { store, source, pending, done } = setup()
+    const cut = (id: string) => {
+      if (mode === '剪刀') store.disconnect(`e-${source}-${id}`)
+      else {
+        store.onNodesChange(ids().map((id) => ({ type: 'select', id, selected: false })))
+        store.onEdgesChange(useCanvas.getState().edges.map((e) => ({ type: 'select', id: e.id, selected: e.id === `e-${source}-${id}` })))
+        store.deleteSelection()
+      }
+    }
+    cut(pending)
+    expect(ids()).toEqual([source, done])
+    store.undo()
+    expect(ids()).toEqual([source, pending, done])
+    cut(done)
+    expect(ids()).toEqual([source, pending, done])
+  })
+
+  it('粘贴不复制后台任务，也不把原节点的任务清掉', () => {
+    const { store, pending } = setup()
+    store.onNodesChange(ids().map((id) => ({ type: 'select', id, selected: id === pending })))
+    store.copySelection()
+    store.paste()
+    const fresh = useCanvas.getState().nodes.find((n) => n.selected)!
+    expect(fresh.data.toolOp).toBeUndefined()
+    expect(isToolPending(useCanvas.getState().nodes.find((n) => n.id === pending)!)).toBe(true)
   })
 })

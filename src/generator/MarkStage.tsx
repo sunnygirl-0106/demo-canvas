@@ -163,12 +163,13 @@ export default function MarkStage({ mat, video, tool, brush, draft, second, head
     style={{ cursor: veil ? 'default' : lock ? 'not-allowed' : 'crosshair', aspectRatio: aspect || 9 / 16 }}
     onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
     <video ref={video} src={mat.src} poster={mat.thumb} playsInline muted preload="auto" aria-label={`${mat.name} 标记画面`} />
-    <MarkArt regions={draft.regions} at={litAt} active={active} onBoxDown={boxDown} onDrop={veil ? undefined : onDrop} />
+    <MarkArt regions={draft.regions} aspect={aspect || 9 / 16} at={litAt} active={active} onBoxDown={boxDown} onDrop={veil ? undefined : onDrop} />
     {paused && !veil && <span className="mark-paused">已暂停在 <b>{timecode(second)}</b></span>}
     {/* 标不了的时候说一句：平时只在暂停且鼠标在画面上时露出来；按了一下没画出东西，就闪一下 */}
     {!veil && lock && (ping > 0 || !playing) &&
       <span key={ping} className={`mark-note mark-lock${ping ? ' ping' : ''}`} role="status">{lock}</span>}
-    {!playing && !veil && <button className="mark-play" aria-label="播放" onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onTogglePlay() }}><IcPlay size={22} /></button>}
+    {!playing && !veil && <button className="mark-play" aria-label="播放" onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onTogglePlay() }}><IcPlay size={22} /></button>}
     {!veil && scrub}
     {!veil && tools && <div className="mark-float nodrag" onPointerDown={(e) => e.stopPropagation()}>{tools}</div>}
     {/* 蒙层上只留原因那一句：「正在读取…」读完会自己解开，「无法读取，可尝试重新上传」

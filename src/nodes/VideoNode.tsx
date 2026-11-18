@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NodeProps } from '@xyflow/react'
-import { EMPTY_VIDEO_RATIO, focusSource, isFocusNode, useCanvas, type CNode } from '../store/canvas'
+import { EMPTY_VIDEO_RATIO, focusSource, isFocusNode, isToolPending, useCanvas, type CNode } from '../store/canvas'
 import { useGenerator } from '../store/generator'
 import { matOf } from '../demo/assets'
 import NodeShell from './NodeShell'
 import VideoToolbar from './VideoToolbar'
+import ToolIcon from './ToolIcon'
+import { ensureToolJob, TOOL_LABEL } from './videoTools'
 import VideoHud from './VideoHud'
 import GeneratorPanel from '../generator/GeneratorPanel'
 import VideoPanel from '../generator/VideoPanel'
@@ -22,6 +24,9 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
   const self = nodes.find((n) => n.id === id) ?? null
   /** 专注态：从视频上方入口长出来、还没出片的那段时间。操作都长在节点上，就在这段时间里。 */
   const focus = !!self && isFocusNode(self)
+  const pending = !!self && isToolPending(self)
+  const toolSource = nodes.find((n) => n.id === data.toolOp?.source)
+  useEffect(() => { if (pending) ensureToolJob(id) }, [id, pending])
   const origin = self ? focusSource(nodes, self) : null
   /**
    * 专注态节点自己还没有画面，摆的是父节点那一段 —— 而且不写回自己的 data：
@@ -41,14 +46,14 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
    * 竖片是竖的、横片是横的，两边都不留黑；三种朝向占的面积一样大（boxFor）。
    * 专注态不量：那块屏摆的是父节点那一段，形状归它自己那一套（MarkStage 按素材摊开）。
    */
-  const ratio = useAspect(focus ? undefined : shot?.poster)
-  useEffect(() => { if (ratio && !focus) useCanvas.getState().shape(id, ratio) }, [id, ratio, focus])
+  const ratio = useAspect(focus || pending ? undefined : shot?.poster)
+  useEffect(() => { if (ratio && !focus && !pending) useCanvas.getState().shape(id, ratio) }, [id, ratio, focus, pending])
   /**
    * 空节点没有封面可量，上面那条路永远轮不到它 —— 形状由 EMPTY_VIDEO_RATIO 说了算（横屏）。
    * 新建时就是按这个宽度出生的（widthOf），这里再摆一次是为了那几条绕路来的：
    * 比如专注态断了源、退回成一个空节点，宽度会被还成竖屏那一档。
    */
-  useEffect(() => { if (!focus && !has) useCanvas.getState().shape(id, EMPTY_VIDEO_RATIO) }, [id, focus, has])
+  useEffect(() => { if (!focus && !pending && !has) useCanvas.getState().shape(id, EMPTY_VIDEO_RATIO) }, [id, focus, pending, has])
 
   /**
    * 画面本身也能拖动节点。一个视频节点九成的面积就是这张画面，把它整块划成「不可拖」，
@@ -144,8 +149,10 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
   return (
     <NodeShell
       id={id} kind="video" name={data.name} selected={!!selected} focus={focus}
-      ratio={focus ? null : has ? ratio ?? data.ratio : EMPTY_VIDEO_RATIO}
-      action={focus
+      ratio={pending ? toolSource?.data.ratio ?? data.ratio ?? 9 / 16 : focus ? null : has ? ratio ?? data.ratio : EMPTY_VIDEO_RATIO}
+      action={pending
+        ? <span className="nd-op" data-op="tool"><ToolIcon kind={data.toolOp!.kind} />{data.toolOp!.kind === 'mocap' ? '捕捉中' : '超清中'}</span>
+        : focus
         ? <span className="nd-op" data-op={mode === 'extend' ? 'extend' : 'edit'}>{opIcon}
           {/* 编辑态拆成单字：笔写到最右边那一下，三个字依次轻轻一跳，像是被写出来的。
               延长态不拆 —— 它那枚图标是在原地呼吸，没有「写到头」那个时刻可对。 */}
@@ -156,10 +163,14 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
         : undefined}
       toolbar={<VideoToolbar nodeId={id} visible={!!selected && has && !focus} src={data.src} name={data.name} dur={data.dur}
         versions={versions} />}
-      panel={<GeneratorPanel visible={!!selected && !versions}><VideoPanel nodeId={id} docVer={docVer} onBump={bump} /></GeneratorPanel>}
+      panel={<GeneratorPanel visible={!!selected && !versions && !pending}><VideoPanel nodeId={id} docVer={docVer} onBump={bump} /></GeneratorPanel>}
     >
       {preview && selfMat && <MediaPreview mat={selfMat} onClose={() => setPreview(false)} />}
-      {source ? <MarkBoard nodeId={id} mat={source} onBump={bump} /> : <>
+      {pending ? <div className="nd-tool" role="status">
+        {toolSource?.data.poster && <img src={toolSource.data.poster} alt="" />}
+        <div className="nd-tool-state"><span className="spin" /><span>{data.toolOp!.kind === 'mocap'
+          ? `${TOOL_LABEL.mocap}中…` : `超清至 ${data.toolOp!.resolution}…`}</span></div>
+      </div> : source ? <MarkBoard nodeId={id} mat={source} onBump={bump} /> : <>
         {has ? (
           <div className="nd-shot" onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}
                onMouseEnter={hoverPlay} onMouseLeave={hoverStop}>
@@ -167,8 +178,8 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
             <video
               ref={vid} className="nd-vid" src={shot?.src} poster={shot?.poster}
               playsInline loop muted preload="metadata" onClick={toggle}
-              onLoadedMetadata={(e) => { const duration = e.currentTarget.duration; retried.current = false
-                if (!focus && Number.isFinite(duration)) useCanvas.getState().updateNode(id, { dur: duration, mediaReady: true, mediaError: undefined }) }}
+              onLoadedMetadata={(e) => { const { duration, videoWidth, videoHeight } = e.currentTarget; retried.current = false
+                if (!focus && Number.isFinite(duration)) useCanvas.getState().updateNode(id, { dur: duration, px: { w: videoWidth, h: videoHeight }, mediaReady: true, mediaError: undefined }) }}
               onError={failed}
             />
             {/* 放大时把节点上这一格停掉：两处同一段画面各放各的，声音和进度都对不上 */}

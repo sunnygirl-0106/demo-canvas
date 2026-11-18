@@ -24,4 +24,11 @@ describe('标记参考图：一秒一张，画面说了算', () => {
     expect(shotPlan([group('g1', [box(2)])])[0].key).toBe(before)
     expect(shotPlan([group('g1', [box(2, 0.5)])])[0].key).not.toBe(before)
   })
+  it('相同外接框和采样点数的不同笔迹，以及不同笔刷粗细，不能复用同一参考图', () => {
+    const brush: MarkRegion = { t: 2, tool: 'brush', width: 0.05, rect: [0.1, 0.1, 0.8, 0.8],
+      strokes: [[[0.1, 0.1], [0.9, 0.9]]] }
+    const keyOf = (r: MarkRegion) => shotPlan([group('g', [r])])[0].key
+    expect(keyOf({ ...brush, strokes: [[[0.1, 0.9], [0.9, 0.1]]] })).not.toBe(keyOf(brush))
+    expect(keyOf({ ...brush, width: 0.1 })).not.toBe(keyOf(brush))
+  })
 })
