@@ -34,21 +34,21 @@ describe('工具箱入口条件', () => {
     expect(upscaleBlockedReason(undefined, '720p')).toBeNull()
     expect(upscaleAllBlocked(undefined)).toBeNull()
     for (const px of [{ w: 1920, h: 1080 }, { w: 1080, h: 1920 }]) {
-      expect(upscaleBlockedReason(px, '720p')).toBe('原片已是 1080p，无需超清到 720p')
-      expect(upscaleBlockedReason(px, '1080p')).toBe('原片已是 1080p，无需超清到 1080p')
+      expect(upscaleBlockedReason(px, '720p')).toBe('原片已达到该清晰度，无需超清')
+      expect(upscaleBlockedReason(px, '1080p')).toBe('原片已达到该清晰度，无需超清')
       expect(upscaleBlockedReason(px, '2160p')).toBeNull()
       expect(upscaleAllBlocked(px)).toBeNull()
     }
   })
 
-  it('档位就近显示，实际拦截仍以短边边界为准', () => {
+  it('按短边边界拦截，置灰提示统一', () => {
     expect(upscaleBlockedReason({ w: 719, h: 2000 }, '720p')).toBeNull()
-    expect(upscaleBlockedReason({ w: 720, h: 2000 }, '720p')).toBe('原片已是 720p，无需超清到 720p')
-    expect(upscaleBlockedReason({ w: 1000, h: 2000 }, '720p')).toBe('原片已是 1080p，无需超清到 720p')
+    expect(upscaleBlockedReason({ w: 720, h: 2000 }, '720p')).toBe('原片已达到该清晰度，无需超清')
+    expect(upscaleBlockedReason({ w: 1000, h: 2000 }, '720p')).toBe('原片已达到该清晰度，无需超清')
     expect(upscaleBlockedReason({ w: 1079, h: 2000 }, '1080p')).toBeNull()
     expect(upscaleAllBlocked({ w: 3840, h: 2159 })).toBeNull()
-    expect(upscaleAllBlocked({ w: 3840, h: 2160 })).toBe('原片已达 2160p')
-    expect(upscaleAllBlocked({ w: 4320, h: 7680 })).toBe('原片已达 2160p')
+    expect(upscaleAllBlocked({ w: 3840, h: 2160 })).toBe('原片已达到该清晰度，无需超清')
+    expect(upscaleAllBlocked({ w: 4320, h: 7680 })).toBe('原片已达到该清晰度，无需超清')
   })
 })
 

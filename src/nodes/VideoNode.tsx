@@ -6,7 +6,7 @@ import { matOf } from '../demo/assets'
 import NodeShell from './NodeShell'
 import VideoToolbar from './VideoToolbar'
 import ToolIcon from './ToolIcon'
-import { ensureToolJob, TOOL_LABEL } from './videoTools'
+import { ensureToolJob, TOOL_LABEL, upscaleLabel } from './videoTools'
 import VideoHud from './VideoHud'
 import GeneratorPanel from '../generator/GeneratorPanel'
 import VideoPanel from '../generator/VideoPanel'
@@ -169,7 +169,7 @@ export default function VideoNode({ id, data, selected }: NodeProps<CNode>) {
       {pending ? <div className="nd-tool" role="status">
         {toolSource?.data.poster && <img src={toolSource.data.poster} alt="" />}
         <div className="nd-tool-state"><span className="spin" /><span>{data.toolOp!.kind === 'mocap'
-          ? `${TOOL_LABEL.mocap}中…` : `超清至 ${data.toolOp!.resolution}…`}</span></div>
+          ? `${TOOL_LABEL.mocap}中…` : `超清至 ${upscaleLabel(data.toolOp!.resolution)}…`}</span></div>
       </div> : source ? <MarkBoard nodeId={id} mat={source} onBump={bump} /> : <>
         {has ? (
           <div className="nd-shot" onPointerDown={(e) => { down.current = { x: e.clientX, y: e.clientY } }}

@@ -641,7 +641,6 @@ input,textarea{font:inherit;color:inherit}
 .vtool-sub[data-flip]{left:auto;right:calc(100% + 6px)}
 .vtool-sub::before{content:"";position:absolute;right:100%;top:0;width:7px;height:100%}
 .vtool-sub[data-flip]::before{right:auto;left:100%}
-.vtool-sub small{font-size:11px;color:var(--ink-3)}
 .nd-tool{position:relative;width:100%;height:100%;background:#111}
 .nd-tool>img{width:100%;height:100%;object-fit:cover;opacity:.38}
 .nd-tool-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;

@@ -12,7 +12,7 @@ import { useTip } from '../generator/useTip'
 import MediaPreview from '../generator/MediaPreview'
 import { shotBox, useAspect, useHover } from '../generator/hoverShot'
 import VersionShot from './VersionShot'
-import { TOOL_LABEL } from './videoTools'
+import { TOOL_LABEL, upscaleLabel } from './videoTools'
 
 /**
  * 整只气泡的缩放。下面所有的数（和 app.css 里的 --vp-k）都是稿子上的原值，
@@ -61,7 +61,7 @@ const durOf = (r: VersionRecord) =>
 const specsOf = (r: VersionRecord, ratio?: number): [string, string][] => {
   if (r.tool) {
     const rows: [string, string][] = [['工具', TOOL_LABEL[r.tool.kind]]]
-    if (r.tool.kind === 'upscale' && r.tool.resolution) rows.push(['清晰度', r.tool.resolution])
+    if (r.tool.kind === 'upscale' && r.tool.resolution) rows.push(['清晰度', upscaleLabel(r.tool.resolution)])
     rows.push(['画幅', ratio && ratio > 0 ? ratioNear(ratio) : ''], ['时长', durOf(r)])
     return rows.filter(([, v]) => v)
   }

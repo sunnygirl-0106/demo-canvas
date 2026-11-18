@@ -4,7 +4,7 @@ import { PLUS_SPAN, useZk } from '../hooks'
 import { isFocusNode, isToolPending, NAME_OF, useCanvas } from '../../store/canvas'
 import { useGenerator } from '../../store/generator'
 import { activeIds } from '../../generator/materialLayout'
-import { TOOL_LABEL } from '../../nodes/videoTools'
+import { TOOL_LABEL, upscaleLabel } from '../../nodes/videoTools'
 import { IcScissors } from '../../ui/icons'
 export default function DashedEdge(p: EdgeProps) {
   const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition } = p
@@ -37,7 +37,7 @@ export default function DashedEdge(p: EdgeProps) {
   const nodes = useCanvas((s) => s.nodes)
   const to = nodes.find((n) => n.id === target)
   const op = to && isToolPending(to) && to.data.toolOp?.source === source
-    ? to.data.toolOp.kind === 'mocap' ? TOOL_LABEL.mocap : `超清 ${to.data.toolOp.resolution}`
+    ? to.data.toolOp.kind === 'mocap' ? TOOL_LABEL.mocap : `超清 ${upscaleLabel(to.data.toolOp.resolution)}`
     : to && isFocusNode(to) && to.data.operationSource === source
     ? NAME_OF[useGenerator.getState().map[target]?.mode === 'extend' ? 'extend' : 'edit'] : null
   const active = !gen || activeIds(gen, gen.mode).includes(source)

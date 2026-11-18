@@ -10,7 +10,7 @@ import { useTip } from '../generator/useTip'
 import VersionsDialog from './VersionsDialog'
 import Overlay from '../generator/Overlay'
 import ToolIcon from './ToolIcon'
-import { TOOL_LABEL, UPSCALE_OPTIONS, toolEntryReason, upscaleAllBlocked, upscaleBlockedReason } from './videoTools'
+import { TOOL_LABEL, UPSCALE_OPTIONS, upscaleLabel, toolEntryReason, upscaleAllBlocked, upscaleBlockedReason } from './videoTools'
 /**
  * 工具栏要避开的那一截：节点名字那行（.nd-head）是绝对定位摆在**节点框外面**的，
  * top:-24、高 22，也就是占了节点上方 −24…−2 这一段；react-flow 量的节点框只到画面，
@@ -72,10 +72,10 @@ function Toolbox({ anchor, data, onPick, onClose }: {
         </button>
         {/* 子菜单留在父浮层内，点选才能通过 Overlay 的 DOM 包含判断；缝隙由 CSS 接住鼠标。 */}
         {sub && <div ref={menu} role="menu" aria-label="超清分辨率" className="vhud-menu vtool-sub" data-flip={flip || undefined}>
-          {UPSCALE_OPTIONS.map(({ res, hint }) => {
+          {UPSCALE_OPTIONS.map(({ res }) => {
             const blocked = upscaleBlockedReason(data.px, res)
             return <button key={res} role="menuitem" aria-disabled={!!blocked} {...tip(blocked || undefined)}
-              onClick={() => { if (!blocked) onPick('upscale', res) }}>{res}{hint && <small>{hint}</small>}</button>
+              onClick={() => { if (!blocked) onPick('upscale', res) }}>{upscaleLabel(res)}</button>
           })}
         </div>}
       </div>
