@@ -1,7 +1,8 @@
 import { useCanvas, type CanvasNodeData } from '../store/canvas'
 import { useVersions, type VersionTask } from '../store/versions'
 import type { TaskPayload } from '../generator/videoTask'
-import { MEDIA, VID } from './assets'
+import { MEDIA, VID, randomPhoto } from './assets'
+import { imageDimensions, type ImageSettings } from '../generator/imageOptions'
 
 /** 本地假生成：转一会儿 loading，然后把结果写进节点 */
 export function fakeGen(id: string, ms: number, patch: Partial<CanvasNodeData>) {
@@ -9,6 +10,13 @@ export function fakeGen(id: string, ms: number, patch: Partial<CanvasNodeData>) 
   snapshot()                                   // 生成结果也能撤销
   updateNode(id, { busy: true })
   window.setTimeout(() => updateNode(id, { busy: false, ...patch }), ms)
+}
+
+/** 一次生成一组结果，数量和尺寸取提交时的快照。 */
+export function fakeImageGen(id: string, settings: ImageSettings) {
+  const { width, height } = imageDimensions(settings)
+  const imageResults = Array.from({ length: settings.count }, () => randomPhoto(width, height))
+  fakeGen(id, 1500, { src: imageResults[0], imageResults, ratio: width / height })
 }
 
 const clipOf = (v: { src: string; poster: string; dur: number }) => ({ src: v.src, poster: v.poster, dur: v.dur })

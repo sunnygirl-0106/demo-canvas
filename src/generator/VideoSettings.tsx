@@ -1,9 +1,11 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { useGenerator, type GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type MatGet, type Model, type ModelCap, type Tier } from './materialLayout'
+import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type MatGet, type ModelCap, type Tier } from './materialLayout'
 import { modelBlockedReason } from './videoTask'
 import Overlay from './Overlay'
-import { IcCheck, IcClock, IcKlingS, IcMute, IcQuality, IcSeedanceS, IcSpeaker, IcWanS } from '../ui/icons'
+import Field, { RatioBox } from './SettingField'
+import { IcCheck, IcClock, IcMute, IcQuality, IcSpeaker } from '../ui/icons'
+import ModelBadge from '../ui/ModelBadge'
 import { useTip } from './useTip'
 import { docText } from './promptDoc'
 
@@ -26,75 +28,8 @@ const specLine = (c: ModelCap) =>
 const TIER_PILL: Record<Tier, string> = { free: '', vip: 'VIP' }
 const TierPill = ({ tier }: { tier: Tier }) =>
   TIER_PILL[tier] ? <em className="mdl-tier" data-tier={tier}>{TIER_PILL[tier]}</em> : null
-/** 哪家的型号用哪一枚徽记。实心的那三枚（见 icons.tsx）—— 圆心只有十来个像素，描边到这儿只剩一团灰。 */
-const glyphOf = (model: Model) =>
-  model.startsWith('kling') ? IcKlingS : model.startsWith('wan') ? IcWanS : IcSeedanceS
-/**
- * 型号徽章：深色圆心 + 一圈银边，中间一枚白徽记。
- *
- * 不是一块实心色牌：这枚东西常驻在面板底下，一块满色的牌子会一直和「生成」抢视线；
- * 一圈细环 + 暗圆心读起来是「镶了一道边」，而不是「一枚亮片」。
- * 也不跟着等级换色 —— 会员由名字后那枚金胶囊说，环只说「这是哪家的型号」。
- *
- * 直径压到和旁边那行字一般高（列表 22 / 底栏 20）：它是名字的前缀，不是名字的插图。
- * 早先的 30 比字高出一圈，一列看下去先看见十一颗圆、再看见十一个名字 ——
- * 收到同一个高度上，这一列就只剩一件事在说话，徽章退回成句首的那一点。
- */
-const ModelRing = ({ model, d }: { model: Model; d: number }) => {
-  const G = glyphOf(model)
-  return <i className="mdl-ring" style={{ '--d': `${d}px` } as CSSProperties}>
-    <i className="mdl-ring-in"><G size={Math.round(d * 0.56)} /></i>
-  </i>
-}
 /** 清晰度在这把刻度上的位置：图标里三根柱子亮几根。4K 和 1080p 同顶格，刻度只有三档。 */
 const qualityLv = (r: string) => (r === '480p' ? 1 : r === '720p' ? 2 : 3)
-/**
- * 比例那一枚小方框：框本身就是那个画幅。「16:9」四个字要在脑子里换算成一块横屏，画出来就不必换算 ——
- * 长边定死 15px，短边按比例收，一列看过去是从扁到方到竖的一串形状。
- * 锁死的那一格（随原片 / 随首帧）画成虚线：这会儿形状还没定，实线框会读成「就是这个比例」。
- */
-const RatioBox = ({ ratio, loose }: { ratio: string; loose?: boolean }) => {
-  const [w, h] = ratio.split(':').map(Number)
-  const long = 15, short = Math.round((long * Math.min(w, h)) / Math.max(w, h))
-  const [bw, bh] = w >= h ? [long, short] : [short, long]
-  return <i className="ratio-box" data-loose={loose || undefined} style={{ width: bw, height: bh }} />
-}
-
-interface Opt { k: string; label: string; on: boolean; glyph?: ReactNode; pick: () => void }
-type Say = (t?: string) => Record<string, unknown>
-/**
- * 一格参数 = 一枚图标 + 此刻的取值，点开在它正上方落一张小抽屉。
- *
- * 三格分开摆，不再是「720p · 5s · 16:9」挤成一枚按钮 + 一张大面板：
- * 要改哪一格就点哪一格，中间不隔着「先打开参数设置」这一步；没打开的时候，
- * 三枚图标本身就把「画质 / 时长 / 画幅」说完了，不必靠一行小标题指认。
- *
- * 锁死的那一格（跟随原片）仍旧摆在这儿，但不给抽屉：它是这次任务的既成事实，不是一个空位。
- * 为什么改不了挂在悬浮说明上 —— 和面板里其他灰掉的控件是同一条规矩。
- */
-function Field({ id, open, setOpen, name, icon, value, opts, reason, say }: {
-  id: string; open: string | null; setOpen: (v: string | null) => void
-  name: string; icon: ReactNode; value: string; opts?: Opt[]; reason?: string; say: Say
-}) {
-  const at = useRef<HTMLButtonElement>(null)
-  const on = open === id
-  const tipped = opts ? undefined : say(reason)
-  return <>
-    <button ref={at} className={`gp-field${on ? ' on' : ''}`} {...tipped}
-      aria-label={`${name}：${value}${reason ? `（${reason}）` : ''}`}
-      aria-expanded={opts ? on : undefined} aria-disabled={opts ? undefined : true}
-      onClick={() => { if (opts) setOpen(on ? null : id) }}>
-      <i className="gp-field-ic">{icon}</i>{value}
-    </button>
-    {on && opts && <Overlay anchor={at} label={name} className="gp-drop" onClose={() => setOpen(null)}>
-      {opts.map((o) => <button key={o.k} className={o.on ? 'on' : ''} aria-pressed={o.on}
-        onClick={() => { o.pick(); setOpen(null) }}>
-        <span>{o.glyph && <i className="gp-opt-ic">{o.glyph}</i>}{o.label}</span>
-        {o.on && <IcCheck size={13} sw={2.6} />}</button>)}
-    </Overlay>}
-  </>
-}
-
 /** 专注态锁死 Seedance 2.5，模型那颗按钮点不开；说法和入口放行的那条规则是同一条。 */
 const FOCUS_MODEL_TIP = '编辑 / 延长固定使用 Seedance 2.5'
 export default function VideoSettings({ nodeId, gen, source, get, focus }: { nodeId: string; gen: GenState; source: Mat | null; get: MatGet; focus: boolean }) {
@@ -130,7 +65,7 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
     <button ref={modelButton} className={`gp-mdl${open === 'model' ? ' on' : ''}`} aria-disabled={focus || undefined}
       aria-label={focus ? `${cap.label}：${FOCUS_MODEL_TIP}` : `模型：${cap.label}`} {...rowTip(focus ? FOCUS_MODEL_TIP : undefined)}
       onClick={() => { if (!focus) setOpen(open === 'model' ? null : 'model') }} aria-expanded={open === 'model'}>
-      <ModelRing model={gen.model} d={20} />
+      <ModelBadge />
       <span className="gp-mdl-name">{cap.label}</span>
       <TierPill tier={cap.tier} />
     </button>
@@ -156,7 +91,7 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
         return <button key={model} className={`mdl-row${on ? ' on' : ''}`} aria-disabled={!!blocked}
           aria-label={`${c.label}，${specLine(c)}${blocked ? `。${blocked}` : ''}`} {...rowTip(blocked || undefined)}
           onClick={() => { if (blocked) return; useGenerator.getState().setModel(nodeId, model, get); setOpen(null) }}>
-          <ModelRing model={model} d={22} />
+          <ModelBadge size={20} />
           <span className="mdl-row-main">
             <span className="mdl-row-name">{c.label}<TierPill tier={c.tier} />{c.isNew && <em className="mdl-new">NEW</em>}</span>
             <small>{specLine(c)}</small>

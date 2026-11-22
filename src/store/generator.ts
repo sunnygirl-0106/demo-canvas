@@ -4,6 +4,7 @@ import { allocate, assign, countConn, emptySlots, fallbackMode, modeAfterModel, 
 import { outOfSource, type MarkGroup } from '../generator/marks'
 import { marksOf, stripMarks, type Seg } from '../generator/promptDoc'
 import { sourceError, taskPayload, type TaskPayload } from '../generator/videoTask'
+import type { ImageSettings } from '../generator/imageOptions'
 export interface Params { resolution: string; duration: number; ratio: string; sound: boolean }
 interface Draft extends Slots {
   model: Model; prompt: string; params: Params
@@ -22,7 +23,7 @@ interface Draft extends Slots {
   textFrom: string | null
 }
 export interface TaskRecord { id: string; status: 'running' | 'complete'; createdAt: number; payload: TaskPayload }
-export interface GenState extends Draft { mode: Mode; conn: string[]; tasks: TaskRecord[] }
+export interface GenState extends Draft { mode: Mode; conn: string[]; tasks: TaskRecord[]; imageSettings?: ImageSettings }
 const freshDraft = (): Draft => ({ ...emptySlots(), model: 'sd2.5', prompt: '', params: { resolution: '720p', duration: 5, ratio: '16:9', sound: true }, doc: [], seeded: false, marks: [], direction: 'after', sourceSrc: null, sourceId: null, references: {}, textFrom: null })
 export const freshGen = (): GenState => ({ ...freshDraft(), mode: 'text', conn: [], tasks: [] })
 function sourceSync(d: Draft, get: MatGet): Draft {

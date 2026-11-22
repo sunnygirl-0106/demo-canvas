@@ -85,7 +85,8 @@ export const PHOTO_ROLES = [
 ]
 
 /** 图片节点假生成时随机填的一张 */
-export const randomPhoto = () => photo(Math.random().toString(36).slice(2, 7))
+export const randomPhoto = (width = 640, height = 360) =>
+  `https://picsum.photos/seed/${Math.random().toString(36).slice(2, 7)}/${width}/${height}`
 
 /** 文本节点假生成的固定文案 */
 export const FAKE_TEXT =

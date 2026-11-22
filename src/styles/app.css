@@ -241,6 +241,12 @@ input,textarea{font:inherit;color:inherit}
   display:flex;align-items:center;justify-content:center;color:var(--ink-2);
   animation:gp-float 6s ease-in-out infinite}
 .nd-img{width:100%;height:100%;object-fit:cover;display:block}
+.image-result-nav{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;
+  align-items:center;gap:6px;padding:3px;border-radius:20px;background:rgba(12,16,16,.78);color:var(--ink);backdrop-filter:blur(8px)}
+.image-result-nav button{display:grid;place-items:center;width:24px;height:24px;border-radius:50%}
+.image-result-nav button:hover:not(:disabled){background:rgba(255,255,255,.12)}
+.image-result-nav button:disabled{opacity:.3;cursor:default}
+.image-result-nav span{min-width:30px;text-align:center;font-size:11px;font-variant-numeric:tabular-nums}
 .nd-vid{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 /*
  * 视频节点按素材本来的样子摆：节点体不再是固定高的一块横板，高度由画面自己的比例撑出来 ——
@@ -2035,6 +2041,9 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .gp-mdl-name{font-size:14px;font-weight:500}
 .gp-mdl:hover{background:var(--fill)}
 .gp-mdl.on{background:var(--fill-2)}
+.img-model-button{max-width:260px}
+.img-model-button .gp-mdl-name{overflow:hidden;text-overflow:ellipsis}
+.img-model-button>svg{flex:none}
 /* 专注态锁死型号：点不开，也就不该在鼠标底下亮起来 —— 一个点不动的东西亮起来，是在撒谎 */
 .gp-mdl[aria-disabled=true]{cursor:not-allowed}
 .gp-mdl[aria-disabled=true]:hover{background:transparent}
@@ -2065,17 +2074,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
   transition:width .2s var(--ease-soft),height .2s var(--ease-soft)}
 /* 锁死时形状还没定：实线框会读成「就是这个比例」，虚的才是「等原片说了算」 */
 .ratio-box[data-loose]{border-style:dashed}
-/*
- * 型号徽章：一圈银边围着一块暗底，中间一枚白色的徽记。
- * 不着等级色 —— 会员由名字后那枚金胶囊一个人说（见 tokens.css 那一段）；
- * 环要说的只是「这是哪家的型号」，那是一件和贵不贵无关的事。
- * 圆心用比面板更暗的那一格（--sunk）：亮边围暗底读起来才是「镶了一道边」，
- * 整枚都着色的话，抽屉里十一行就是十一颗亮圆点，谁也不比谁要紧。
- */
-.mdl-ring{flex:none;display:block;box-sizing:border-box;width:var(--d);height:var(--d);
-  border-radius:50%;padding:calc(var(--d) / 18);background:var(--ring-metal)}
-.mdl-ring-in{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;
-  background:var(--sunk);color:var(--ink)}
+/* 模型名前的独立立方体：只留柔和银灰图案，不加背景、外环或描边容器。 */
+.model-glyph{flex:none;display:inline-grid;place-items:center;color:#b8c1c6}
 /*
  * 身份胶囊：会员。免费档不挂 —— 一列里人人一枚牌子，等于一枚也没有。
  * 顶上补一道白：这一小块是有厚度的一枚牌，不是印在纸上的一块色。
@@ -2157,6 +2157,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
  * 一行一撑高，整张抽屉（它是从底栏往上长的）会跟着往上蹿，鼠标底下的行就换了一个。
  */
 .mdl-drop{width:344px;padding:7px;border-radius:16px}
+.img-model-drop{width:min(380px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow-y:auto}
 .mdl-row{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;text-align:left;
   padding:0 10px;border-radius:12px;cursor:pointer;transition:background .18s,box-shadow .18s}
 /* 名字这一块整体往上让 9px，把下半格空出来给小字；它自己是不是在动，看的是行的状态 */

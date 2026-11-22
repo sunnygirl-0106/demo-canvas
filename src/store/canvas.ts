@@ -17,6 +17,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   mediaError?: string
   text?: string      // 文本节点内容
   src?: string       // 图片 / 视频源
+  imageResults?: string[] // 本次图片生成结果；src 是当前展示的一张
   poster?: string    // 视频封面
   dur?: number       // 真实视频时长（秒）
   ratio?: number     // 画面真实宽高比，量自封面；节点按它摆成横的还是竖的
