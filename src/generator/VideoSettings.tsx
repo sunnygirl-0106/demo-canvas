@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useGenerator, type GenState } from '../store/generator'
-import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type MatGet, type ModelCap, type Tier } from './materialLayout'
+import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type MatGet, type ModelCap } from './materialLayout'
 import { modelBlockedReason } from './videoTask'
 import Overlay from './Overlay'
 import Field, { RatioBox } from './SettingField'
@@ -24,10 +24,9 @@ const intake = (c: ModelCap) => c.quota.video ? `最多 ${c.quota.video} 段视�
 const specLine = (c: ModelCap) =>
   `${c.durationRange[0]}–${c.durationRange[1]}s · ${c.resolutions.join('/')} · ${intake(c)}`
 
-/** 名字后头那枚身份胶囊。免费档不挂 —— 「不是会员专属」这件事不值得占一枚牌子。 */
-const TIER_PILL: Record<Tier, string> = { free: '', vip: 'VIP' }
-const TierPill = ({ tier }: { tier: Tier }) =>
-  TIER_PILL[tier] ? <em className="mdl-tier" data-tier={tier}>{TIER_PILL[tier]}</em> : null
+/** 仅 Seedance 2.5 显示推荐标签。 */
+const RecommendedPill = ({ model }: { model: string }) =>
+  model === 'sd2.5' ? <em className="mdl-tier">推荐</em> : null
 /** 清晰度在这把刻度上的位置：图标里三根柱子亮几根。4K 和 1080p 同顶格，刻度只有三档。 */
 const qualityLv = (r: string) => (r === '480p' ? 1 : r === '720p' ? 2 : 3)
 /** 专注态锁死 Seedance 2.5，模型那颗按钮点不开；说法和入口放行的那条规则是同一条。 */
@@ -67,7 +66,7 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
       onClick={() => { if (!focus) setOpen(open === 'model' ? null : 'model') }} aria-expanded={open === 'model'}>
       <ModelBadge />
       <span className="gp-mdl-name">{cap.label}</span>
-      <TierPill tier={cap.tier} />
+      <RecommendedPill model={gen.model} />
     </button>
     <Field {...field} id="res" name="清晰度" value={gen.params.resolution}
       icon={<IcQuality size={15} sw={1.9} lv={qualityLv(gen.params.resolution)} />}
@@ -93,7 +92,7 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
           onClick={() => { if (blocked) return; useGenerator.getState().setModel(nodeId, model, get); setOpen(null) }}>
           <ModelBadge size={20} />
           <span className="mdl-row-main">
-            <span className="mdl-row-name">{c.label}<TierPill tier={c.tier} />{c.isNew && <em className="mdl-new">NEW</em>}</span>
+            <span className="mdl-row-name">{c.label}<RecommendedPill model={model} /></span>
             <small>{specLine(c)}</small>
           </span>
           {on && <IcCheck size={15} sw={2.6} className="mdl-tick" />}
