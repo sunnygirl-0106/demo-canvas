@@ -2156,21 +2156,21 @@ button:disabled{opacity:.4;cursor:not-allowed}
  * 行高是定死的，小字占的那一格一直空在那儿：浮出来时只有字在动，底下十行一动不动 ——
  * 一行一撑高，整张抽屉（它是从底栏往上长的）会跟着往上蹿，鼠标底下的行就换了一个。
  */
-.mdl-drop{width:344px;padding:7px;border-radius:16px}
+.mdl-drop{width:344px;padding:7px;border-radius:16px;max-height:calc(100vh - 24px);overflow-y:auto;overscroll-behavior:contain}
 .img-model-drop{width:min(380px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow-y:auto}
-.mdl-row{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;text-align:left;
-  padding:0 10px;border-radius:12px;cursor:pointer;transition:background .18s,box-shadow .18s}
-/* 名字这一块整体往上让 9px，把下半格空出来给小字；它自己是不是在动，看的是行的状态 */
+.mdl-row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;text-align:left;
+  padding:6px 12px;border-radius:12px;cursor:pointer;transition:background .18s,box-shadow .18s}
+/* 双行内容共 40px，上下各留 6px；小字展开时标题上移，整行高度保持不变。 */
 .mdl-row-main{position:relative;min-width:0;flex:1;transition:transform .22s var(--ease-soft)}
-.mdl-row-name{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:550;color:var(--ink)}
+.mdl-row-name{display:flex;align-items:center;gap:7px;font-size:13.5px;line-height:20px;font-weight:550;color:var(--ink)}
 /* 脱离文档流挂在名字底下：它出现与否不该改变任何一行的高度 */
-.mdl-row small{position:absolute;top:100%;left:0;right:0;margin-top:3px;
-  font-size:11.5px;line-height:1.4;color:var(--ink-3);white-space:nowrap;overflow:hidden;
+.mdl-row small{position:absolute;top:100%;left:0;right:0;margin-top:4px;
+  font-size:11.5px;line-height:16px;color:var(--ink-2);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;pointer-events:none;opacity:0;transform:translateY(-3px);
   transition:opacity .16s,transform .22s var(--ease-soft)}
 .mdl-row:hover,.mdl-row:focus-visible{background:var(--fill-2)}
 .mdl-row:hover .mdl-row-main,.mdl-row:focus-visible .mdl-row-main,
-.mdl-row.on .mdl-row-main{transform:translateY(-8px)}
+.mdl-row.on .mdl-row-main{transform:translateY(-10px)}
 .mdl-row:hover small,.mdl-row:focus-visible small,.mdl-row.on small{opacity:1;transform:none}
 /*
  * 选中不着青底：这一列里着青的只有行末那枚勾。一行青底再加一枚青勾是把同一件事说两遍，
@@ -2221,10 +2221,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   .prompt-input .mark-chip .mark-shot{--shot:15px}
   .prompt-input .source-chip-shot{width:15px;height:15px;border-radius:4px}
   .gp-bot{margin-top:10px;padding-top:10px;bottom:-12px;min-height:40px}
-  /* 十一行的模型抽屉在矮屏上最容易顶到天花板：行高收一档，小字让开的距离跟着收 */
-  .mdl-row{min-height:42px}
-  .mdl-row:hover .mdl-row-main,.mdl-row:focus-visible .mdl-row-main,
-  .mdl-row.on .mdl-row-main{transform:translateY(-7px)}
+  /* 矮屏通过模型列表内部滚动容纳选项，保留双行文字的上下留白。 */
 }
 
 /* ---- 置灰与「本次不参与」：灰要能指到具体那一块，并且随时说得出原因 ---- */

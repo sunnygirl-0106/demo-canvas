@@ -4,8 +4,9 @@ import { MODEL_CAPABILITIES, MODELS, locksDuration, locksRatio, type Mat, type M
 import { modelBlockedReason } from './videoTask'
 import Overlay from './Overlay'
 import Field, { RatioBox } from './SettingField'
-import { IcCheck, IcClock, IcMute, IcQuality, IcSpeaker } from '../ui/icons'
+import { IcClock, IcMute, IcQuality, IcSpeaker } from '../ui/icons'
 import ModelBadge from '../ui/ModelBadge'
+import ModelSelected from '../ui/ModelSelected'
 import { useTip } from './useTip'
 import { docText } from './promptDoc'
 
@@ -95,7 +96,7 @@ export default function VideoSettings({ nodeId, gen, source, get, focus }: { nod
             <span className="mdl-row-name">{c.label}<RecommendedPill model={model} /></span>
             <small>{specLine(c)}</small>
           </span>
-          {on && <IcCheck size={15} sw={2.6} className="mdl-tick" />}
+          {on && <ModelSelected />}
         </button>
       })}
     </Overlay>}

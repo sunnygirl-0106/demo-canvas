@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { useGenerator } from '../store/generator'
-import { IcCheck, IcChev, IcImage, IcQuality } from '../ui/icons'
+import { IcChev, IcImage, IcQuality } from '../ui/icons'
 import ModelBadge from '../ui/ModelBadge'
+import ModelSelected from '../ui/ModelSelected'
 import Overlay from './Overlay'
 import Field, { RatioBox } from './SettingField'
 import { IMAGE_COUNTS, IMAGE_MODELS, IMAGE_RATIOS, IMAGE_RESOLUTIONS, resolveImageSettings, type ImageSettings as Settings } from './imageOptions'
@@ -40,7 +41,7 @@ export default function ImageSettings({ nodeId }: { nodeId: string }) {
         aria-pressed={settings.model === m.id} onClick={() => { patch({ model: m.id }); setOpen(null) }}>
         <ModelBadge size={20} />
         <span className="mdl-row-main"><span className="mdl-row-name">{m.label}{m.id === 'phan-nano' && <em className="mdl-tier">推荐</em>}</span><small>图像生成，支持提示词创作</small></span>
-        {settings.model === m.id && <IcCheck size={15} className="mdl-tick" />}
+        {settings.model === m.id && <ModelSelected />}
       </button>)}
     </Overlay>}
   </div>
